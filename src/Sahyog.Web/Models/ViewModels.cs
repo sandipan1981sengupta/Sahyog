@@ -11,7 +11,8 @@ public sealed class LoginViewModel
 {
     [Display(Name = "Workspace")]
     [MaxLength(40)]
-    public string? Workspace { get; set; }
+    public string? Workspace { get => _workspace; set => _workspace = value?.Trim().ToLowerInvariant(); }
+    private string? _workspace;
 
     [Required, EmailAddress]
     public string Email { get; set; } = "";
@@ -148,8 +149,9 @@ public sealed class CreateTenantInput
     [Required, MaxLength(120)]
     public string Name { get; set; } = "";
 
-    [Required, MaxLength(40), RegularExpression("^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$", ErrorMessage = "Use 3–40 lowercase letters, numbers or hyphens.")]
-    public string Slug { get; set; } = "";
+    [Required, MaxLength(40), RegularExpression("^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$", ErrorMessage = "Use 3–40 letters, numbers or hyphens (no spaces).")]
+    public string Slug { get => _slug; set => _slug = (value ?? "").Trim().ToLowerInvariant(); }
+    private string _slug = "";
 
     [Required]
     public int PlanId { get; set; }
@@ -219,8 +221,9 @@ public sealed class SetupInput
     [MaxLength(120), Display(Name = "Client company name")]
     public string? CompanyName { get; set; }
 
-    [MaxLength(40), RegularExpression("^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$", ErrorMessage = "Workspace: 3–40 lowercase letters, numbers or hyphens.")]
-    public string? Workspace { get; set; }
+    [MaxLength(40), RegularExpression("^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$", ErrorMessage = "Workspace: 3–40 letters, numbers or hyphens (no spaces).")]
+    public string? Workspace { get => _workspace; set => _workspace = value?.Trim().ToLowerInvariant(); }
+    private string? _workspace;
 
     [MaxLength(100), Display(Name = "Client admin name")]
     public string? ClientAdminName { get; set; }

@@ -23,7 +23,7 @@ One codebase serves many client companies (tenants). Each client is on a plan (S
 ## 1. Open and run on your PC (Visual Studio 2026)
 
 1. Install **Visual Studio 2026** with the **ASP.NET and web development** workload (includes the .NET 10 SDK and SQL Server LocalDB).
-2. **Create the database.** In SQL Server Management Studio (or Visual Studio's **SQL Server Object Explorer**), create an empty database called `SahyogDev` on `(localdb)\MSSQLLocalDB`, then run these two scripts on it, in order:
+2. **Create the database.** In SQL Server Management Studio (or Visual Studio's **SQL Server Object Explorer**), create (or use) your database, put its connection string in `appsettings.json` under `ConnectionStrings:Default`, then run these two scripts on it, in order:
    1. `database/01_Tables.sql` — all tables, indexes, table types and the three starting plans
    2. `database/02_StoredProcedures.sql` — every stored procedure the app uses
 
