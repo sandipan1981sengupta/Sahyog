@@ -1,0 +1,146 @@
+@model AdminViewModel
+@{
+    ViewData["Title"] = "Super Admin";
+    ViewData["Section"] = "admin";
+    var n = Model.NewTenant;
+}
+<main class="admin-main">
+    <header class="page-head glass">
+        <div>
+            <h1 class="page-title">Tenants</h1>
+            <p class="muted">Each client gets a plan. Limits apply automatically — no code changes.</p>
+        </div>
+        <button type="button" class="btn btn-primary" data-open="newTenantDialog">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            Add tenant
+        </button>
+    </header>
+
+    @if (Model.Message is string msg)
+    {
+        <div class="notice success">@msg</div>
+    }
+    @if (Model.Error is string err)
+    {
+        <div class="notice error">@err</div>
+    }
+
+    <section class="plan-grid" aria-label="Plans">
+        @foreach (var p in Model.Plans)
+        {
+            var count = Model.Tenants.Count(t => t.Plan == p.Name);
+            <form method="post" action="/admin/plans/@p.PlanId" class="plan-card glass">
+                <div class="row between">
+                    <span class="pill tone-pill-@(p.Name.ToLowerInvariant())">@p.Name</span>
+                    <span class="muted small">@count @(count == 1 ? "tenant" : "tenants")</span>
+                </div>
+                <div class="plan-fields">
+                    <label>Users<input class="input input-sm" type="number" name="maxUsers" value="@p.MaxUsers" min="1" /></label>
+                    <label>Per meeting<input class="input input-sm" type="number" name="maxMeetingParticipants" value="@p.MaxMeetingParticipants" min="2" max="500" /></label>
+                    <label>Storage (MB)<input class="input input-sm" type="number" name="storageQuotaMb" value="@p.StorageQuotaMb" min="100" /></label>
+                    <label>Video height
+                        <select class="input input-sm" name="maxVideoHeight">
+                            @foreach (var h in new[] { 360, 540, 720, 1080 })
+                            {
+                                <option value="@h" selected="@(h == p.MaxVideoHeight)">@(h)p</option>
+                            }
+                        </select>
+                    </label>
+                    <label>Max minutes<input class="input input-sm" type="number" name="maxMeetingMinutes" value="@p.MaxMeetingMinutes" min="15" max="1440" /></label>
+                    <label>Provider
+                        <select class="input input-sm" name="videoProvider">
+                            <option value="JaaS" selected="@(p.VideoProvider == "JaaS")">JaaS</option>
+                        </select>
+                    </label>
+                </div>
+                <label class="check"><input type="checkbox" name="recordingEnabled" value="true" checked="@p.RecordingEnabled" /> Recording allowed</label>
+                <input type="hidden" name="recordingEnabled" value="false" />
+                <button type="submit" class="btn btn-ghost btn-sm">Save plan</button>
+            </form>
+        }
+    </section>
+
+    <section class="table-card glass" aria-label="Tenant list">
+        <div class="row between pad">
+            <h2>All tenants</h2>
+            <label class="search wide">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+                <input type="search" id="tenantFilter" placeholder="Search tenants" aria-label="Search tenants" />
+            </label>
+        </div>
+        <div class="table-scroll">
+            <table class="pill-table">
+                <thead>
+                    <tr><th>Client</th><th>Plan</th><th>Users</th><th>Storage</th><th>Video</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in Model.Tenants)
+                    {
+                        var pct = t.StorageQuota == 0 ? 0 : (int)Math.Min(100, t.StorageUsed * 100 / t.StorageQuota);
+                        <tr data-filter="@t.Name @t.Slug">
+                            <td>
+                                <span class="row gap-12">
+                                    <span class="avatar av-40 tone-@(t.Slug.Sum(ch => (int)ch) % 6)">@(t.Name.Length > 0 ? t.Name[..1] : "?")</span>
+                                    <span><strong>@t.Name</strong><br /><span class="muted small">@t.Slug</span></span>
+                                </span>
+                            </td>
+                            <td>
+                                <form method="post" action="/admin/tenants/@t.Id/plan" class="inline">
+                                    <select name="planId" class="input input-sm" onchange="this.form.submit()" aria-label="Plan for @t.Name">
+                                        @foreach (var p in Model.Plans)
+                                        {
+                                            <option value="@p.PlanId" selected="@(p.Name == t.Plan)">@p.Name</option>
+                                        }
+                                    </select>
+                                </form>
+                            </td>
+                            <td>@t.Users / @t.MaxUsers</td>
+                            <td class="w-180">
+                                <span class="small">@UserExtensions.FormatBytes(t.StorageUsed) of @UserExtensions.FormatBytes(t.StorageQuota)</span>
+                                <div class="meter"><i style="width:@(pct)%" class="@(pct >= 80 ? "warn" : "")"></i></div>
+                            </td>
+                            <td>@t.Provider</td>
+                            <td><span class="pill @(t.IsActive ? "pill-green" : "pill-amber")">@(t.IsActive ? "Active" : "Paused")</span></td>
+                            <td class="right">
+                                <form method="post" action="/admin/tenants/@t.Id/active" class="inline">
+                                    <button type="submit" class="btn btn-ghost btn-sm">@(t.IsActive ? "Pause" : "Resume")</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    @if (Model.Tenants.Count == 0)
+                    {
+                        <tr><td colspan="7" class="muted center">No tenants yet. Press Add tenant to create the first client workspace.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<dialog id="newTenantDialog" class="dialog glass-strong" data-open-on-load="@(Model.Error is not null)">
+    <form method="post" action="/admin/tenants" class="dialog-body">
+        <h2>New tenant</h2>
+        <div class="field"><label for="tName">Company name</label><input id="tName" name="NewTenant.Name" class="input" value="@n.Name" maxlength="120" required /></div>
+        <div class="field">
+            <label for="tSlug">Workspace</label>
+            <div class="input-group"><input id="tSlug" name="NewTenant.Slug" class="input" value="@n.Slug" maxlength="40" pattern="[a-z0-9][a-z0-9-]{1,38}[a-z0-9]" placeholder="acme" required /><span class="input-suffix">.sahyog.app</span></div>
+        </div>
+        <div class="field">
+            <label for="tPlan">Plan</label>
+            <select id="tPlan" name="NewTenant.PlanId" class="input">
+                @foreach (var p in Model.Plans)
+                {
+                    <option value="@p.PlanId" selected="@(p.PlanId == n.PlanId)">@p.Name · @p.MaxUsers users · @UserExtensions.FormatBytes(p.StorageQuotaMb * 1024L * 1024L)</option>
+                }
+            </select>
+        </div>
+        <div class="field"><label for="tAdmin">Admin name</label><input id="tAdmin" name="NewTenant.AdminName" class="input" value="@n.AdminName" maxlength="100" required /></div>
+        <div class="field"><label for="tEmail">Admin email</label><input id="tEmail" name="NewTenant.AdminEmail" type="email" class="input" value="@n.AdminEmail" required /></div>
+        <div class="field"><label for="tPass">Temporary password</label><input id="tPass" name="NewTenant.AdminPassword" type="password" class="input" minlength="8" required autocomplete="new-password" /></div>
+        <div class="row end gap-8">
+            <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+            <button type="submit" class="btn btn-primary">Create workspace</button>
+        </div>
+    </form>
+</dialog>

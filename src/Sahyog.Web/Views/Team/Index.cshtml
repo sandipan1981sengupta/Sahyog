@@ -1,0 +1,84 @@
+@model TeamViewModel
+@{
+    ViewData["Title"] = "Team";
+    ViewData["Section"] = "team";
+    var full = Model.ActiveUsers >= Model.Limits.MaxUsers;
+    var m = Model.NewMember;
+}
+<main class="admin-main">
+    <header class="page-head glass">
+        <div>
+            <h1 class="page-title">Team</h1>
+            <p class="muted">@Model.ActiveUsers of @Model.Limits.MaxUsers people · @Model.Limits.PlanName plan</p>
+        </div>
+        <button type="button" class="btn btn-primary" data-open="addMemberDialog" disabled="@full">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            Add person
+        </button>
+    </header>
+
+    @if (Model.Message is string msg)
+    {
+        <div class="notice success">@msg</div>
+    }
+    @if (Model.Error is string err)
+    {
+        <div class="notice error">@err</div>
+    }
+    @if (full)
+    {
+        <div class="notice warn">Your plan's user limit is reached. Ask CloudWheel to upgrade your plan to add more people.</div>
+    }
+
+    <section class="table-card glass">
+        <div class="table-scroll">
+            <table class="pill-table">
+                <thead><tr><th>Person</th><th>Role</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var p in Model.People)
+                    {
+                        <tr>
+                            <td><span class="row gap-12"><span class="avatar av-40 tone-@(p.Tone)" data-presence="@p.Id">@p.Initials<i class="dot @(p.Online ? "on" : "")"></i></span><strong>@p.Name</strong></span></td>
+                            <td><span class="pill @(p.Role == "Admin" ? "pill-blue" : "pill-gray")">@p.Role</span></td>
+                            <td><span class="muted small">@(p.Online ? "Online" : "Offline")</span></td>
+                            <td class="right">
+                                @if (p.Id != User.UserId())
+                                {
+                                    <form method="post" action="/team/@p.Id/deactivate" class="inline" onsubmit="return confirm('Remove this person from the workspace? Their messages stay.')">
+                                        <button type="submit" class="btn btn-ghost btn-sm">Remove</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    @foreach (var p in Model.Inactive)
+                    {
+                        <tr class="dim">
+                            <td><span class="row gap-12"><span class="avatar av-40 tone-5">@p.Initials</span><strong>@p.Name</strong></span></td>
+                            <td><span class="pill pill-gray">@p.Role</span></td>
+                            <td><span class="pill pill-amber">Removed</span></td>
+                            <td class="right">
+                                <form method="post" action="/team/@p.Id/activate" class="inline"><button type="submit" class="btn btn-ghost btn-sm">Restore</button></form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<dialog id="addMemberDialog" class="dialog glass-strong" data-open-on-load="@(Model.Error is not null)">
+    <form method="post" action="/team" class="dialog-body">
+        <h2>Add a person</h2>
+        <div class="field"><label for="mName">Name</label><input id="mName" name="NewMember.DisplayName" class="input" value="@m.DisplayName" maxlength="100" required /></div>
+        <div class="field"><label for="mEmail">Email</label><input id="mEmail" name="NewMember.Email" type="email" class="input" value="@m.Email" required /></div>
+        <div class="field"><label for="mPass">Temporary password</label><input id="mPass" name="NewMember.TemporaryPassword" type="password" class="input" minlength="8" required autocomplete="new-password" /></div>
+        <label class="check"><input type="checkbox" name="NewMember.MakeAdmin" value="true" checked="@m.MakeAdmin" /> Workspace admin (can add and remove people)</label>
+        <input type="hidden" name="NewMember.MakeAdmin" value="false" />
+        <div class="row end gap-8">
+            <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+            <button type="submit" class="btn btn-primary">Add person</button>
+        </div>
+    </form>
+</dialog>

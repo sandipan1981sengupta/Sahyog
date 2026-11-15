@@ -1,0 +1,211 @@
+@model ChatViewModel
+@using System.Text.Json
+@{
+    ViewData["Title"] = Model.Current is null ? "Chat" : (Model.Current.IsDirect ? Model.Current.Name : "#" + Model.Current.Name);
+    ViewData["Section"] = "chat";
+    var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+    var c = Model.Current;
+}
+
+<aside class="chat-side glass" aria-label="Conversations">
+    <div class="side-head">
+        <div>
+            <div class="side-title">Sahyog</div>
+            <div class="muted small">@User.TenantName() · @Model.Limits.PlanName plan</div>
+        </div>
+        <button type="button" class="btn-icon btn-primary" data-open="newChannelDialog" aria-label="New channel">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        </button>
+    </div>
+    <label class="search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+        <input type="search" id="sideFilter" placeholder="Search" aria-label="Filter conversations" />
+    </label>
+
+    <div class="side-section">
+        <span class="side-label">Channels</span>
+        @foreach (var ch in Model.Channels)
+        {
+            <a class="side-item @(ch.Id == c?.Id ? "active" : "") @(ch.Unread > 0 ? "unread" : "")" href="/chat/@ch.Id" data-channel="@ch.Id" data-filter="@ch.Name">
+                <span class="hash">#</span><span class="grow">@ch.Name</span>
+                <span class="badge" hidden="@(ch.Unread == 0)">@ch.Unread</span>
+            </a>
+        }
+    </div>
+
+    <div class="side-section">
+        <div class="side-label-row">
+            <span class="side-label">Direct messages</span>
+            <button type="button" class="link-btn" data-open="newDmDialog">New</button>
+        </div>
+        @foreach (var dm in Model.Directs)
+        {
+            var p = dm.DirectWith!;
+            <a class="side-item person @(dm.Id == c?.Id ? "active" : "") @(dm.Unread > 0 ? "unread" : "")" href="/chat/@dm.Id" data-channel="@dm.Id" data-filter="@dm.Name">
+                <span class="avatar av-34 tone-@(p.Tone)" data-presence="@p.Id">@p.Initials<i class="dot @(p.Online ? "on" : "")"></i></span>
+                <span class="grow">@p.Name</span>
+                <span class="badge" hidden="@(dm.Unread == 0)">@dm.Unread</span>
+            </a>
+        }
+        @if (Model.Directs.Count == 0)
+        {
+            <p class="muted small pad-x">No conversations yet. Press New to message someone.</p>
+        }
+    </div>
+</aside>
+
+<main class="chat-main glass" id="chat"
+      data-channel="@(c?.Id)" data-has-older="@(Model.HasOlder ? "true" : "false")" data-max-mb="@Model.MaxUploadMb" data-me="@User.UserId()">
+    @if (c is null)
+    {
+        <div class="empty">
+            <h1>Welcome to Sahyog</h1>
+            <p class="muted">Create a channel or message a teammate to get started.</p>
+        </div>
+    }
+    else
+    {
+        <header class="chat-head">
+            <div class="row gap-12">
+                @if (c.IsDirect)
+                {
+                    <span class="avatar av-44 tone-@(c.DirectWith!.Tone)" data-presence="@c.DirectWith.Id">@c.DirectWith.Initials<i class="dot @(c.DirectWith.Online ? "on" : "")"></i></span>
+                }
+                else
+                {
+                    <span class="avatar av-44 tone-0 hash-avatar">#</span>
+                }
+                <div>
+                    <h1 class="chat-title">@c.Name</h1>
+                    <div class="muted small">@(c.IsDirect ? "Direct message" : $"{Model.Members.Count} members{(string.IsNullOrWhiteSpace(Model.CurrentDescription) ? "" : " · " + Model.CurrentDescription)}")</div>
+                </div>
+            </div>
+            <div class="row gap-8">
+                <div class="stack-avatars" aria-hidden="true">
+                    @foreach (var m in Model.Members.Take(3))
+                    {
+                        <span class="avatar av-32 tone-@(m.Tone) ring-white">@m.Initials</span>
+                    }
+                    @if (Model.Members.Count > 3)
+                    {
+                        <span class="avatar av-32 tone-5 ring-white">+@(Model.Members.Count - 3)</span>
+                    }
+                </div>
+                <form method="post" action="/meetings/instant">
+                    <input type="hidden" name="channelId" value="@c.Id" />
+                    <button type="submit" class="btn btn-primary">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3" /><path d="M16 10l5-3v10l-5-3z" /></svg>
+                        Meet now
+                    </button>
+                </form>
+            </div>
+        </header>
+
+        <section class="messages" id="messages" aria-label="Messages" aria-live="polite">
+            <button type="button" class="btn btn-ghost btn-sm load-older" id="loadOlder" hidden="@(!Model.HasOlder)">Load older messages</button>
+            <div id="messageList"></div>
+            <div class="typing" id="typing" hidden><span class="typing-dots"><i></i><i></i><i></i></span><span id="typingText"></span></div>
+        </section>
+
+        <form class="composer" id="composer" autocomplete="off">
+            <input type="file" id="fileInput" hidden />
+            <button type="button" class="btn-icon soft" id="attachBtn" aria-label="Attach a file">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" /></svg>
+            </button>
+            <label for="messageBox" class="sr-only">Message</label>
+            <textarea id="messageBox" rows="1" maxlength="4000" placeholder="Message @(c.IsDirect ? c.Name : "#" + c.Name)"></textarea>
+            <button type="submit" class="btn-icon btn-primary" aria-label="Send">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4z" /></svg>
+            </button>
+        </form>
+        <div class="upload-progress" id="uploadProgress" hidden><span id="uploadName"></span><div class="bar"><i id="uploadBar"></i></div></div>
+    }
+</main>
+
+<aside class="chat-info glass" aria-label="Details">
+    <section>
+        <h2 class="info-title">Members</h2>
+        <div class="people-grid">
+            @foreach (var m in Model.Members.Take(12))
+            {
+                <span class="person-chip">
+                    <span class="avatar av-48 tone-@(m.Tone) ring-white" data-presence="@m.Id">@m.Initials<i class="dot @(m.Online ? "on" : "")"></i></span>
+                    <span class="tiny">@m.Name.Split(' ')[0]</span>
+                </span>
+            }
+        </div>
+    </section>
+
+    <section>
+        <h2 class="info-title">Shared files</h2>
+        <div id="recentFiles" class="file-list">
+            @foreach (var f in Model.RecentFiles)
+            {
+                <a class="file-row" href="@f.Url" target="_blank" rel="noopener">
+                    <span class="grow ellipsis">@f.FileName</span><span class="muted tiny">@UserExtensions.FormatBytes(f.SizeBytes)</span>
+                </a>
+            }
+            @if (Model.RecentFiles.Count == 0)
+            {
+                <p class="muted small">Files shared here will appear in this list.</p>
+            }
+        </div>
+    </section>
+
+    <section class="storage-card">
+        <div class="row between small"><strong>Storage</strong><span class="muted">@UserExtensions.FormatBytes(Model.Limits.StorageUsedBytes) of @UserExtensions.FormatBytes(Model.Limits.StorageQuotaBytes)</span></div>
+        <div class="meter" role="img" aria-label="@Model.Limits.StoragePercent percent of storage used"><i style="width:@(Model.Limits.StoragePercent)%" class="@(Model.Limits.StoragePercent >= 80 ? "warn" : "")"></i></div>
+        <span class="muted tiny">@Model.Limits.PlanName plan. Your admin can upgrade.</span>
+    </section>
+</aside>
+
+<dialog id="newChannelDialog" class="dialog glass-strong">
+    <form method="post" action="/chat/channels" class="dialog-body">
+        <h2>New channel</h2>
+        <div class="field">
+            <label for="channelName">Name</label>
+            <input id="channelName" name="name" class="input" maxlength="60" placeholder="project-alpha" required />
+        </div>
+        <div class="field">
+            <label for="channelDesc">Description <span class="muted">(optional)</span></label>
+            <input id="channelDesc" name="description" class="input" maxlength="300" placeholder="What is this channel for?" />
+        </div>
+        <p class="muted small">Everyone in the workspace is added.</p>
+        <div class="row end gap-8">
+            <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+            <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="newDmDialog" class="dialog glass-strong">
+    <div class="dialog-body">
+        <h2>Message someone</h2>
+        <div class="dm-pick">
+            @foreach (var p in Model.Team)
+            {
+                <form method="post" action="/chat/direct/@p.Id">
+                    <button type="submit" class="dm-row">
+                        <span class="avatar av-38 tone-@(p.Tone)" data-presence="@p.Id">@p.Initials<i class="dot @(p.Online ? "on" : "")"></i></span>
+                        <span class="grow">@p.Name</span>
+                    </button>
+                </form>
+            }
+            @if (Model.Team.Count == 0)
+            {
+                <p class="muted small">No one else is in this workspace yet.</p>
+            }
+        </div>
+        <div class="row end"><button type="button" class="btn btn-ghost" data-close>Close</button></div>
+    </div>
+</dialog>
+
+<script id="initialMessages" type="application/json">@Html.Raw(JsonSerializer.Serialize(Model.Messages, jsonOptions))</script>
+@if (TempData["Error"] is string error)
+{
+    <div hidden data-toast-error="@error"></div>
+}
+
+@section Scripts {
+    <script src="~/js/chat.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,259 @@
+@model MeetingsViewModel
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Meetings";
+    ViewData["Section"] = "meetings";
+    const int hourPx = 56;
+    var hours = Model.EndHour - Model.StartHour;
+    var weekEnd = Model.WeekStart.AddDays(6);
+    var f = Model.Form;
+    var durations = new[] { 15, 30, 45, 60, 90, 120 }.Where(d => d <= Model.Limits.MaxMeetingMinutes).ToArray();
+    var quickTimes = new[] { new TimeOnly(9, 0), new TimeOnly(10, 0), new TimeOnly(11, 30), new TimeOnly(14, 0), new TimeOnly(15, 0), new TimeOnly(16, 30) };
+    string Hm(DateTime d) => d.ToString("h:mm tt");
+    double Top(DateTime d) => Math.Max(0, (d.Hour + d.Minute / 60.0 - Model.StartHour) * hourPx);
+    var busy = Model.Days.SelectMany(d => d.Events.Select(e => new
+    {
+        date = d.Date.ToString("yyyy-MM-dd"),
+        start = e.StartLocal.Hour + e.StartLocal.Minute / 60.0,
+        end = e.EndLocal.Hour + e.EndLocal.Minute / 60.0,
+        title = e.Title
+    }));
+}
+
+<main class="meet-main">
+    <header class="page-head">
+        <div class="row gap-16 wrap">
+            <h1 class="page-title">Meetings</h1>
+            <div class="week-nav glass-soft">
+                <a class="btn-icon ghost" href="/meetings?week=@Model.WeekStart.AddDays(-7).ToString("yyyy-MM-dd")" aria-label="Previous week">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+                </a>
+                <span class="week-label">@Model.WeekStart.ToString("d MMM") – @weekEnd.ToString("d MMM yyyy")</span>
+                <a class="btn-icon ghost" href="/meetings?week=@Model.WeekStart.AddDays(7).ToString("yyyy-MM-dd")" aria-label="Next week">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+                </a>
+            </div>
+            <a class="btn btn-ghost btn-sm" href="/meetings">Today</a>
+        </div>
+    </header>
+
+    @if (Model.UpNext is not null)
+    {
+        var next = Model.UpNext;
+        <div class="upnext">
+            <span class="upnext-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3" /><path d="M16 10l5-3v10l-5-3z" /></svg></span>
+            <span class="grow">
+                <span class="upnext-kicker">@(Model.UpNextMinutes <= 0 ? "HAPPENING NOW" : Model.UpNextMinutes < 60 ? $"UP NEXT · STARTS IN {Model.UpNextMinutes} MIN" : $"UP NEXT · {next.StartLocal:ddd h:mm tt}".ToUpperInvariant())</span>
+                <span class="upnext-title">@next.Title</span>
+            </span>
+            <span class="stack-avatars">
+                @foreach (var p in next.People.Take(3))
+                {
+                    <span class="avatar av-36 tone-@(p.Tone) ring-white">@p.Initials</span>
+                }
+                @if (next.People.Count > 3)
+                {
+                    <span class="avatar av-36 glass-av ring-white">+@(next.People.Count - 3)</span>
+                }
+            </span>
+            <a class="btn btn-white" href="/meetings/room/@next.MeetingId">Join</a>
+        </div>
+    }
+
+    <section class="calendar glass" aria-label="Week calendar">
+        <div class="cal-grid" style="--hours:@hours; --hour:@(hourPx)px">
+            <span></span>
+            @foreach (var d in Model.Days)
+            {
+                <span class="cal-dayhead @(d.Date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? "weekend" : "")">
+                    @d.Date.ToString("ddd") <span class="cal-num @(d.IsToday ? "today" : "")">@d.Date.Day</span>
+                </span>
+            }
+
+            <div class="cal-hours">
+                @for (var h = Model.StartHour; h < Model.EndHour; h++)
+                {
+                    <span style="top:@((h - Model.StartHour) * hourPx - 7)px">@(new DateTime(2000, 1, 1, h, 0, 0).ToString("h tt"))</span>
+                }
+            </div>
+
+            @foreach (var d in Model.Days)
+            {
+                <div class="cal-col @(d.IsToday ? "is-today" : "") @(d.Date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? "weekend" : "")" data-date="@d.Date.ToString("yyyy-MM-dd")">
+                    @if (d.IsToday && Model.NowHour >= Model.StartHour && Model.NowHour <= Model.EndHour)
+                    {
+                        <span class="now-line" style="top:@((Model.NowHour - Model.StartHour) * hourPx)px" aria-hidden="true"></span>
+                    }
+                    @foreach (var e in d.Events)
+                    {
+                        var minutes = (e.EndLocal - e.StartLocal).TotalMinutes;
+                        var height = Math.Max(26, minutes / 60.0 * hourPx - 4);
+                        var tall = minutes >= 50;
+                        <div class="cal-event tone-@(e.Tone) @(e.IsNew ? "is-new" : "") @(tall ? "tall" : "")" style="top:@(Top(e.StartLocal) + 2)px; height:@(height)px">
+                            <a class="cal-event-link" href="/meetings/room/@e.MeetingId">
+                                <span class="row gap-6"><i class="cal-dot"></i><strong class="ellipsis">@e.Title</strong></span>
+                                <span class="cal-time">@Hm(e.StartLocal) – @Hm(e.EndLocal)</span>
+                                @if (tall)
+                                {
+                                    <span class="stack-avatars sm">
+                                        @foreach (var p in e.People.Take(3))
+                                        {
+                                            <span class="avatar av-22 tone-@(p.Tone) ring-white">@p.Initials</span>
+                                        }
+                                    </span>
+                                }
+                            </a>
+                            @if (e.IsHost)
+                            {
+                                <form method="post" action="/meetings/@e.MeetingId/delete" class="cal-del" onsubmit="return confirm('Cancel this meeting for everyone?')">
+                                    <button type="submit" aria-label="Cancel @e.Title">
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                                    </button>
+                                </form>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+</main>
+
+<aside class="schedule-panel glass-strong" aria-label="Schedule a meeting">
+    @if (Model.JustScheduled is not null)
+    {
+        var just = Model.JustScheduled;
+        <div class="success-card">
+            <span class="success-check"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg></span>
+            <h2>Meeting scheduled</h2>
+            <strong class="accent">@just.Title</strong>
+            <p class="muted">Invites are on their way. It's now in your calendar.</p>
+            @if (Model.JustScheduledGuestUrl is string guestUrl)
+            {
+                <div class="copy-row">
+                    <input class="input" readonly value="@guestUrl" aria-label="Guest link" id="guestLink" />
+                    <button type="button" class="btn btn-primary btn-sm" data-copy="#guestLink">Copy guest link</button>
+                </div>
+            }
+            <a class="btn btn-ghost" href="/meetings?week=@Model.WeekStart.ToString("yyyy-MM-dd")">Schedule another</a>
+        </div>
+    }
+    else
+    {
+        <form method="post" action="/meetings/schedule" id="scheduleForm" class="schedule-form">
+            <div class="row between">
+                <h2>Schedule a meeting</h2>
+                <span class="grad-badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg></span>
+            </div>
+
+            <div asp-validation-summary="All" class="form-error" role="alert"></div>
+
+            <div class="field">
+                <label for="mTitle">Title</label>
+                <input id="mTitle" name="Form.Title" class="input" maxlength="150" value="@f.Title" placeholder="Storage limits follow-up" required />
+            </div>
+
+            <div class="field">
+                <span class="label">Day</span>
+                <div class="day-chips">
+                    @foreach (var d in Model.Days.Where(x => x.Date.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)))
+                    {
+                        <button type="button" class="chip-day" data-date="@d.Date.ToString("yyyy-MM-dd")" aria-pressed="@(d.Date == f.Date ? "true" : "false")">
+                            <small>@d.Date.ToString("ddd")</small><strong>@d.Date.Day</strong>
+                        </button>
+                    }
+                </div>
+                <input type="date" name="Form.Date" id="mDate" class="input input-sm" value="@f.Date.ToString("yyyy-MM-dd")" required aria-label="Date" />
+            </div>
+
+            <div class="field">
+                <span class="label">Start time</span>
+                <div class="chips">
+                    @foreach (var t in quickTimes)
+                    {
+                        <button type="button" class="chip" data-time="@t.ToString("HH:mm")" aria-pressed="@(t == f.Time ? "true" : "false")">@t.ToString("h:mm tt")</button>
+                    }
+                    <input type="time" name="Form.Time" id="mTime" class="input input-sm time-input" value="@f.Time.ToString("HH:mm")" step="900" required aria-label="Start time" />
+                </div>
+                <span class="free-pill" id="freeText" aria-live="polite"></span>
+            </div>
+
+            <div class="field">
+                <span class="label">Duration</span>
+                <div class="segmented" role="radiogroup" aria-label="Duration">
+                    @foreach (var d in durations)
+                    {
+                        <label><input type="radio" name="Form.DurationMinutes" value="@d" checked="@(d == f.DurationMinutes)" /><span>@(d < 60 ? $"{d} min" : d == 60 ? "1 hr" : $"{d / 60.0:0.#} hr")</span></label>
+                    }
+                </div>
+            </div>
+
+            <div class="field">
+                <span class="label">People</span>
+                <div class="people-picks">
+                    @foreach (var p in Model.Team)
+                    {
+                        <label class="person-pick">
+                            <input type="checkbox" name="Form.InviteeIds" value="@p.Id" checked="@(f.InviteeIds.Contains(p.Id))" />
+                            <span class="avatar av-30 tone-@(p.Tone)">@p.Initials</span>@p.Name.Split(' ')[0]
+                        </label>
+                    }
+                    @if (Model.Team.Count == 0)
+                    {
+                        <span class="muted small">Add teammates in Team to invite them.</span>
+                    }
+                </div>
+                <label for="mGuests" class="sr-only">Guest emails</label>
+                <input id="mGuests" name="Form.GuestEmails" class="input" value="@f.GuestEmails" placeholder="Guests: client@company.com, …" />
+            </div>
+
+            <div class="toggles">
+                <label class="toggle-row">
+                    <span><strong>Guest link</strong><small>Outside people can join with a link</small></span>
+                    <input type="checkbox" class="switch" name="Form.GuestLinkEnabled" value="true" checked="@f.GuestLinkEnabled" />
+                    <input type="hidden" name="Form.GuestLinkEnabled" value="false" />
+                </label>
+                <label class="toggle-row">
+                    <span><strong>Guest lobby</strong><small>You let outside guests in</small></span>
+                    <input type="checkbox" class="switch" name="Form.LobbyEnabled" value="true" checked="@f.LobbyEnabled" />
+                    <input type="hidden" name="Form.LobbyEnabled" value="false" />
+                </label>
+                <label class="toggle-row">
+                    <span><strong>Email &amp; calendar invite</strong><small>Works with Outlook and Google</small></span>
+                    <input type="checkbox" class="switch" name="Form.SendEmail" value="true" checked="@f.SendEmail" />
+                    <input type="hidden" name="Form.SendEmail" value="false" />
+                </label>
+                <label class="toggle-row">
+                    <span><strong>Live captions</strong><small>Turn on captions at start</small></span>
+                    <input type="checkbox" class="switch" name="Form.CaptionsOn" value="true" checked="@f.CaptionsOn" />
+                    <input type="hidden" name="Form.CaptionsOn" value="false" />
+                </label>
+            </div>
+
+            <div class="field">
+                <span class="label">Repeat</span>
+                <div class="segmented" role="radiogroup" aria-label="Repeat">
+                    <label><input type="radio" name="Form.Recurrence" value="None" checked="@(f.Recurrence == MeetingRecurrence.None)" /><span>Once</span></label>
+                    <label><input type="radio" name="Form.Recurrence" value="Weekly" checked="@(f.Recurrence == MeetingRecurrence.Weekly)" /><span>Weekly</span></label>
+                    <label><input type="radio" name="Form.Recurrence" value="Daily" checked="@(f.Recurrence == MeetingRecurrence.Daily)" /><span>Weekdays</span></label>
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="mAgenda">Agenda <span class="muted">(optional)</span></label>
+                <textarea id="mAgenda" name="Form.Agenda" class="input textarea" rows="2" maxlength="2000" placeholder="What will you discuss?">@f.Agenda</textarea>
+            </div>
+
+            <button type="submit" class="btn btn-gradient btn-lg">
+                Schedule &amp; send invites
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            </button>
+        </form>
+    }
+</aside>
+
+<script id="busyJson" type="application/json">@Html.Raw(JsonSerializer.Serialize(busy))</script>
+
+@section Scripts {
+    <script src="~/js/meetings.js" asp-append-version="true"></script>
+}

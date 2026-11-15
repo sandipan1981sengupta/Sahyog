@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+*.user
+App_Data/
+appsettings.Production.json
+*.pk
+*.pem
+logs/

@@ -1,0 +1,38 @@
+@model SetupInput
+@{
+    Layout = "_AuthLayout";
+    ViewData["Title"] = "Set up Sahyog";
+}
+<section class="auth-hero">
+    <div class="brand">
+        <span class="brand-mark"><img src="~/images/logo.svg" alt="" width="44" height="44" /></span>
+        <span class="brand-text"><strong>Sahyog</strong><small>First-time setup</small></span>
+    </div>
+    <h1>Welcome.<br />Let's set up Sahyog.</h1>
+    <p class="lead">Create the CloudWheel super admin. You can also create your first client workspace now. This page works only once.</p>
+</section>
+
+<form method="post" asp-action="Index" class="auth-card glass-strong" novalidate>
+    <h2>CloudWheel super admin</h2>
+    <div asp-validation-summary="All" class="form-error" role="alert"></div>
+
+    <div class="field"><label asp-for="AdminName">Your name</label><input asp-for="AdminName" class="input" /></div>
+    <div class="field"><label asp-for="AdminEmail">Email</label><input asp-for="AdminEmail" class="input" placeholder="admin@cloudwheel.com" autocomplete="email" /></div>
+    <div class="field"><label asp-for="AdminPassword">Password</label><input asp-for="AdminPassword" class="input" autocomplete="new-password" /></div>
+    <div class="field"><label asp-for="ConfirmPassword">Confirm password</label><input asp-for="ConfirmPassword" class="input" autocomplete="new-password" /></div>
+
+    <label class="check"><input asp-for="CreateWorkspace" /> Also create my first client</label>
+
+    <div class="field"><label asp-for="CompanyName">Client company name</label><input asp-for="CompanyName" class="input" placeholder="Acme Corp" /></div>
+    <div class="field">
+        <label asp-for="Workspace">Workspace</label>
+        <div class="input-group"><input asp-for="Workspace" class="input" placeholder="acme" /><span class="input-suffix">.sahyog.app</span></div>
+    </div>
+    <div class="field"><label asp-for="ClientAdminName">Client admin name</label><input asp-for="ClientAdminName" class="input" /></div>
+    <div class="field"><label asp-for="ClientAdminEmail">Client admin email</label><input asp-for="ClientAdminEmail" class="input" placeholder="admin@acme.com" /></div>
+    <div class="field"><label asp-for="ClientAdminPassword">Client admin password</label><input asp-for="ClientAdminPassword" class="input" autocomplete="new-password" /></div>
+    <input type="hidden" asp-for="PlanId" />
+
+    <button type="submit" class="btn btn-gradient btn-lg">Finish setup</button>
+    <p class="muted center tiny">Passwords need at least 8 characters.</p>
+</form>

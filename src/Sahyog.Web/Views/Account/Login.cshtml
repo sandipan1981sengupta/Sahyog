@@ -1,0 +1,59 @@
+@model LoginViewModel
+@{
+    Layout = "_AuthLayout";
+    ViewData["Title"] = "Sign in";
+}
+<section class="auth-hero">
+    <div class="brand">
+        <span class="brand-mark"><img src="~/images/logo.svg" alt="" width="44" height="44" /></span>
+        <span class="brand-text"><strong>Sahyog</strong><small>by CloudWheel Ltd</small></span>
+    </div>
+    <h1>Speak together.<br />Work together.</h1>
+    <p class="lead">Channels, direct messages, video meetings and file sharing for your whole team — from 10 people to 500 in one call.</p>
+    <div class="verse glass">
+        <em>Sam gacchadhvam sam vadadhvam,<br />sam vo manamsi janatam.</em>
+        <span>“Walk together, speak together, let your minds be in harmony.” — Rig Veda 10.191.2</span>
+    </div>
+</section>
+
+<form method="post" asp-action="Login" class="auth-card glass-strong" novalidate>
+    <div>
+        <h2>Sign in</h2>
+        <p class="muted">Welcome back to your workspace.</p>
+    </div>
+
+    @if (TempData["SetupMessage"] is string setupMessage)
+    {
+        <div class="notice success">@setupMessage</div>
+    }
+    <div asp-validation-summary="ModelOnly" class="form-error" role="alert"></div>
+    <input type="hidden" asp-for="ReturnUrl" />
+
+    <div class="field">
+        <label asp-for="Workspace">Workspace</label>
+        <div class="input-group">
+            <input asp-for="Workspace" class="input" placeholder="acme" autocomplete="organization" />
+            <span class="input-suffix">.sahyog.app</span>
+        </div>
+        <small class="muted">CloudWheel admins can leave this empty.</small>
+    </div>
+
+    <div class="field">
+        <label asp-for="Email">Email</label>
+        <input asp-for="Email" class="input" placeholder="you@company.com" autocomplete="email" />
+        <span asp-validation-for="Email" class="field-error"></span>
+    </div>
+
+    <div class="field">
+        <label asp-for="Password">Password</label>
+        <input asp-for="Password" class="input" placeholder="Enter your password" autocomplete="current-password" />
+        <span asp-validation-for="Password" class="field-error"></span>
+    </div>
+
+    <label class="check"><input asp-for="RememberMe" /> Keep me signed in</label>
+
+    <button type="submit" class="btn btn-primary btn-lg">Sign in</button>
+    <p class="muted center small">New here? Ask your workspace admin for an invite.</p>
+    <p class="muted center tiny">Installing Sahyog for the first time? <a href="/setup">Run setup</a></p>
+    <p class="muted center tiny">© CloudWheel Ltd</p>
+</form>

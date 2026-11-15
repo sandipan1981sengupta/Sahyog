@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- All business functions of Sahyog: stored procedure calls, login checks, meetings, email, files, video tokens. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Sahyog.ServiceLibrary</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Options, logging, configuration, hosting and the password hasher come from the ASP.NET Core shared framework. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- Plain ADO.NET for SQL Server / Azure SQL stored procedures. No Entity Framework. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sahyog.DtoLibrary\Sahyog.DtoLibrary.csproj" />
+  </ItemGroup>
+
+</Project>
