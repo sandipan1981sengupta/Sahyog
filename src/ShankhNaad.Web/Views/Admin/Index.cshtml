@@ -377,34 +377,76 @@
                     return CLIENT_ONLY.some(function (w) { return label === w || label.indexOf(w) === 0; });
                 });
             }
-            function foldHeader(plans) {
-                var $b = clientButtons();
-                $b.each(function (i) {
-                    var el = this, delay = (plans ? i : $b.length - 1 - i) * 45;
-                    clearTimeout(el._snFold);
-                    if (plans) {
-                        if (el.hidden) return;
-                        el.style.setProperty("--sn-fold-w", el.offsetWidth + "px");
-                        el.style.transitionDelay = delay + "ms";
-                        el.classList.add("sn-folding");
-                        void el.offsetWidth;
-                        el.classList.add("sn-folded");
-                        el.setAttribute("aria-hidden", "true");
-                        el.tabIndex = -1;
-                        el.blur();
-                        // once it has shrunk away, take it out completely (no leftover gap)
-                        el._snFold = setTimeout(function () { el.hidden = true; }, 420 + delay);
-                    } else {
-                        if (!el.classList.contains("sn-folding")) return;
-                        el.hidden = false;
-                        el.style.transitionDelay = delay + "ms";
-                        void el.offsetWidth;
-                        el.classList.remove("sn-folded");
-                        el.removeAttribute("aria-hidden");
-                        el.tabIndex = 0;
-                        el._snFold = setTimeout(function () { el.classList.remove("sn-folding"); el.style.transitionDelay = ""; }, 460 + delay);
-                    }
+            // Smooth fold: the client buttons fade and shrink in place (GPU-only: opacity + transform),
+            // then the buttons that stay glide to their new place (FLIP), so nothing jumps.
+            var folded = false, foldBusy = null;
+            var EASE = "cubic-bezier(.22, 1, .36, 1)";
+            function siblingsOf($b) {
+                var row = $b.length ? $b[0].parentElement : null;
+                return row ? Array.prototype.filter.call(row.children, function (el) { return $b.index(el) < 0 && !el.hidden; }) : [];
+            }
+            function rects(list) { return list.map(function (el) { return el.getBoundingClientRect(); }); }
+            function glide(list, before) {
+                var after = rects(list);
+                list.forEach(function (el, i) {
+                    var dx = before[i].left - after[i].left;
+                    if (Math.abs(dx) < 1) return;
+                    el.animate([{ transform: "translateX(" + dx + "px)" }, { transform: "translateX(0)" }],
+                               { duration: 460, easing: EASE });
                 });
+            }
+            function foldHeader(plans, instant) {
+                if (plans === folded) return;
+                folded = plans;
+                var $b = clientButtons();
+                if (!$b.length) return;
+                $b.each(function () { this.style.animation = "none"; });   // no replay of the page-load pop-in
+                var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+                if (foldBusy) { foldBusy.forEach(function (a) { try { a.finish(); } catch (e) { } }); foldBusy = null; }
+
+                if (instant || reduce || !Element.prototype.animate) {
+                    $b.each(function () { this.hidden = plans; this.tabIndex = plans ? -1 : 0; });
+                    return;
+                }
+                var stay = siblingsOf($b);
+                stay.forEach(function (el) { el.style.animation = "none"; });
+                if (plans) {
+                    // 1) fade and shrink where they are, one after another (right to left)
+                    var n = $b.length, anims = [];
+                    $b.each(function (i) {
+                        this.blur(); this.tabIndex = -1; this.setAttribute("aria-hidden", "true");
+                        anims.push(this.animate(
+                            [{ opacity: 1, transform: "none", filter: "blur(0)" },
+                             { opacity: 0, transform: "translateY(-6px) scale(.82)", filter: "blur(2px)" }],
+                            { duration: 260, delay: (n - 1 - i) * 40, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" }));
+                    });
+                    foldBusy = anims;
+                    Promise.all(anims.map(function (a) { return a.finished; })).then(function () {
+                        if (!folded) return;
+                        // 2) take them out, and let the rest glide into place
+                        var before = rects(stay);
+                        $b.each(function () { this.hidden = true; });
+                        anims.forEach(function (a) { a.cancel(); });
+                        glide(stay, before);
+                        foldBusy = null;
+                    }).catch(function () { });
+                } else {
+                    // 1) make room: the staying buttons glide aside while the client buttons come back in
+                    var before = rects(stay);
+                    $b.each(function () { this.hidden = false; this.style.opacity = "0"; this.tabIndex = 0; this.removeAttribute("aria-hidden"); });
+                    glide(stay, before);
+                    var anims2 = [];
+                    $b.each(function (i) {
+                        var el = this;
+                        var a = el.animate(
+                            [{ opacity: 0, transform: "translateY(-6px) scale(.82)", filter: "blur(2px)" },
+                             { opacity: 1, transform: "none", filter: "blur(0)" }],
+                            { duration: 380, delay: 120 + i * 45, easing: EASE, fill: "backwards" });
+                        el.style.opacity = "";
+                        anims2.push(a);
+                    });
+                    foldBusy = anims2;
+                }
             }
             function showPane(id) {
                 foldHeader(id === "plans");
@@ -415,7 +457,7 @@
             }
             $("#adminTabs").on("tabcontrol:select", function (e, id) { showPane(id); });
             $(function () {
-                if (location.hash === "#plans") { var api = $("#adminTabs").data("tc-api"); if (api) api.select("plans"); showPane("plans"); }
+                if (location.hash === "#plans") { foldHeader(true, true); var api = $("#adminTabs").data("tc-api"); if (api) api.select("plans"); showPane("plans"); }
             });
 
             // ---- table heading: count badge + "active · paused" line under "All clients" ----

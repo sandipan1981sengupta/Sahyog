@@ -2632,19 +2632,9 @@ html[data-theme="dark"] .sn-mstat-foot { color: #8B97AD; }
 html[data-theme="dark"] .sn-upnext-empty { background: rgba(255, 255, 255, .035); border-color: rgba(255, 255, 255, .07); color: #8B97AD; }
 html[data-theme="dark"] .sn-upnext-empty .sn-link { color: #C4B5FD; }
 
-/* Clients page: on "Plans and limits" the client-only header buttons fold away */
-.sn-head .hdr-btn.sn-folding {
-    max-width: var(--sn-fold-w, 160px); overflow: hidden; white-space: nowrap;
-    transition: max-width .38s cubic-bezier(.4, 0, .2, 1), opacity .24s ease, transform .34s cubic-bezier(.4, 0, .2, 1),
-                padding .38s cubic-bezier(.4, 0, .2, 1), margin .38s cubic-bezier(.4, 0, .2, 1), filter .3s ease !important;
-    animation: none !important;
-}
-.sn-head .hdr-btn.sn-folding.sn-folded {
-    max-width: 0 !important; padding-left: 0 !important; padding-right: 0 !important; margin-left: -3px !important; margin-right: -3px !important;
-    border-width: 0 !important; opacity: 0 !important; transform: translateY(-8px) scale(.6) !important; filter: blur(3px); pointer-events: none;
-}
+/* Clients page: on "Plans and limits" the client-only header buttons fold away (animated in Views/Admin/Index.cshtml) */
 .sn-head .hdr-btn[hidden] { display: none !important; }
-@media (prefers-reduced-motion: reduce) { .sn-head .hdr-btn.sn-folding { transition: opacity .15s linear !important; } }
+.sn-head .hdr-btn, .sn-head .hdr-separator { will-change: transform; }
 
 /* Calls and Files: the same glass tabs as the Clients page */
 .sn-hist-bar .tab-control-wrapper { width: auto; box-shadow: inset 0 1px 2px rgba(15, 23, 42, .05); }
@@ -2655,3 +2645,71 @@ html[data-theme="dark"] .sn-upnext-empty .sn-link { color: #C4B5FD; }
     .sn-hist-bar .tc-tabs { flex: 1; }
     .sn-hist-bar .tc-tab { flex: 1 1 0; padding: 0 8px; }
 }
+
+/* Calls and Files: tabs on the left; Select / Delete and the search on the right */
+.sn-hist-bar { justify-content: flex-start; }
+.sn-hist-bar .tab-control-wrapper { order: 1; }
+.sn-hist-bar .sn-hist-tools { order: 2; margin-left: auto; }
+.sn-hist-bar .sn-hist-search { order: 3; margin-left: 0; width: min(300px, 100%); }
+@media (max-width: 760px) {
+    .sn-hist-bar .sn-hist-tools { margin-left: 0; }
+    .sn-hist-bar .sn-hist-search { width: 100%; }
+}
+
+/* =====================================================================
+   Glass tabs, one look everywhere (Meetings Day/Week/Month/List, Calls, Files, Clients)
+   Frosted bar with a light rim; the active pill is a raised glass lens with a
+   violet glow and a fine highlight on top; it glides between tabs.
+   ===================================================================== */
+html .sn-body .tab-control-wrapper {
+    position: relative; padding: 5px; overflow: visible;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, .34)) !important;
+    border: 1px solid rgba(255, 255, 255, .85) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), inset 0 -1px 0 rgba(15, 23, 42, .05), 0 10px 28px -18px rgba(15, 23, 42, .45) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(170%); backdrop-filter: blur(16px) saturate(170%);
+}
+html .sn-body .tc-indicator {
+    border: 1px solid rgba(255, 255, 255, .95) !important;
+    background: linear-gradient(180deg, #FFFFFF, rgba(248, 250, 252, .92)) !important;
+    box-shadow: inset 0 1px 0 #fff, 0 6px 16px -8px rgba(124, 58, 237, .55), 0 2px 6px -2px rgba(15, 23, 42, .18), 0 0 0 1px rgba(124, 58, 237, .08) !important;
+    overflow: hidden;
+}
+/* a thin violet → pink line glowing under the active tab */
+html .sn-body .tc-indicator::after {
+    content: ""; position: absolute; left: 22%; right: 22%; bottom: 3px; height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, #6366F1, #A855F7, #EC4899); box-shadow: 0 0 8px rgba(168, 85, 247, .8); opacity: .9;
+}
+html .sn-body .tc-indicator.tc-animated {
+    transition: left .42s cubic-bezier(.22, 1, .36, 1), width .42s cubic-bezier(.22, 1, .36, 1) !important;
+}
+html .sn-body .tc-tab { color: #64748B !important; letter-spacing: .01em; transition: color .25s ease, transform .2s ease; }
+html .sn-body .tc-tab:hover { color: #0F172A !important; }
+html .sn-body .tc-tab:active { transform: scale(.97); }
+html .sn-body .tc-tab.active { color: #0B1220 !important; }
+
+html[data-theme="dark"] .sn-body .tab-control-wrapper {
+    background: linear-gradient(180deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .025)) !important;
+    border: 1px solid rgba(255, 255, 255, .1) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 -1px 0 rgba(0, 0, 0, .35), 0 14px 34px -20px rgba(0, 0, 0, .9) !important;
+}
+html[data-theme="dark"] .sn-body .tc-indicator {
+    border: 1px solid rgba(255, 255, 255, .16) !important;
+    background:
+        radial-gradient(120% 140% at 50% -40%, rgba(167, 139, 250, .35), transparent 60%),
+        linear-gradient(180deg, rgba(255, 255, 255, .17), rgba(255, 255, 255, .06)) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 -1px 0 rgba(0, 0, 0, .25),
+                0 8px 20px -8px rgba(124, 58, 237, .65), 0 0 0 1px rgba(124, 58, 237, .18) !important;
+}
+html[data-theme="dark"] .sn-body .tc-tab { color: #94A3B8 !important; }
+html[data-theme="dark"] .sn-body .tc-tab:hover { color: #E2E8F0 !important; }
+html[data-theme="dark"] .sn-body .tc-tab.active { color: #fff !important; text-shadow: 0 0 14px rgba(196, 181, 253, .45); }
+@media (prefers-reduced-motion: reduce) { html .sn-body .tc-indicator.tc-animated { transition: none !important; } }
+
+/* Meetings status card: small boxes fit "Upcoming" (number on top, label under it) */
+.sn-mstat .sn-gauge-stats { gap: 6px; }
+.sn-mstat .sn-gauge-stats > div { padding: 9px 8px 8px; gap: 4px; display: grid; grid-template-columns: auto 1fr; grid-template-areas: "dot num" "lbl lbl"; align-items: center; column-gap: 6px; }
+.sn-mstat .sn-gauge-stats .sn-gs-label { display: contents; }
+.sn-mstat .sn-gauge-stats .sn-gs-dot { grid-area: dot; }
+.sn-mstat .sn-gauge-stats b { grid-area: num; font-size: 17px; line-height: 1; }
+.sn-mstat .sn-gs-text { grid-area: lbl; font-size: 11px; font-weight: 700; letter-spacing: .01em; text-transform: none; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-theme="dark"] .sn-mstat .sn-gs-text { color: #8B97AD; }
