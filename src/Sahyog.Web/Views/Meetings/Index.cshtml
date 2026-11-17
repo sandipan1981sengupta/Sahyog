@@ -1,259 +1,760 @@
 @model MeetingsViewModel
+@using System.Globalization
 @using System.Text.Json
 @{
     ViewData["Title"] = "Meetings";
     ViewData["Section"] = "meetings";
-    const int hourPx = 56;
-    var hours = Model.EndHour - Model.StartHour;
-    var weekEnd = Model.WeekStart.AddDays(6);
     var f = Model.Form;
-    var durations = new[] { 15, 30, 45, 60, 90, 120 }.Where(d => d <= Model.Limits.MaxMeetingMinutes).ToArray();
-    var quickTimes = new[] { new TimeOnly(9, 0), new TimeOnly(10, 0), new TimeOnly(11, 30), new TimeOnly(14, 0), new TimeOnly(15, 0), new TimeOnly(16, 30) };
-    string Hm(DateTime d) => d.ToString("h:mm tt");
-    double Top(DateTime d) => Math.Max(0, (d.Hour + d.Minute / 60.0 - Model.StartHour) * hourPx);
-    var busy = Model.Days.SelectMany(d => d.Events.Select(e => new
+    var weekEnd = Model.WeekStart.AddDays(6);
+    var now = Model.NowLocal;
+    var thisWeek = MeetingCalendar.WeekOf(DateOnly.FromDateTime(now));
+    var weekKey = Model.WeekStart == thisWeek ? "this" : Model.WeekStart < thisWeek ? "prev" : "next";
+    var inv = CultureInfo.InvariantCulture;
+
+    string Status(CalendarEventVm e) => e.EndLocal <= now ? "Ended" : e.StartLocal <= now ? "Live" : "Upcoming";
+    string DurText(int m) => m < 60 ? $"{m} min" : m % 60 == 0 ? $"{m / 60} hr" : $"{m / 60} hr {m % 60} min";
+
+    // Rows for <modern-table>: one row per meeting this week.
+    var events = Model.Days.SelectMany(d => d.Events).OrderBy(e => e.StartLocal).ToList();
+    var rows = events.Select(e => new Dictionary<string, object>
     {
-        date = d.Date.ToString("yyyy-MM-dd"),
-        start = e.StartLocal.Hour + e.StartLocal.Minute / 60.0,
-        end = e.EndLocal.Hour + e.EndLocal.Minute / 60.0,
-        title = e.Title
-    }));
+        ["MeetingId"] = e.MeetingId.ToString(),
+        ["Title"] = e.Title,
+        ["Day"] = e.StartLocal.ToString("ddd dd MMM", inv),
+        ["Time"] = e.IsAllDay ? "All day" : $"{e.StartLocal.ToString("HH:mm", inv)} – {e.EndLocal.ToString("HH:mm", inv)}",
+        ["Duration"] = e.IsAllDay ? (e.ShowAsFree ? "All day · free" : "All day · busy") : DurText((int)(e.EndLocal - e.StartLocal).TotalMinutes),
+        ["Host"] = e.People.Count > 0 ? e.People[0].Name : "",
+        ["People"] = e.People.Count,
+        ["Role"] = e.IsHost ? "Host" : "Invited",
+        ["Status"] = Status(e)
+    }).ToList();
+
+    var live = events.Count(e => Status(e) == "Live");
+    var upcomingCount = events.Count(e => Status(e) == "Upcoming");
+    var endedCount = events.Count(e => Status(e) == "Ended");
+    var upcoming = events.Count(e => Status(e) == "Upcoming");
+    var ended = events.Count(e => Status(e) == "Ended");
+
+    var durations = new[] { 15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600, 720 }.Where(d => d <= Model.Limits.MaxMeetingMinutes).ToList();
+    if (durations.Count == 0) durations.Add(Model.Limits.MaxMeetingMinutes);
+    var durationItems = durations.Select(d => (d.ToString(inv), DurText(d))).ToList();
+    var timeItems = Enumerable.Range(0, 48).Select(i => new TimeOnly(i / 2, (i % 2) * 30))
+        .Select(t => (t.ToString("HH:mm", inv), t.ToString("HH:mm", inv))).ToList();
+    var formTime = new TimeOnly(f.Time.Hour, f.Time.Minute >= 30 ? 30 : 0).ToString("HH:mm", inv);
+
+    var busy = events.Where(e => !(e.IsAllDay && e.ShowAsFree)).Select(e => new
+    {
+        date = e.StartLocal.ToString("dd-MM-yyyy", inv),
+        start = e.IsAllDay ? 0 : e.StartLocal.Hour + e.StartLocal.Minute / 60.0,
+        end = e.IsAllDay || e.EndLocal.Date > e.StartLocal.Date ? 24 : e.EndLocal.Hour + e.EndLocal.Minute / 60.0,
+        title = e.Title,
+        allDay = e.IsAllDay
+    });
+    var hasFormErrors = !ViewData.ModelState.IsValid;
+
+    // ---- week scheduler: hour range that always fits this week's meetings ----
+    double HourOf(DateTime d) => d.Hour + d.Minute / 60.0;
+    var startH = 8;
+    var endH = 19;
+    foreach (var e in events.Where(x => !x.IsAllDay))
+    {
+        startH = Math.Min(startH, (int)Math.Floor(HourOf(e.StartLocal)));
+        var eh = e.EndLocal.Date > e.StartLocal.Date ? 24 : HourOf(e.EndLocal);
+        endH = Math.Max(endH, (int)Math.Ceiling(eh));
+    }
+    startH = Math.Clamp(startH, 0, 23);
+    endH = Math.Clamp(endH, startH + 1, 24);
+
+    // side-by-side lanes for meetings that overlap on the same day
+    (CalendarEventVm Ev, int Lane, int Lanes)[] LaneLayout(List<CalendarEventVm> dayEvents)
+    {
+        var sorted = dayEvents.OrderBy(e => e.StartLocal).ThenByDescending(e => e.EndLocal).ToList();
+        var result = new List<(CalendarEventVm, int, int)>();
+        var cluster = new List<(CalendarEventVm Ev, int Lane)>();
+        var laneEnds = new List<DateTime>();
+        DateTime clusterEnd = DateTime.MinValue;
+        void Flush()
+        {
+            var n = Math.Max(1, laneEnds.Count);
+            foreach (var c in cluster) result.Add((c.Ev, c.Lane, n));
+            cluster.Clear(); laneEnds.Clear();
+        }
+        foreach (var e in sorted)
+        {
+            if (cluster.Count > 0 && e.StartLocal >= clusterEnd) Flush();
+            var lane = laneEnds.FindIndex(end => end <= e.StartLocal);
+            if (lane < 0) { laneEnds.Add(e.EndLocal); lane = laneEnds.Count - 1; } else laneEnds[lane] = e.EndLocal;
+            cluster.Add((e, lane));
+            clusterEnd = cluster.Count == 1 ? e.EndLocal : (e.EndLocal > clusterEnd ? e.EndLocal : clusterEnd);
+        }
+        Flush();
+        return result.ToArray();
+    }
+    var nowTop = Model.NowHour >= startH && Model.NowHour <= endH ? Model.NowHour - startH : -1;
+
+    // ---- period navigation: Day / Week / Month / List ----
+    var view = Model.View;
+    var anchor = Model.Anchor;
+    var today = DateOnly.FromDateTime(now);
+    var rangeEnd = Model.RangeStart.AddDays(Model.Days.Count - 1);
+    var prevDate = view switch { "day" => anchor.AddDays(-1), "month" => anchor.AddMonths(-1), _ => anchor.AddDays(-7) };
+    var nextDate = view switch { "day" => anchor.AddDays(1), "month" => anchor.AddMonths(1), _ => anchor.AddDays(7) };
+    string PUrl(string v, DateOnly d) => $"/meetings?view={v}&date={d.ToString("yyyy-MM-dd", inv)}";
+    var rangeLabel = view switch
+    {
+        "day" => anchor.ToString("dddd, d MMMM yyyy", inv),
+        "month" => anchor.ToString("MMMM yyyy", inv),
+        _ => Model.WeekStart.Month == weekEnd.Month
+            ? $"{Model.WeekStart.Day} – {weekEnd.ToString("d MMMM yyyy", inv)}"
+            : $"{Model.WeekStart.ToString("d MMM", inv)} – {weekEnd.ToString("d MMM yyyy", inv)}"
+    };
+    var isCurrent = view switch
+    {
+        "day" => anchor == today,
+        "month" => anchor.Year == today.Year && anchor.Month == today.Month,
+        _ => Model.WeekStart == thisWeek
+    };
+    var timeGrid = view is "day" or "week";
+    var anyAllDay = Model.Days.Any(d => d.Events.Any(e => e.IsAllDay));
+    var gridDays = timeGrid ? Model.Days : new List<CalendarDayVm>();
 }
 
-<main class="meet-main">
-    <header class="page-head">
-        <div class="row gap-16 wrap">
-            <h1 class="page-title">Meetings</h1>
-            <div class="week-nav glass-soft">
-                <a class="btn-icon ghost" href="/meetings?week=@Model.WeekStart.AddDays(-7).ToString("yyyy-MM-dd")" aria-label="Previous week">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
-                </a>
-                <span class="week-label">@Model.WeekStart.ToString("d MMM") – @weekEnd.ToString("d MMM yyyy")</span>
-                <a class="btn-icon ghost" href="/meetings?week=@Model.WeekStart.AddDays(7).ToString("yyyy-MM-dd")" aria-label="Next week">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
-                </a>
-            </div>
-            <a class="btn btn-ghost btn-sm" href="/meetings">Today</a>
-        </div>
-    </header>
+<main class="sn-page">
+    <div class="sn-head glass">
+        <action-header id="MeetingsHeader"
+                       heading="Meetings"
+                       subtitle="@($"{rangeLabel} · {Model.Limits.PlanName} plan · up to {Model.Limits.MaxMeetingParticipants} people · {Model.Limits.MaxMeetingMinutes} min")"
+                       left-icon-css="bi bi-calendar-week-fill" left-icon-size="26"
+                       left-icon-gradient-start="#2563EB" left-icon-gradient-mid="#7C3AED" left-icon-gradient-end="#DB2777"
+                       background-color="transparent" box-shadow="none"
+                       refresh-color="#1D4ED8" add-color="#1D4ED8" delete-color="#DC2626" export-color="#15803D" print-color="#334155"
+                       show-refresh="true" refresh-on-click="SN.reload()"
+                       show-add="true" add-text="Schedule" add-on-click="SN.open('scheduleDialog')"
+                       show-edit="false"
+                       show-delete="true" delete-text="Cancel" delete-on-click="snCancelMeeting()"
+                       show-import="false"
+                       show-export="true" export-on-click="SN.exportTable('MeetingsTable','meetings')"
+                       show-save="false" show-submit="false"
+                       show-print="true" print-on-click="SN.print()">
+            <action-btn text="Join" icon-css="bi bi-box-arrow-in-right" icon-color="#16A34A" tooltip="Join the selected meeting" on-click="snJoinMeeting()"></action-btn>
+            <action-btn text="Meet now" icon-css="bi bi-camera-video-fill" icon-color="#DB2777" tooltip="Start a meeting right now" on-click="document.getElementById('meetNowForm').submit()"></action-btn>
+        </action-header>
+        <form method="post" asp-antiforgery="true" action="/meetings/instant" id="meetNowForm" hidden></form>
+    </div>
 
-    @if (Model.UpNext is not null)
-    {
-        var next = Model.UpNext;
-        <div class="upnext">
-            <span class="upnext-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3" /><path d="M16 10l5-3v10l-5-3z" /></svg></span>
-            <span class="grow">
-                <span class="upnext-kicker">@(Model.UpNextMinutes <= 0 ? "HAPPENING NOW" : Model.UpNextMinutes < 60 ? $"UP NEXT · STARTS IN {Model.UpNextMinutes} MIN" : $"UP NEXT · {next.StartLocal:ddd h:mm tt}".ToUpperInvariant())</span>
-                <span class="upnext-title">@next.Title</span>
-            </span>
-            <span class="stack-avatars">
-                @foreach (var p in next.People.Take(3))
-                {
-                    <span class="avatar av-36 tone-@(p.Tone) ring-white">@p.Initials</span>
-                }
-                @if (next.People.Count > 3)
-                {
-                    <span class="avatar av-36 glass-av ring-white">+@(next.People.Count - 3)</span>
-                }
-            </span>
-            <a class="btn btn-white" href="/meetings/room/@next.MeetingId">Join</a>
+    <div class="sn-toolbar">
+        <div class="sn-toolbar-left">
+            <div class="sn-navgroup" role="group" aria-label="Change period">
+                <button type="button" class="sn-nav-btn" onclick="snNav('@PUrl(view, prevDate)', 'prev')" aria-label="Previous" title="Previous"><i class="fa fa-chevron-left" aria-hidden="true"></i></button>
+                <button type="button" class="sn-today-btn @(isCurrent ? "is-current" : "")" onclick="snNav('@PUrl(view, today)', '@(anchor > today ? "prev" : "next")')">Today</button>
+                <button type="button" class="sn-nav-btn" onclick="snNav('@PUrl(view, nextDate)', 'next')" aria-label="Next" title="Next"><i class="fa fa-chevron-right" aria-hidden="true"></i></button>
+            </div>
+            @* click the period to jump to any month: pick a year, then a month *@
+            <div class="sn-jump" id="jumpPicker" data-view="@view" data-year="@anchor.Year" data-month="@anchor.Month" data-today="@today.ToString("yyyy-MM-dd", inv)">
+                <button type="button" class="sn-week-label sn-jump-btn" id="jumpBtn" aria-haspopup="dialog" aria-expanded="false" title="Go to a month">
+                    <i class="bi bi-calendar3" aria-hidden="true"></i>
+                    <span>@rangeLabel</span>
+                    <i class="fa fa-caret-down sn-jump-caret" aria-hidden="true"></i>
+                </button>
+                <div class="sn-jump-pop glass-strong" id="jumpPop" role="dialog" aria-label="Go to a month" hidden>
+                    <div class="sn-jump-head">
+                        <button type="button" class="sn-nav-btn" data-year-step="-1" aria-label="Previous year"><i class="fa fa-chevron-left" aria-hidden="true"></i></button>
+                        <strong id="jumpYear">@anchor.Year</strong>
+                        <button type="button" class="sn-nav-btn" data-year-step="1" aria-label="Next year"><i class="fa fa-chevron-right" aria-hidden="true"></i></button>
+                    </div>
+                    <div class="sn-jump-months" id="jumpMonths">
+                        @for (var mi = 1; mi <= 12; mi++)
+                        {
+                            <button type="button" data-month="@mi">@(new DateTime(2000, mi, 1).ToString("MMM", inv))</button>
+                        }
+                    </div>
+                    <div class="sn-jump-foot">
+                        <button type="button" class="sn-link" data-jump-today>This month</button>
+                        <span class="muted small">Opens the month view</span>
+                    </div>
+                </div>
+            </div>
+            @if (live > 0)
+            {
+                <span class="sn-chip"><span class="sn-dot" style="background:#16a34a"></span>@live live now</span>
+            }
         </div>
+        <tab-control id="viewTabs" height="40px" font-size="13px" font-weight="600" active-font-weight="600" transition-duration=".32s"
+                     background="rgba(255,255,255,.55)" active-background-color="#ffffff"
+                     text-color="#475569" active-text-color="#0B1220" border-color="rgba(15,23,42,.08)">
+            <tab id="day" text="Day" active="@(view == "day")"></tab>
+            <tab id="week" text="Week" active="@(view == "week")"></tab>
+            <tab id="month" text="Month" active="@(view == "month")"></tab>
+            <tab id="list" text="List" active="@(view == "list")"></tab>
+        </tab-control>
+    </div>
+
+    @if (Model.JustScheduled is not null)
+    {
+        <div hidden data-toast="@($"{Model.JustScheduled.Title} is scheduled and the invites are on their way.")"
+             data-toast-kind="success" data-toast-title="Meeting scheduled" data-toast-ms="9000"
+             data-toast-copy="@(Model.JustScheduledGuestUrl ?? "")" data-toast-action-text="Copy guest link" data-toast-copied="Guest link copied"></div>
     }
 
-    <section class="calendar glass" aria-label="Week calendar">
-        <div class="cal-grid" style="--hours:@hours; --hour:@(hourPx)px">
-            <span></span>
-            @foreach (var d in Model.Days)
+    <div class="sn-row sn-meet-row" style="flex:1 1 auto">
+        <div class="sn-grow sn-views" data-view="@view">
+            @if (timeGrid)
             {
-                <span class="cal-dayhead @(d.Date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? "weekend" : "")">
-                    @d.Date.ToString("ddd") <span class="cal-num @(d.IsToday ? "today" : "")">@d.Date.Day</span>
-                </span>
-            }
-
-            <div class="cal-hours">
-                @for (var h = Model.StartHour; h < Model.EndHour; h++)
-                {
-                    <span style="top:@((h - Model.StartHour) * hourPx - 7)px">@(new DateTime(2000, 1, 1, h, 0, 0).ToString("h tt"))</span>
-                }
-            </div>
-
-            @foreach (var d in Model.Days)
-            {
-                <div class="cal-col @(d.IsToday ? "is-today" : "") @(d.Date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? "weekend" : "")" data-date="@d.Date.ToString("yyyy-MM-dd")">
-                    @if (d.IsToday && Model.NowHour >= Model.StartHour && Model.NowHour <= Model.EndHour)
-                    {
-                        <span class="now-line" style="top:@((Model.NowHour - Model.StartHour) * hourPx)px" aria-hidden="true"></span>
-                    }
-                    @foreach (var e in d.Events)
-                    {
-                        var minutes = (e.EndLocal - e.StartLocal).TotalMinutes;
-                        var height = Math.Max(26, minutes / 60.0 * hourPx - 4);
-                        var tall = minutes >= 50;
-                        <div class="cal-event tone-@(e.Tone) @(e.IsNew ? "is-new" : "") @(tall ? "tall" : "")" style="top:@(Top(e.StartLocal) + 2)px; height:@(height)px">
-                            <a class="cal-event-link" href="/meetings/room/@e.MeetingId">
-                                <span class="row gap-6"><i class="cal-dot"></i><strong class="ellipsis">@e.Title</strong></span>
-                                <span class="cal-time">@Hm(e.StartLocal) – @Hm(e.EndLocal)</span>
-                                @if (tall)
-                                {
-                                    <span class="stack-avatars sm">
-                                        @foreach (var p in e.People.Take(3))
-                                        {
-                                            <span class="avatar av-22 tone-@(p.Tone) ring-white">@p.Initials</span>
-                                        }
-                                    </span>
-                                }
+                @* ---------- Day / Week: time grid. Click an empty slot to schedule there. ---------- *@
+                <section id="viewSchedule" class="sn-view sn-sched glass @(view == "day" ? "is-day" : "")" style="--h0:@startH;--hours:@(endH - startH);--cols:@gridDays.Count" aria-label="Schedule" data-start="@startH">
+                    <div class="sn-sched-head">
+                        <div class="sn-sched-corner"><i class="fa fa-clock-o" aria-hidden="true"></i></div>
+                        @foreach (var d in gridDays)
+                        {
+                            <a class="sn-sched-dayhead @(d.IsToday ? "today" : "")" href="@PUrl("day", d.Date)" onclick="return snNav(this.href, '', event)" title="Open this day">
+                                <span>@d.Date.ToString(view == "day" ? "dddd" : "ddd", inv)</span><b>@d.Date.Day</b>
+                                @if (d.Events.Count > 0) { <em>@d.Events.Count</em> }
                             </a>
-                            @if (e.IsHost)
+                        }
+                    </div>
+                    @if (anyAllDay)
+                    {
+                        <div class="sn-allday">
+                            <div class="sn-allday-label">All day</div>
+                            @foreach (var d in gridDays)
                             {
-                                <form method="post" action="/meetings/@e.MeetingId/delete" class="cal-del" onsubmit="return confirm('Cancel this meeting for everyone?')">
-                                    <button type="submit" aria-label="Cancel @e.Title">
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-                                    </button>
-                                </form>
+                                <div class="sn-allday-cell" data-date="@d.Date.ToString("dd-MM-yyyy", inv)">
+                                    @foreach (var ev in d.Events.Where(x => x.IsAllDay))
+                                    {
+                                        <button type="button" class="sn-ad tone-@ev.Tone @(ev.ShowAsFree ? "free" : "busy") st-@Status(ev).ToLowerInvariant()" data-id="@ev.MeetingId"
+                                                title="@ev.Title · all day · @(ev.ShowAsFree ? "free" : "busy")">
+                                            <i class="fa @(ev.ShowAsFree ? "fa-sun-o" : "fa-ban")" aria-hidden="true"></i> <span>@ev.Title</span>
+                                        </button>
+                                    }
+                                </div>
                             }
                         </div>
                     }
-                </div>
+                    <div class="sn-sched-scroll" id="schedScroll">
+                        <div class="sn-sched-grid">
+                            <div class="sn-sched-times">
+                                @for (var h = startH; h < endH; h++)
+                                {
+                                    <span>@($"{h:00}:00")</span>
+                                }
+                            </div>
+                            @foreach (var d in gridDays)
+                            {
+                                <div class="sn-sched-col @(d.IsToday ? "today" : "") @(d.Date < today ? "past" : "") @(d.Events.Any(x => x.IsAllDay && !x.ShowAsFree) ? "busy-day" : "")" data-date="@d.Date.ToString("dd-MM-yyyy", inv)">
+                                    @foreach (var (ev, lane, lanes) in LaneLayout(d.Events.Where(x => !x.IsAllDay).ToList()))
+                                    {
+                                        var st = Status(ev);
+                                        var top = HourOf(ev.StartLocal) - startH;
+                                        var endHr = ev.EndLocal.Date > ev.StartLocal.Date ? 24 : HourOf(ev.EndLocal);
+                                        var len = Math.Max(.4, endHr - HourOf(ev.StartLocal));
+                                        var w = 100.0 / lanes;
+                                        <button type="button" class="sn-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(len < .75 ? "short" : "")"
+                                                data-id="@ev.MeetingId"
+                                                style="top:calc(var(--hr) * @top.ToString("0.###", inv));height:calc(var(--hr) * @len.ToString("0.###", inv) - 3px);left:calc(@((lane * w).ToString("0.###", inv))% + 3px);width:calc(@w.ToString("0.###", inv)% - 6px)"
+                                                title="@ev.Title · @ev.StartLocal.ToString("HH:mm", inv)–@ev.EndLocal.ToString("HH:mm", inv) · @st">
+                                            <b>@ev.Title</b>
+                                            <span>@ev.StartLocal.ToString("HH:mm", inv) – @ev.EndLocal.ToString("HH:mm", inv)</span>
+                                            <span class="sn-ev-meta">@(ev.IsHost ? "You host" : "Invited") · @ev.People.Count @(ev.People.Count == 1 ? "person" : "people")</span>
+                                        </button>
+                                    }
+                                    @if (d.IsToday && nowTop >= 0)
+                                    {
+                                        <div class="sn-now" style="top:calc(var(--hr) * @nowTop.ToString("0.###", inv))"><i></i></div>
+                                    }
+                                    <div class="sn-slot-hint" aria-hidden="true"><i class="fa fa-plus"></i> <span></span></div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </section>
             }
+            else if (view == "month")
+            {
+                @* ---------- Month: one cell per day. Click a day to schedule on it. ---------- *@
+                <section id="viewSchedule" class="sn-view sn-month glass" aria-label="Month">
+                    <div class="sn-month-head">
+                        @foreach (var dn in new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" })
+                        {
+                            <span>@dn</span>
+                        }
+                    </div>
+                    <div class="sn-month-grid" style="--weeks:@(Model.Days.Count / 7)">
+                        @foreach (var d in Model.Days)
+                        {
+                            var outside = d.Date.Month != anchor.Month;
+                            var shown = d.Events.OrderByDescending(x => x.IsAllDay).ThenBy(x => x.StartLocal).Take(3).ToList();
+                            <div class="sn-mcell @(d.IsToday ? "today" : "") @(outside ? "outside" : "") @(d.Date < today ? "past" : "") @(d.Events.Any(x => x.IsAllDay && !x.ShowAsFree) ? "busy-day" : "")" data-date="@d.Date.ToString("dd-MM-yyyy", inv)" tabindex="0" role="button" aria-label="@d.Date.ToString("dddd d MMMM", inv): @d.Events.Count meetings. Press Enter to schedule.">
+                                <div class="sn-mcell-top">
+                                    <a class="sn-mday" href="@PUrl("day", d.Date)" onclick="return snNav(this.href, '', event)" title="Open this day">@d.Date.Day</a>
+                                    <span class="sn-madd" aria-hidden="true"><i class="fa fa-plus"></i></span>
+                                </div>
+                                @foreach (var ev in shown)
+                                {
+                                    var st = Status(ev);
+                                    <button type="button" class="sn-mev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsAllDay ? (ev.ShowAsFree ? "allday free" : "allday busy") : "")" data-id="@ev.MeetingId"
+                                            title="@ev.Title · @(ev.IsAllDay ? "all day" : ev.StartLocal.ToString("HH:mm", inv) + "–" + ev.EndLocal.ToString("HH:mm", inv)) · @st">
+                                        <i></i><span class="t">@(ev.IsAllDay ? "All day" : ev.StartLocal.ToString("HH:mm", inv))</span> <span class="n">@ev.Title</span>
+                                    </button>
+                                }
+                                @if (d.Events.Count > shown.Count)
+                                {
+                                    <a class="sn-mmore" href="@PUrl("day", d.Date)" onclick="return snNav(this.href, '', event)">+@(d.Events.Count - shown.Count) more</a>
+                                }
+                            </div>
+                        }
+                    </div>
+                </section>
+            }
+
+            @* ---------- List (Template 1 modern-table) ---------- *@
+            <section id="viewList" class="sn-view sn-view-list @(view == "list" ? "is-on" : "")" aria-label="Meeting list">
+            <modern-table id="MeetingsTable" name="SelectedMeeting"
+                          grid-name="@(view == "list" ? "Meeting list" : "Meetings in this period")" icon="calendar" icon-background-color="linear-gradient(115deg,#2563EB,#DB2777)" icon-color="#fff"
+                          show-grid-name-and-icon="true"
+                          searchable="true" search-placeholder="Search meetings..."
+                          show-filter-button="true" filter-row-open="false"
+                          column-toggle="true" selectable="true" enable-paging="true" page-size="50"
+                          is-animated-scrolling="true" row-height="52px" header-height="42px"
+                          row-id-field="MeetingId" table-height="100%"
+                          items="rows">
+                <column field="MeetingId" header="Id" visible="false" filterable="false" sortable="false"></column>
+                <column field="Title" header="Meeting" width="240px"></column>
+                <column field="Day" header="Day" width="120px"></column>
+                <column field="Time" header="Time" width="130px"></column>
+                <column field="Duration" header="Duration" width="100px"></column>
+                <column field="Host" header="Host" width="170px"></column>
+                <column field="People" header="People" width="90px" cell-align="right" header-align="right"></column>
+                <column field="Role" header="You are" type="badge" width="110px">
+                    <badge value="Host" color="#DBEAFE"></badge>
+                    <badge value="Invited" color="#FCE7F3"></badge>
+                </column>
+                <column field="Status" header="Status" type="badge" width="120px">
+                    <badge value="Live" color="#DCFCE7"></badge>
+                    <badge value="Upcoming" color="#E0E7FF"></badge>
+                    <badge value="Ended" color="#E2E8F0"></badge>
+                </column>
+            </modern-table>
+            </section>
         </div>
-    </section>
+
+        <div class="sn-side">
+            <modern-group-box title="This week | by status" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="24px" content-layout="block">
+                @if (events.Count > 0)
+                {
+                    <modern-donut-chart id="statusDonut"
+                                        labels="@(new[] { "Live", "Upcoming", "Ended" })"
+                                        data="@(new double[] { live, upcoming, ended })"
+                                        colors="@(new[] { "#16A34A", "#2563EB", "#94A3B8" })"
+                                        chart-height="170px" cutout-percentage="68%"
+                                        show-border="false" legend-position="bottom" legend-font-size="12"></modern-donut-chart>
+                }
+                else
+                {
+                    <p class="muted small">No meetings this week yet. Press <b>Schedule</b> to add one.</p>
+                }
+            </modern-group-box>
+
+            <modern-group-box title="Up next | meeting" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="24px" content-layout="block">
+                @if (Model.UpNext is CalendarEventVm next)
+                {
+                    <div class="sn-next">
+                        <span class="sn-eyebrow" style="color:@(Model.UpNextMinutes <= 0 ? "#15803d" : "#475569")">@(Model.UpNextMinutes <= 0 ? "Happening now" : Model.UpNextMinutes < 60 ? $"Starts in {Model.UpNextMinutes} min" : next.StartLocal.ToString("ddd HH:mm", inv))</span>
+                        <strong>@next.Title</strong>
+                        <span class="muted small">@next.StartLocal.ToString("HH:mm", inv) – @next.EndLocal.ToString("HH:mm", inv)</span>
+                        <div class="sn-next-foot">
+                        <span class="stack-avatars">
+                            @foreach (var p in next.People.Take(5))
+                            {
+                                <span class="avatar av-32 tone-@(p.Tone) ring-white" title="@p.Name">@p.Initials</span>
+                            }
+                            @if (next.People.Count > 5)
+                            {
+                                <span class="avatar av-32 tone-5 ring-white">+@(next.People.Count - 5)</span>
+                            }
+                        </span>
+                        <a class="cee-btn cee-btn-gradient sn-join-btn" href="/meetings/room/@next.MeetingId"><i class="fa fa-video-camera" aria-hidden="true"></i> Join</a>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <p class="muted small">Nothing in the next 24 hours.</p>
+                }
+            </modern-group-box>
+        </div>
+    </div>
 </main>
 
-<aside class="schedule-panel glass-strong" aria-label="Schedule a meeting">
-    @if (Model.JustScheduled is not null)
-    {
-        var just = Model.JustScheduled;
-        <div class="success-card">
-            <span class="success-check"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg></span>
-            <h2>Meeting scheduled</h2>
-            <strong class="accent">@just.Title</strong>
-            <p class="muted">Invites are on their way. It's now in your calendar.</p>
-            @if (Model.JustScheduledGuestUrl is string guestUrl)
-            {
-                <div class="copy-row">
-                    <input class="input" readonly value="@guestUrl" aria-label="Guest link" id="guestLink" />
-                    <button type="button" class="btn btn-primary btn-sm" data-copy="#guestLink">Copy guest link</button>
-                </div>
-            }
-            <a class="btn btn-ghost" href="/meetings?week=@Model.WeekStart.ToString("yyyy-MM-dd")">Schedule another</a>
+@* ---------- Schedule a meeting (glass pop-up, Template 1 inputs) ---------- *@
+<dialog id="scheduleDialog" class="sn-dialog wide glass-strong" data-open-on-load="@(hasFormErrors ? "true" : "false")">
+    <form method="post" asp-antiforgery="true" action="/meetings/schedule" id="scheduleForm" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title">
+                <span class="sn-dlg-icon"><i class="fa fa-calendar-plus-o" aria-hidden="true"></i></span>
+                <div><h2>Schedule a meeting</h2><p>Invites go out by email with a calendar file.</p></div>
+            </div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
         </div>
-    }
-    else
-    {
-        <form method="post" action="/meetings/schedule" id="scheduleForm" class="schedule-form">
-            <div class="row between">
-                <h2>Schedule a meeting</h2>
-                <span class="grad-badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg></span>
-            </div>
 
-            <div asp-validation-summary="All" class="form-error" role="alert"></div>
+        <div class="sn-dlg-body">
+            <div asp-validation-summary="All" class="sn-errors"></div>
+            <div class="sn-form-grid">
+                <modern-group-box title="Meeting | details" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                    <div class="sn-form-grid">
+                        <div class="full">
+                            <modern-input id="mTitle" name="Form.Title" label="Title" mandatory="true" value="@f.Title" max-length="150"
+                                          placeholder="e.g. Weekly planning" label-font-size="13.5px"></modern-input>
+                        </div>
+                        <modern-datepicker-with-label id="mDate" name="Form.DateText" label="Date" required="true"
+                                                      value="@f.Date.ToString("dd-MM-yyyy", inv)" height="42px"></modern-datepicker-with-label>
+                        <div class="sn-allday-toggle">
+                            <modern-checkbox id="mAllDay" name="Form.AllDay" label="All-day event" desc-text="Takes the whole day" is-toggle-button="true" checked="@f.AllDay" label-font-size="13.5px"></modern-checkbox>
+                        </div>
 
-            <div class="field">
-                <label for="mTitle">Title</label>
-                <input id="mTitle" name="Form.Title" class="input" maxlength="150" value="@f.Title" placeholder="Storage limits follow-up" required />
-            </div>
+                        @* timed meeting: start + length *@
+                        <div class="full sn-reveal @(f.AllDay ? "is-collapsed" : "")" id="timeFields">
+                            <div class="sn-reveal-in">
+                                <div class="sn-form-grid">
+                                    <modern-dropdown-with-label id="mTime" name="Form.Time" label="Start time" required="true"
+                                                                value="@formTime" items="timeItems" menu-height="220px"></modern-dropdown-with-label>
+                                    <modern-dropdown-with-label id="mDuration" name="Form.DurationMinutes" label="Duration"
+                                                                value="@f.DurationMinutes.ToString(inv)" items="durationItems" menu-height="220px"></modern-dropdown-with-label>
+                                    <div class="full sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> Your @Model.Limits.PlanName plan allows meetings up to @DurText(Model.Limits.MaxMeetingMinutes). For a longer block, turn on <b>All-day event</b>.</div>
+                                </div>
+                            </div>
+                        </div>
 
-            <div class="field">
-                <span class="label">Day</span>
-                <div class="day-chips">
-                    @foreach (var d in Model.Days.Where(x => x.Date.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)))
-                    {
-                        <button type="button" class="chip-day" data-date="@d.Date.ToString("yyyy-MM-dd")" aria-pressed="@(d.Date == f.Date ? "true" : "false")">
-                            <small>@d.Date.ToString("ddd")</small><strong>@d.Date.Day</strong>
-                        </button>
-                    }
+                        @* all-day: busy or free *@
+                        <div class="full sn-reveal @(f.AllDay ? "" : "is-collapsed")" id="showAsFields">
+                            <div class="sn-reveal-in">
+                                <modern-radio-group id="mShowAs" name="Form.ShowAs" label="Show as" selected-value="@(f.ShowAs == "free" ? "free" : "busy")" label-font-size="13.5px">
+                                    <modern-radio value="busy" label="Busy · blocks the whole day"></modern-radio>
+                                    <modern-radio value="free" label="Free · a note at the top of the day"></modern-radio>
+                                </modern-radio-group>
+                            </div>
+                        </div>
+
+                        <div class="full">
+                            <span class="mi-label" style="display:block;font-size:13.5px;font-weight:600;margin-bottom:8px">Availability</span>
+                            <span class="sn-free ok" id="freeText"><i class="fa fa-check-circle"></i> You're free at this time</span>
+                        </div>
+                        <div class="full">
+                            <modern-radio-group id="mRepeat" name="Form.Recurrence" label="Repeat" selected-value="@f.Recurrence.ToString()" label-font-size="13.5px">
+                                <modern-radio value="None" label="Once"></modern-radio>
+                                <modern-radio value="Weekly" label="Weekly"></modern-radio>
+                                <modern-radio value="Daily" label="Weekdays"></modern-radio>
+                                <modern-radio value="Custom" label="Pick days"></modern-radio>
+                            </modern-radio-group>
+                        </div>
+
+                        @* repeat details: which days (Pick days only) and the last day *@
+                        <div class="full sn-reveal @(f.Recurrence == MeetingRecurrence.None ? "is-collapsed" : "")" id="repeatFields">
+                            <div class="sn-reveal-in">
+                                <div class="sn-repeat-box">
+                                    <div class="sn-reveal @(f.Recurrence == MeetingRecurrence.Custom ? "" : "is-collapsed")" id="repeatDaysFields">
+                                        <div class="sn-reveal-in">
+                                            <div class="sn-repeat-row">
+                                                <span class="sn-repeat-label">Repeat on</span>
+                                                <span class="sn-day-presets">
+                                                    <button type="button" class="sn-link" data-days="1,3,5">Mon · Wed · Fri</button>
+                                                    <button type="button" class="sn-link" data-days="2,4">Tue · Thu</button>
+                                                    <button type="button" class="sn-link" data-days="">Clear</button>
+                                                </span>
+                                            </div>
+                                            <div class="sn-daypick" role="group" aria-label="Repeat on these days">
+                                                @foreach (var (dow, shortName, longName) in new[] { (1, "Mon", "Monday"), (2, "Tue", "Tuesday"), (3, "Wed", "Wednesday"), (4, "Thu", "Thursday"), (5, "Fri", "Friday"), (6, "Sat", "Saturday"), (0, "Sun", "Sunday") })
+                                                {
+                                                    <label class="sn-daychip" title="@longName">
+                                                        <input type="checkbox" name="Form.RepeatDays" value="@dow" checked="@f.RepeatDays.Contains(dow)" />
+                                                        <span>@shortName</span>
+                                                    </label>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="sn-form-grid sn-repeat-end">
+                                        <modern-checkbox id="mRepeatEnds" name="Form.RepeatEnds" label="Ends on a date" desc-text="Off: repeats with no end" is-toggle-button="true" checked="@f.RepeatEnds" label-font-size="13.5px"></modern-checkbox>
+                                        <div class="sn-reveal @(f.RepeatEnds ? "" : "is-collapsed")" id="repeatUntilFields">
+                                            <div class="sn-reveal-in">
+                                                <modern-datepicker-with-label id="mUntil" name="Form.RepeatUntilText" label="Last day"
+                                                                              value="@f.RepeatUntilText" placeholder="Pick the last day" height="42px"></modern-datepicker-with-label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="sn-repeat-summary" id="repeatSummary" aria-live="polite"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="full">
+                            <modern-input id="mAgenda" name="Form.Agenda" label="Agenda" multiline="true" rows="3" value="@f.Agenda"
+                                          max-length="2000" placeholder="What will you cover?" label-font-size="13.5px"></modern-input>
+                        </div>
+                    </div>
+                </modern-group-box>
+
+                <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+                    <modern-group-box title="People | invited" css-class="sn-fill" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                        @if (Model.Team.Count > 0)
+                        {
+                            <div class="sn-pick-tools">
+                                <label class="sn-pick-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" id="peopleSearch" placeholder="Search people" autocomplete="off" /></label>
+                                <button type="button" class="sn-link" id="peopleAll">Select all</button>
+                            </div>
+                            <div class="sn-pick" id="peopleList">
+                                @foreach (var p in Model.Team)
+                                {
+                                    <div class="sn-pick-row" data-name="@p.Name.ToLowerInvariant()">
+                                        <modern-checkbox id="@($"inv_{p.Id}")" name="Form.InviteeIds" value="@p.Id" label="@p.Name"
+                                                         desc-text="@(p.Online ? "Online" : "Offline")" checked="@f.InviteeIds.Contains(p.Id)" label-font-size="13.5px"></modern-checkbox>
+                                    </div>
+                                }
+                                <p class="muted small sn-pick-none" hidden>No one matches that name.</p>
+                            </div>
+                            <div class="sn-pick-count" id="peopleCount"></div>
+                        }
+                        else
+                        {
+                            <div class="sn-people-empty">
+                                <span class="sn-insp-empty-ic"><i class="fa fa-user-plus" aria-hidden="true"></i></span>
+                                <strong>No one else is in this workspace yet</strong>
+                                <span>@(User.IsInRole(AppRoles.TenantAdmin) ? "Invite outside people by email below, or add your team first." : "Invite outside people by email below. Your admin can add team members.")</span>
+                                @if (User.IsInRole(AppRoles.TenantAdmin))
+                                {
+                                    <a class="cee-btn sn-btn-light sn-btn-sm" href="/team?add=1"><i class="fa fa-user-plus" aria-hidden="true"></i> Add people to the team</a>
+                                }
+                            </div>
+                        }
+                        <div class="sn-guests">
+                            <span class="mi-label" style="display:block;font-size:13.5px;font-weight:600;margin-bottom:8px">Guests from outside</span>
+                            <div class="sn-chipbox" id="guestBox">
+                                <input type="email" id="guestEntry" placeholder="Type an email and press Enter" autocomplete="off" aria-label="Guest email" />
+                            </div>
+                            <input type="hidden" id="mGuests" name="Form.GuestEmails" value="@f.GuestEmails" />
+                            <span class="sn-hint" id="guestHint">They get the guest link by email. Press Enter or comma after each address.</span>
+                        </div>
+                    </modern-group-box>
+
+                    <modern-group-box title="Meeting | options" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                        <div class="sn-form-grid">
+                            <modern-checkbox id="mLobby" name="Form.LobbyEnabled" label="Lobby" desc-text="Host admits guests" is-toggle-button="true" checked="@f.LobbyEnabled" label-font-size="13.5px"></modern-checkbox>
+                            <modern-checkbox id="mGuestLink" name="Form.GuestLinkEnabled" label="Guest link" desc-text="Outside people can join" is-toggle-button="true" checked="@f.GuestLinkEnabled" label-font-size="13.5px"></modern-checkbox>
+                            <modern-checkbox id="mCaptions" name="Form.CaptionsOn" label="Captions" desc-text="Live subtitles" is-toggle-button="true" checked="@f.CaptionsOn" label-font-size="13.5px"></modern-checkbox>
+                            <modern-checkbox id="mEmail" name="Form.SendEmail" label="Email invites" desc-text="With .ics calendar file" is-toggle-button="true" checked="@f.SendEmail" label-font-size="13.5px"></modern-checkbox>
+                        </div>
+                    </modern-group-box>
                 </div>
-                <input type="date" name="Form.Date" id="mDate" class="input input-sm" value="@f.Date.ToString("yyyy-MM-dd")" required aria-label="Date" />
             </div>
+        </div>
 
-            <div class="field">
-                <span class="label">Start time</span>
-                <div class="chips">
-                    @foreach (var t in quickTimes)
-                    {
-                        <button type="button" class="chip" data-time="@t.ToString("HH:mm")" aria-pressed="@(t == f.Time ? "true" : "false")">@t.ToString("h:mm tt")</button>
-                    }
-                    <input type="time" name="Form.Time" id="mTime" class="input input-sm time-input" value="@f.Time.ToString("HH:mm")" step="900" required aria-label="Start time" />
-                </div>
-                <span class="free-pill" id="freeText" aria-live="polite"></span>
-            </div>
-
-            <div class="field">
-                <span class="label">Duration</span>
-                <div class="segmented" role="radiogroup" aria-label="Duration">
-                    @foreach (var d in durations)
-                    {
-                        <label><input type="radio" name="Form.DurationMinutes" value="@d" checked="@(d == f.DurationMinutes)" /><span>@(d < 60 ? $"{d} min" : d == 60 ? "1 hr" : $"{d / 60.0:0.#} hr")</span></label>
-                    }
-                </div>
-            </div>
-
-            <div class="field">
-                <span class="label">People</span>
-                <div class="people-picks">
-                    @foreach (var p in Model.Team)
-                    {
-                        <label class="person-pick">
-                            <input type="checkbox" name="Form.InviteeIds" value="@p.Id" checked="@(f.InviteeIds.Contains(p.Id))" />
-                            <span class="avatar av-30 tone-@(p.Tone)">@p.Initials</span>@p.Name.Split(' ')[0]
-                        </label>
-                    }
-                    @if (Model.Team.Count == 0)
-                    {
-                        <span class="muted small">Add teammates in Team to invite them.</span>
-                    }
-                </div>
-                <label for="mGuests" class="sr-only">Guest emails</label>
-                <input id="mGuests" name="Form.GuestEmails" class="input" value="@f.GuestEmails" placeholder="Guests: client@company.com, …" />
-            </div>
-
-            <div class="toggles">
-                <label class="toggle-row">
-                    <span><strong>Guest link</strong><small>Outside people can join with a link</small></span>
-                    <input type="checkbox" class="switch" name="Form.GuestLinkEnabled" value="true" checked="@f.GuestLinkEnabled" />
-                    <input type="hidden" name="Form.GuestLinkEnabled" value="false" />
-                </label>
-                <label class="toggle-row">
-                    <span><strong>Guest lobby</strong><small>You let outside guests in</small></span>
-                    <input type="checkbox" class="switch" name="Form.LobbyEnabled" value="true" checked="@f.LobbyEnabled" />
-                    <input type="hidden" name="Form.LobbyEnabled" value="false" />
-                </label>
-                <label class="toggle-row">
-                    <span><strong>Email &amp; calendar invite</strong><small>Works with Outlook and Google</small></span>
-                    <input type="checkbox" class="switch" name="Form.SendEmail" value="true" checked="@f.SendEmail" />
-                    <input type="hidden" name="Form.SendEmail" value="false" />
-                </label>
-                <label class="toggle-row">
-                    <span><strong>Live captions</strong><small>Turn on captions at start</small></span>
-                    <input type="checkbox" class="switch" name="Form.CaptionsOn" value="true" checked="@f.CaptionsOn" />
-                    <input type="hidden" name="Form.CaptionsOn" value="false" />
-                </label>
-            </div>
-
-            <div class="field">
-                <span class="label">Repeat</span>
-                <div class="segmented" role="radiogroup" aria-label="Repeat">
-                    <label><input type="radio" name="Form.Recurrence" value="None" checked="@(f.Recurrence == MeetingRecurrence.None)" /><span>Once</span></label>
-                    <label><input type="radio" name="Form.Recurrence" value="Weekly" checked="@(f.Recurrence == MeetingRecurrence.Weekly)" /><span>Weekly</span></label>
-                    <label><input type="radio" name="Form.Recurrence" value="Daily" checked="@(f.Recurrence == MeetingRecurrence.Daily)" /><span>Weekdays</span></label>
-                </div>
-            </div>
-
-            <div class="field">
-                <label for="mAgenda">Agenda <span class="muted">(optional)</span></label>
-                <textarea id="mAgenda" name="Form.Agenda" class="input textarea" rows="2" maxlength="2000" placeholder="What will you discuss?">@f.Agenda</textarea>
-            </div>
-
-            <button type="submit" class="btn btn-gradient btn-lg">
-                Schedule &amp; send invites
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-            </button>
-        </form>
-    }
-</aside>
+        <div class="sn-dlg-foot">
+            <span class="muted small"><i class="fa fa-shield"></i> @Model.Limits.PlanName plan: up to @Model.Limits.MaxMeetingParticipants people, @Model.Limits.MaxMeetingMinutes min per meeting</span>
+            <span style="display:flex;gap:10px">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Save &amp; send invites</button>
+            </span>
+        </div>
+    </form>
+</dialog>
 
 <script id="busyJson" type="application/json">@Html.Raw(JsonSerializer.Serialize(busy))</script>
 
 @section Scripts {
+    @* charts are only used on this page, so their scripts load only here *@
+    <script src="~/lib/Mordern-Controls/JS/Chart.js-v4.5.1.js"></script>
+    <script src="~/js/web-control/modern-donut-chart.js" asp-append-version="true"></script>
+    <script>
+        // ---- table heading: count badge + "live · upcoming · ended" line ----
+        $(function () {
+            SN.tableHeading("MeetingsTable", @events.Count, [
+                { text: "@live live", dot: "live" },
+                { text: "@upcomingCount upcoming", dot: "up" },
+                { text: "@endedCount ended", dot: "ended" }
+            ]);
+        });
+
+        // Action-header buttons that work on the selected row of the grid.
+        function snJoinMeeting() {
+            var row = SN.need("MeetingsTable", "a meeting");
+            if (row) SN.go("/meetings/room/" + row.MeetingId);
+        }
+        function snCancelMeeting() {
+            var row = SN.need("MeetingsTable", "a meeting");
+            if (!row) return;
+            SN.confirmPost("/meetings/" + row.MeetingId + "/delete", {
+                title: "Cancel meeting",
+                text: "Cancel “" + row.Title + "” for everyone? Only the host or a workspace admin can do this.",
+                confirmText: "Cancel meeting",
+                danger: true
+            });
+        }
+        // ---- moving between periods and views: the content leaves, the page slides, the calendar rises in ----
+        function snNav(url, dir, evt) {
+            if (evt) evt.preventDefault();
+            document.documentElement.classList.add("sn-leaving");
+            if (dir) document.documentElement.classList.add("sn-leaving-" + dir);
+            SN.goSmooth(url, dir, 90);
+            return false;
+        }
+        // ---- jump to any month: click the period label, pick year + month ----
+        (function () {
+            var root = document.getElementById("jumpPicker");
+            if (!root) return;
+            var btn = document.getElementById("jumpBtn"), pop = document.getElementById("jumpPop");
+            var yearEl = document.getElementById("jumpYear");
+            var curY = +root.dataset.year, curM = +root.dataset.month;
+            var today = root.dataset.today.split("-").map(Number);       // [y, m, d]
+            var shownY = curY;
+            function paint() {
+                yearEl.textContent = shownY;
+                pop.querySelectorAll("[data-month]").forEach(function (b) {
+                    var m = +b.dataset.month;
+                    b.classList.toggle("is-current", shownY === curY && m === curM);
+                    b.classList.toggle("is-today", shownY === today[0] && m === today[1]);
+                });
+            }
+            function open(on) {
+                pop.hidden = !on;
+                btn.setAttribute("aria-expanded", on ? "true" : "false");
+                root.classList.toggle("open", on);
+                if (on) { shownY = curY; paint(); var c = pop.querySelector(".is-current"); if (c) c.focus(); }
+            }
+            function go(y, m) {
+                open(false);
+                if (root.dataset.view === "month" && y === curY && m === curM) return;
+                document.cookie = "sn-mview=month; path=/; max-age=31536000; samesite=lax";
+                var dir = y * 12 + m < curY * 12 + curM ? "prev" : "next";
+                snNav("/meetings?view=month&date=" + y + "-" + String(m).padStart(2, "0") + "-01", dir);
+            }
+            btn.addEventListener("click", function (e) { e.stopPropagation(); open(pop.hidden); });
+            pop.addEventListener("click", function (e) {
+                e.stopPropagation();
+                var step = e.target.closest("[data-year-step]");
+                if (step) { shownY += +step.dataset.yearStep; paint(); return; }
+                var mb = e.target.closest("[data-month]");
+                if (mb) { go(shownY, +mb.dataset.month); return; }
+                if (e.target.closest("[data-jump-today]")) go(today[0], today[1]);
+            });
+            document.addEventListener("click", function () { if (!pop.hidden) open(false); });
+            document.addEventListener("keydown", function (e) {
+                if (pop.hidden) return;
+                if (e.key === "Escape") { open(false); btn.focus(); }
+                else if (e.key === "PageUp") { e.preventDefault(); shownY--; paint(); }
+                else if (e.key === "PageDown") { e.preventDefault(); shownY++; paint(); }
+            });
+        })();
+
+        $("#viewTabs").on("tabcontrol:select", function (e, id) {
+            if (id === "@view") return;
+            document.cookie = "sn-mview=" + id + "; path=/; max-age=31536000; samesite=lax";
+            // the pill glides first, then the page changes
+            SN.goSmooth("/meetings?view=" + id + "&date=@anchor.ToString("yyyy-MM-dd", inv)", "", 280);
+            document.documentElement.classList.add("sn-leaving");
+        });
+
+        (function () {
+            var NOW = new Date(@now.Year, @(now.Month - 1), @now.Day, @now.Hour, @now.Minute);
+            var $cal = $("#viewSchedule");
+            var READY_AT = Date.now() + 700;          // no "add" window while the page is still arriving
+            var down = null;                           // where the press started
+            $cal.on("pointerdown", function (e) { down = { x: e.clientX, y: e.clientY, target: e.target, t: Date.now() }; });
+            function realClick(e) {
+                if (Date.now() < READY_AT) return false;
+                if (document.documentElement.classList.contains("sn-leaving")) return false;
+                if (!down || !e.originalEvent || !e.originalEvent.isTrusted) return false;
+                var moved = Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y);
+                var ok = moved < 8 && Date.now() - down.t < 800 && down.target === e.target;
+                down = null;
+                return ok;
+            }
+
+            // ---- one selection shared by the calendar and the grid ----
+            function mark(id) { $cal.find(".sn-ev, .sn-mev, .sn-ad").removeClass("selected").filter("[data-id='" + id + "']").addClass("selected"); }
+            $cal.on("click", ".sn-ev, .sn-mev, .sn-ad", function (e) {
+                e.stopPropagation();
+                var id = $(this).data("id");
+                $("#MeetingsTable tr[data-row-id='" + id + "']").trigger("click");
+                mark(id);
+            });
+            $cal.on("dblclick", ".sn-ev, .sn-mev, .sn-ad", function (e) { e.stopPropagation(); SN.go("/meetings/room/" + $(this).data("id")); });
+            $("#MeetingsTable").on("table:select", function (e, row) { mark(row.MeetingId); });
+
+            // ---- click an empty slot or day: the Schedule window opens with that date and time ----
+            function pad(n) { return String(n).padStart(2, "0"); }
+            function parseDmy(dmy) { var p = dmy.split("-"); return new Date(+p[2], +p[1] - 1, +p[0]); }
+            function nextHalfHour() { var m = NOW.getHours() * 60 + NOW.getMinutes(); m = Math.ceil((m + 1) / 30) * 30; return m >= 24 * 60 ? null : pad(Math.floor(m / 60)) + ":" + pad(m % 60); }
+            window.snOpenSchedule = function (dmy, time, allDay) {
+                var day = parseDmy(dmy);
+                var when = new Date(day); var t = (time || "10:00").split(":"); when.setHours(+t[0], +t[1]);
+                if (allDay) when.setHours(23, 59);
+                if (when < new Date(NOW.getTime() - 5 * 60000)) {
+                    Sahyog.toast("Pick a time from now on to schedule a meeting.", { kind: "info", title: "That time has passed" });
+                    return;
+                }
+                var input = document.getElementById("mDate");
+                if (input && input._flatpickr) input._flatpickr.setDate(day, true); else if (input) input.value = dmy;
+                var $opt = $("#mTime .ddwl-option").filter(function () { return String($(this).data("value")) === time; });
+                if ($opt.length) $opt.first().trigger("click");
+                $("#mTime").removeClass("open");
+                if (window.snSetAllDay) snSetAllDay(!!allDay);
+                SN.open("scheduleDialog");
+                setTimeout(function () { $("#mTitle").trigger("focus"); }, 350);
+            };
+
+            // time grid (day / week)
+            var scroller = document.getElementById("schedScroll");
+            if (scroller) {
+                var startH = @startH;
+                var hr = function () { return parseFloat(getComputedStyle(scroller).getPropertyValue("--hr")) || 56; };
+                function slotAt(col, clientY) {
+                    var y = clientY - col.getBoundingClientRect().top;
+                    var halfHours = Math.max(0, Math.floor(y / (hr() / 2)));
+                    var mins = startH * 60 + halfHours * 30;
+                    if (mins >= 24 * 60) mins = 24 * 60 - 30;
+                    return { top: halfHours * hr() / 2, time: pad(Math.floor(mins / 60)) + ":" + pad(mins % 60) };
+                }
+                $cal.on("mousemove", ".sn-sched-col", function (e) {
+                    var hint = this.querySelector(".sn-slot-hint");
+                    if (!hint) return;
+                    if ($(e.target).closest(".sn-ev").length) { hint.classList.remove("on"); return; }
+                    var s = slotAt(this, e.clientY);
+                    hint.style.top = s.top + "px";
+                    hint.querySelector("span").textContent = s.time;
+                    hint.classList.add("on");
+                });
+                $cal.on("mouseleave", ".sn-sched-col", function () { var h = this.querySelector(".sn-slot-hint"); if (h) h.classList.remove("on"); });
+                $cal.on("click", ".sn-sched-col", function (e) {
+                    if ($(e.target).closest(".sn-ev").length || !realClick(e)) return;
+                    snOpenSchedule(this.dataset.date, slotAt(this, e.clientY).time);
+                });
+
+                // open at the current time, the first meeting, or 08:00
+                var first = $cal.find(".sn-now")[0] || $cal.find(".sn-ev")[0];
+                scroller.style.scrollBehavior = "auto";
+                scroller.scrollTop = Math.max(0, first ? first.offsetTop - hr() * 1.5 : (8 - startH) * hr());
+                scroller.style.scrollBehavior = "";
+            }
+
+            // all-day row: click an empty spot to add an all-day event
+            $cal.on("click", ".sn-allday-cell", function (e) {
+                if ($(e.target).closest(".sn-ad").length || !realClick(e)) return;
+                snOpenSchedule(this.dataset.date, "10:00", true);
+            });
+
+            // month
+            function openDay(cell) {
+                var dmy = cell.dataset.date;
+                var isToday = parseDmy(dmy).toDateString() === NOW.toDateString();
+                snOpenSchedule(dmy, isToday ? (nextHalfHour() || "23:30") : "10:00");
+            }
+            $cal.on("click", ".sn-mcell", function (e) {
+                if ($(e.target).closest(".sn-mev, .sn-mday, .sn-mmore").length || !realClick(e)) return;
+                openDay(this);
+            });
+            $cal.on("keydown", ".sn-mcell", function (e) {
+                if (e.target === this && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openDay(this); }
+            });
+        })();
+    </script>
     <script src="~/js/meetings.js" asp-append-version="true"></script>
 }

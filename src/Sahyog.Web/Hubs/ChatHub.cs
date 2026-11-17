@@ -85,10 +85,12 @@ public sealed class ChatHub : Hub
         await Clients.OthersInGroup(ChannelGroup(channelId)).SendAsync("Typing", channelId, Context.User!.DisplayName());
     }
 
-    public Task MarkRead(Guid channelId)
+    public async Task MarkRead(Guid channelId)
     {
         var (tenantId, userId) = Caller();
-        return _chat.MarkReadAsync(tenantId, channelId, userId);
+        // tell everyone in the conversation, so the senders' ✓ turns into ✓✓ straight away
+        if (await _chat.MarkReadAsync(tenantId, channelId, userId) is DateTime readUtc)
+            await Clients.Group(ChannelGroup(channelId)).SendAsync("ChannelRead", channelId, userId.ToString(), readUtc);
     }
 
     /// <summary>Called after a channel or DM is created so this tab starts receiving its messages.</summary>

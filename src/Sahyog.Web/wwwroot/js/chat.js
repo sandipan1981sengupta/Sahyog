@@ -8,6 +8,7 @@
 
     const channelId = root.dataset.channel || null;
     const me = root.dataset.me;
+    const isAdmin = root.dataset.admin === "true";
     const maxMb = Number(root.dataset.maxMb || 50);
     const list = document.getElementById("messageList");
     const scroller = document.getElementById("messages");
@@ -52,6 +53,41 @@
                 </a>`;
     }
 
+    // ---------- read ticks on your own messages: ✓ sent, ✓✓ grey read by some, ✓✓ blue read by everyone ----------
+    const readers = {};          // userId → { name, at: Date }
+    try {
+        JSON.parse(document.getElementById("readState")?.textContent || "[]")
+            .forEach((r) => { if (r.id !== me) readers[r.id] = { name: r.name, at: new Date(r.lastReadUtc) }; });
+    } catch { /* no ticks */ }
+    const ticksOn = Object.keys(readers).length > 0;
+
+    function tickState(sentUtc) {
+        const sent = new Date(sentUtc), ids = Object.keys(readers);
+        const read = ids.filter((id) => readers[id].at >= sent);
+        if (read.length === 0) return { cls: "sent", title: "Sent", icon: 1 };
+        if (read.length === ids.length) return { cls: "read", title: ids.length === 1 ? "Read" : "Read by everyone", icon: 2, who: read };
+        return { cls: "some", title: `Read by ${read.length} of ${ids.length}`, icon: 2, who: read };
+    }
+    function ticksHtml(sentUtc) {
+        if (!ticksOn) return "";
+        const t = tickState(sentUtc);
+        const names = t.who ? ": " + t.who.map((id) => readers[id].name).join(", ") : "";
+        return `<span class="msg-ticks ${t.cls}" title="${S.escape(t.title + (Object.keys(readers).length > 1 ? names : ""))}" aria-label="${S.escape(t.title)}">`
+            + `<i class="fa fa-check" aria-hidden="true"></i>${t.icon === 2 ? '<i class="fa fa-check" aria-hidden="true"></i>' : ""}</span>`;
+    }
+    function refreshTicks() {
+        if (!ticksOn) return;
+        list.querySelectorAll(".msg.mine[data-sent]").forEach((el) => {
+            const old = el.querySelector(".msg-ticks");
+            if (!old) return;
+            const wrap = document.createElement("span");
+            wrap.innerHTML = ticksHtml(el.dataset.sent);
+            const next = wrap.firstChild;
+            if (old.className !== next.className) next.classList.add("changed");
+            old.replaceWith(next);
+        });
+    }
+
     function messageEl(m, previous) {
         const mine = m.senderId === me;
         const grouped = previous && previous.senderId === m.senderId && previous.day === dayKey(m.sentUtc)
@@ -59,13 +95,15 @@
         const el = document.createElement("div");
         el.className = `msg${mine ? " mine" : ""}${grouped ? " grouped" : ""}`;
         el.dataset.id = m.id;
+        if (mine) el.dataset.sent = m.sentUtc;
         const body = m.body ? `<p class="bubble">${linkify(S.escape(m.body))}</p>` : "";
         const file = m.attachment ? attachmentHtml(m.attachment) : "";
+        const canDelete = mine || isAdmin;
         el.innerHTML = `
             <span class="avatar av-38 tone-${m.senderTone}">${S.escape(m.senderInitials)}</span>
             <div class="msg-body">
                 <span class="msg-meta">${mine ? "You" : `<strong>${S.escape(m.senderName)}</strong>`} · ${time(m.sentUtc)}</span>
-                ${body}${file}
+                <div class="msg-line">${body}${file}${mine ? ticksHtml(m.sentUtc) : ""}${canDelete ? `<button type="button" class="msg-del" data-del="${m.id}" title="Delete message" aria-label="Delete message"><i class="fa fa-trash-o" aria-hidden="true"></i></button>` : ""}</div>
             </div>`;
         return el;
     }
@@ -102,6 +140,43 @@
         list.prepend(frag);
         scroller.scrollTop = scroller.scrollHeight - before;
     }
+
+    // ---------- delete a message ----------
+    function removeMessage(id) {
+        const el = list.querySelector(`.msg[data-id="${id}"]`);
+        if (!el) return;
+        el.classList.add("msg-removing");
+        setTimeout(() => {
+            const prev = el.previousElementSibling, next = el.nextElementSibling;
+            el.remove();
+            // drop a day label that has nothing under it any more
+            if (prev && prev.classList.contains("day-sep") && (!next || next.classList.contains("day-sep"))) prev.remove();
+            // the next message from the same person shows its name and picture again
+            if (next && next.classList.contains("grouped") && (!prev || !prev.classList.contains("msg"))) next.classList.remove("grouped");
+        }, 260);
+    }
+    list?.addEventListener("click", (e) => {
+        const btn = e.target.closest(".msg-del");
+        if (!btn) return;
+        const id = btn.dataset.del;
+        confirmMessageBox({
+            title: "Delete message",
+            text: "Delete this message for everyone in the chat? A file attached to it is deleted too.",
+            confirmText: "Delete",
+            danger: true,
+            onConfirm: async () => {
+                const res = await fetch(`/chat/messages/${id}/delete`, {
+                    method: "POST",
+                    headers: { "RequestVerificationToken": S.antiforgery() }
+                });
+                if (res.ok) removeMessage(id);
+                else {
+                    const data = await res.json().catch(() => ({}));
+                    S.toast(data.error || "The message could not be deleted.");
+                }
+            }
+        });
+    });
 
     // initial page of messages (rendered by the server as JSON)
     const initial = JSON.parse(document.getElementById("initialMessages")?.textContent || "[]");
@@ -153,6 +228,43 @@
         });
 
         hub.on("ChannelCreated", () => { /* sidebar refreshes on next navigation */ });
+
+        // A channel was renamed (by an admin or its creator): update the list, header and composer straight away.
+        hub.on("ChannelUpdated", (cid, name, description) => {
+            const item = document.querySelector(`.side-item[data-channel="${cid}"]`);
+            if (item) {
+                item.dataset.filter = name;
+                const label = item.querySelector(".grow");
+                if (label) label.textContent = name;
+            }
+            if (cid !== channelId) return;
+            const title = document.querySelector("#ChatHeader .hdr-title");
+            if (title) { title.textContent = "#" + name; title.title = "#" + name; }
+            const sub = document.querySelector("#ChatHeader .hdr-subtitle");
+            if (sub) {
+                const count = (sub.textContent || "").split(" · ")[0];
+                sub.textContent = description ? `${count} · ${description}` : count;
+            }
+            const box = document.getElementById("messageBox");
+            if (box) box.placeholder = "Message #" + name;
+            document.title = `#${name} · ShankhNaad`;
+        });
+
+        hub.on("MessageDeleted", (cid, mid) => { if (cid === channelId) removeMessage(mid); });
+
+        // someone read this conversation: their read time moves on and your ticks update
+        hub.on("ChannelRead", (cid, userId, readUtc) => {
+            if (cid !== channelId || userId === me || !readers[userId]) return;
+            readers[userId].at = new Date(readUtc);
+            refreshTicks();
+        });
+
+        // A chat was deleted: a one-to-one chat (by you in another tab, or the other person) or a channel (by an admin).
+        hub.on("ChannelDeleted", (cid) => {
+            if (cid === channelId) { window.location.href = "/chat"; return; }
+            const item = document.querySelector(`.side-item[data-channel="${cid}"]`);
+            if (item) item.remove();
+        });
 
         document.addEventListener("sahyog:connected", () => {
             if (channelId) hub.invoke("WatchChannel", channelId).catch(() => { });

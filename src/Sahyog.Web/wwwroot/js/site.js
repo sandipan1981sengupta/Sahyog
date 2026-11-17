@@ -9,15 +9,8 @@
     Sahyog.escape = (text) =>
         String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-    Sahyog.toast = (message, ms = 4500) => {
-        const host = document.getElementById("toasts");
-        if (!host) return;
-        const el = document.createElement("div");
-        el.className = "toast";
-        el.textContent = message;
-        host.appendChild(el);
-        setTimeout(() => el.remove(), ms);
-    };
+    // Toasts come from toast.js (loaded first); keep a plain fallback just in case.
+    Sahyog.toast = Sahyog.toast || ((message) => console.info(message));
 
     // ---------- dialogs, copy buttons, filters ----------
     document.addEventListener("click", (e) => {
@@ -33,8 +26,11 @@
             navigator.clipboard?.writeText(source?.value || source?.textContent || "").then(() => Sahyog.toast("Link copied"));
         }
     });
-    document.querySelectorAll("dialog[data-open-on-load]").forEach((d) => d.showModal());
-    document.querySelectorAll("[data-toast-error]").forEach((el) => Sahyog.toast(el.dataset.toastError));
+    // Re-open a dialog only when the server says its form came back with errors.
+    // Razor always writes data-* attributes (a false flag renders as "False"), so check the value, not just its presence.
+    document.querySelectorAll("dialog[data-open-on-load]").forEach((d) => {
+        if ((d.dataset.openOnLoad || "").toLowerCase() === "true") d.showModal();
+    });
 
     const filter = (inputId, itemSelector) => {
         const input = document.getElementById(inputId);
@@ -130,15 +126,58 @@
 
     hub.on("CallDeclined", (_meetingId, name) => Sahyog.toast(`${name} declined the call`));
 
-    // Offer desktop alerts once (needed to see calls when this tab is in the background).
-    const alertsBtn = document.getElementById("alertsBtn");
-    if (alertsBtn && "Notification" in window && Notification.permission === "default") {
-        alertsBtn.hidden = false;
-        alertsBtn.addEventListener("click", async () => {
-            const result = await Notification.requestPermission();
-            alertsBtn.hidden = true;
-            Sahyog.toast(result === "granted" ? "Call alerts are on" : "Call alerts stay off. You can change this in browser settings.");
+    // ---------- "Ping" from a teammate: two soft chimes, a pop-up with "Open chat", and a desktop alert in the background ----------
+    hub.on("Pinged", (name, initials, tone, chatUrl) => {
+        ringOnce();
+        Sahyog.toast(`${name} pinged you`, {
+            kind: "info", title: "👋 Ping", ms: 12000,
+            action: { text: "Open chat", onClick: () => { location.href = chatUrl; } }
         });
+        if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+            const n = new Notification(`${name} pinged you`, { body: "Click to open your chat.", tag: `ping-${chatUrl}` });
+            n.onclick = () => { window.focus(); location.href = chatUrl; };
+        }
+    });
+
+    // Desktop alerts bell (needed to see calls and messages when this tab is in the background).
+    // Always shown, so people can see the state and find their way back after choosing "Block".
+    const alertsBtn = document.getElementById("alertsBtn");
+    if (alertsBtn && "Notification" in window) {
+        const isSafari = /Safari/i.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//i.test(navigator.userAgent);
+        const isEdge = /Edg\//i.test(navigator.userAgent);
+        const site = location.origin;
+        const steps = isSafari
+            ? `In Safari: Safari menu → Settings → Websites → Notifications → find ${location.host} → Allow. Then reload the page.`
+            : isEdge
+                ? `In Edge: click the padlock at the left of the address bar → "Permissions for this site" → Notifications → Allow, then reload the page. `
+                  + `Or paste edge://settings/content/notifications into the address bar, find ${site} under "Block", click ⋯ → Allow.`
+                : `In Chrome: click the padlock (or tune icon) at the left of the address bar → "Site settings" → Notifications → Allow, then reload the page. `
+                  + `Or paste chrome://settings/content/notifications into the address bar, find ${site} under "Not allowed", click ⋮ → Allow.`;
+        const paint = () => {
+            const p = Notification.permission;          // "default", "granted" or "denied"
+            alertsBtn.hidden = false;
+            alertsBtn.dataset.state = p;
+            const label = p === "granted" ? "Call alerts are on" : p === "denied" ? "Call alerts are blocked · click for how to turn them on" : "Turn on call alerts";
+            alertsBtn.title = label;
+            alertsBtn.setAttribute("aria-label", label);
+            const icon = alertsBtn.querySelector("i");
+            if (icon) icon.className = p === "granted" ? "fa fa-bell" : p === "denied" ? "fa fa-bell-slash-o" : "fa fa-bell-o";
+        };
+        alertsBtn.addEventListener("click", async () => {
+            const p = Notification.permission;
+            if (p === "default") {
+                const result = await Notification.requestPermission();
+                paint();
+                Sahyog.toast(result === "granted" ? "Call alerts are on" : "Call alerts stay off. Click the bell any time to see how to turn them on.");
+            } else if (p === "granted") {
+                openMessageBox({ title: "Call alerts are on", text: "You'll get a desktop alert for calls and messages while this tab is in the background. To turn them off, use the same browser setting and choose Block: " + steps, type: "info" });
+            } else {
+                openMessageBox({ title: "Turn call alerts back on", text: "Your browser is blocking alerts for this site, and a website isn't allowed to ask again. " + steps, type: "info" });
+            }
+        });
+        paint();
+        // the person may change the browser setting while the page is open
+        navigator.permissions?.query({ name: "notifications" }).then((s) => { s.onchange = paint; }).catch(() => { });
     }
 
     const start = async () => {

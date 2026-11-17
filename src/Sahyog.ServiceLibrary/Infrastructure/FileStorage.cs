@@ -16,6 +16,8 @@ public interface IFileStorage
     Task<string> SaveAsync(Guid tenantId, Stream content, string extension, CancellationToken ct = default);
     Stream OpenRead(string storagePath);
     void Delete(string storagePath);
+    /// <summary>Removes every file a client uploaded (used when a client is deleted).</summary>
+    void DeleteTenant(Guid tenantId);
 }
 
 public sealed class LocalFileStorage : IFileStorage
@@ -49,6 +51,12 @@ public sealed class LocalFileStorage : IFileStorage
     {
         var full = Resolve(storagePath);
         if (File.Exists(full)) File.Delete(full);
+    }
+
+    public void DeleteTenant(Guid tenantId)
+    {
+        var folder = Resolve($"tenant-{tenantId:N}");
+        if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
     }
 
     private string Resolve(string relative)

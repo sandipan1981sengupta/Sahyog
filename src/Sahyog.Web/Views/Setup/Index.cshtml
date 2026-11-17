@@ -1,38 +1,78 @@
 @model SetupInput
 @{
     Layout = "_AuthLayout";
-    ViewData["Title"] = "Set up Sahyog";
+    ViewData["Title"] = "Set up ShankhNaad";
 }
-<section class="auth-hero">
-    <div class="brand">
-        <span class="brand-mark"><img src="~/images/logo.svg" alt="" width="44" height="44" /></span>
-        <span class="brand-text"><strong>Sahyog</strong><small>First-time setup</small></span>
-    </div>
-    <h1>Welcome.<br />Let's set up Sahyog.</h1>
-    <p class="lead">Create the CloudWheel super admin. You can also create your first client workspace now. This page works only once.</p>
+<section class="sn-hero">
+    <strip-header heading="SHANKHNAAD" css-class="sn-brand"
+                  subheading="FIRST-TIME SETUP"
+                  icon-src="/images/logo.svg"
+                  icon-size="84"
+                  icon-image-size="74%"
+                  icon-background-color="rgba(255,255,255,.55)"
+                  icon-border-color="rgba(255,255,255,.9)"
+                  heading-font-size="52"
+                  heading-font-weight="900"
+                  heading-font-family="Roboto, system-ui, sans-serif"
+                  heading-gradient-start="#2563EB"
+                  heading-gradient-mid="#6D28D9"
+                  heading-gradient-end="#DB2777"
+                  heading-gradient-start-hold-percent="10"
+                  heading-gradient-mid-stop-percent="55"
+                  heading-fallback-color="#1D4ED8"
+                  subheading-font-size="12"
+                  subheading-font-weight="700"
+                  subheading-font-family="Roboto, system-ui, sans-serif"
+                  subheading-gradient-start="#475569"
+                  subheading-gradient-end="#475569"></strip-header>
+    <p class="sn-hero-line">Welcome. <span class="sn-grad-text">Let's set up ShankhNaad.</span></p>
+    <p class="sn-small" style="font-size:15px">Create the CloudWheel super admin. You can also create your first client workspace now. This page works only once.</p>
 </section>
 
-<form method="post" asp-action="Index" class="auth-card glass-strong" novalidate>
-    <h2>CloudWheel super admin</h2>
-    <div asp-validation-summary="All" class="form-error" role="alert"></div>
+<div class="sn-window-wrap">
+    <div class="sn-window-orbs" aria-hidden="true"><span class="w1"></span><span class="w2"></span><span class="w3"></span></div>
+    <form method="post" asp-action="Index" class="sn-window glass-clear" novalidate>
+        <div class="sn-window-top">
+            <div><div class="sn-eyebrow">Step 1</div><h2>Super admin</h2></div>
+            <span class="sn-lock"><i class="fa fa-shield" aria-hidden="true"></i></span>
+        </div>
+        <div asp-validation-summary="All" class="form-error" role="alert"></div>
 
-    <div class="field"><label asp-for="AdminName">Your name</label><input asp-for="AdminName" class="input" /></div>
-    <div class="field"><label asp-for="AdminEmail">Email</label><input asp-for="AdminEmail" class="input" placeholder="admin@cloudwheel.com" autocomplete="email" /></div>
-    <div class="field"><label asp-for="AdminPassword">Password</label><input asp-for="AdminPassword" class="input" autocomplete="new-password" /></div>
-    <div class="field"><label asp-for="ConfirmPassword">Confirm password</label><input asp-for="ConfirmPassword" class="input" autocomplete="new-password" /></div>
+        <modern-input id="AdminName" name="AdminName" label="Your name" mandatory="true" value="@Model.AdminName" max-length="100" label-font-size="13.5px"></modern-input>
+        <modern-input id="AdminEmail" name="AdminEmail" label="Email" mandatory="true" value="@Model.AdminEmail" placeholder="admin@cloudwheel.com" max-length="200" label-font-size="13.5px"></modern-input>
+        <modern-input id="AdminPassword" name="AdminPassword" label="Password" mandatory="true" is-password="true" placeholder="At least 8 characters" label-font-size="13.5px"></modern-input>
+        <modern-input id="ConfirmPassword" name="ConfirmPassword" label="Confirm password" mandatory="true" is-password="true" label-font-size="13.5px"></modern-input>
 
-    <label class="check"><input asp-for="CreateWorkspace" /> Also create my first client</label>
+        <modern-checkbox id="CreateWorkspace" name="CreateWorkspace" label="Also create my first client" is-toggle-button="true" checked="@Model.CreateWorkspace" label-font-size="13.5px"></modern-checkbox>
 
-    <div class="field"><label asp-for="CompanyName">Client company name</label><input asp-for="CompanyName" class="input" placeholder="Acme Corp" /></div>
-    <div class="field">
-        <label asp-for="Workspace">Workspace</label>
-        <div class="input-group"><input asp-for="Workspace" class="input" placeholder="acme" /><span class="input-suffix">.sahyog.app</span></div>
-    </div>
-    <div class="field"><label asp-for="ClientAdminName">Client admin name</label><input asp-for="ClientAdminName" class="input" /></div>
-    <div class="field"><label asp-for="ClientAdminEmail">Client admin email</label><input asp-for="ClientAdminEmail" class="input" placeholder="admin@acme.com" /></div>
-    <div class="field"><label asp-for="ClientAdminPassword">Client admin password</label><input asp-for="ClientAdminPassword" class="input" autocomplete="new-password" /></div>
-    <input type="hidden" asp-for="PlanId" />
+        <div id="clientFields" class="sn-reveal"><div class="sn-reveal-in" style="display:flex;flex-direction:column;gap:14px">
+            <modern-input id="CompanyName" name="CompanyName" label="Client company name" value="@Model.CompanyName" placeholder="Acme Corp" max-length="120" label-font-size="13.5px"></modern-input>
+            <modern-input id="Workspace" name="Workspace" label="Workspace" value="@Model.Workspace" placeholder="acme  (acme.shankhnaad.app)" max-length="40" label-font-size="13.5px"></modern-input>
+            <modern-input id="ClientAdminName" name="ClientAdminName" label="Client admin name" value="@Model.ClientAdminName" max-length="100" label-font-size="13.5px"></modern-input>
+            <modern-input id="ClientAdminEmail" name="ClientAdminEmail" label="Client admin email" value="@Model.ClientAdminEmail" placeholder="admin@acme.com" max-length="200" label-font-size="13.5px"></modern-input>
+            <modern-input id="ClientAdminPassword" name="ClientAdminPassword" label="Client admin password" is-password="true" placeholder="At least 8 characters" label-font-size="13.5px"></modern-input>
+        </div></div>
+        <input type="hidden" asp-for="PlanId" />
 
-    <button type="submit" class="btn btn-gradient btn-lg">Finish setup</button>
-    <p class="muted center tiny">Passwords need at least 8 characters.</p>
-</form>
+        <button type="submit" class="cee-btn cee-btn-gradient sn-signin">Finish setup <i class="fa fa-arrow-right" aria-hidden="true"></i></button>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            var box = document.getElementById("CreateWorkspace");
+            var fields = document.getElementById("clientFields");
+            function apply() {
+                var off = !box.checked;
+                fields.classList.toggle("is-collapsed", off);
+                fields.setAttribute("aria-hidden", off ? "true" : "false");
+                if ("inert" in fields) fields.inert = off;
+            }
+            box.addEventListener("change", apply);
+            document.documentElement.classList.add("sn-still");
+            apply();
+            requestAnimationFrame(function () { requestAnimationFrame(function () { document.documentElement.classList.remove("sn-still"); }); });
+        })();
+    </script>
+}

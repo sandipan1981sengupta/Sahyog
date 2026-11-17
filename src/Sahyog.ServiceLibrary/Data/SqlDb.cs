@@ -169,6 +169,26 @@ public static class SqlExtensions
 
     public static bool B(this SqlDataReader r, string column) => Convert.ToBoolean(r[column]);
 
+    /// <summary>True when the result has this column (lets the app run before an optional upgrade script).</summary>
+    public static bool Has(this SqlDataReader r, string column)
+    {
+        for (var i = 0; i < r.FieldCount; i++)
+            if (string.Equals(r.GetName(i), column, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    /// <summary>A bit column that may not exist yet: false when missing or NULL.</summary>
+    public static bool BOpt(this SqlDataReader r, string column) =>
+        r.Has(column) && r[column] is not DBNull && Convert.ToBoolean(r[column]);
+
+    /// <summary>A number column that may not exist yet: 0 when missing or NULL.</summary>
+    public static int IOpt(this SqlDataReader r, string column) =>
+        r.Has(column) && r[column] is not DBNull ? Convert.ToInt32(r[column]) : 0;
+
+    /// <summary>A UTC time column that may not exist yet: null when missing or NULL.</summary>
+    public static DateTime? UtcOpt(this SqlDataReader r, string column) =>
+        r.Has(column) && r[column] is DateTime d ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : null;
+
     /// <summary>SQL stores UTC times; mark them as UTC so they convert and serialise correctly.</summary>
     public static DateTime Utc(this SqlDataReader r, string column) =>
         DateTime.SpecifyKind(r.GetDateTime(r.GetOrdinal(column)), DateTimeKind.Utc);

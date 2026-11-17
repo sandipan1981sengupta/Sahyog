@@ -1,9 +1,10 @@
 using System.Net;
-using System.Net.Mail;
-using System.Net.Mime;
 using System.Text;
+using MailKit.Net.Smtp;
+using MailKit.Security;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using MimeKit;
 using Sahyog.DtoLibrary;
 
 namespace Sahyog.ServiceLibrary;
@@ -11,12 +12,13 @@ namespace Sahyog.ServiceLibrary;
 public sealed class SmtpOptions
 {
     public string Host { get; set; } = "";
+    /// <summary>465 = SSL from the first byte (Plesk / Windows hosting). 587 = STARTTLS (Gmail, Brevo, Office 365).</summary>
     public int Port { get; set; } = 587;
     public bool EnableSsl { get; set; } = true;
     public string UserName { get; set; } = "";
     public string Password { get; set; } = "";
     public string FromAddress { get; set; } = "";
-    public string FromName { get; set; } = "Sahyog";
+    public string FromName { get; set; } = "ShankhNaad";
 }
 
 public sealed record EmailCalendarPart(string FileName, string IcsContent);
@@ -24,10 +26,14 @@ public sealed record EmailCalendarPart(string FileName, string IcsContent);
 public interface IAppEmailSender
 {
     bool IsConfigured { get; }
-    Task SendAsync(IEnumerable<string> to, string subject, string html, EmailCalendarPart? calendar = null);
+    /// <summary>True when the mail server accepted the message. Never throws: failures are logged.</summary>
+    Task<bool> SendAsync(IEnumerable<string> to, string subject, string html, EmailCalendarPart? calendar = null);
 }
 
-/// <summary>Plain SMTP (Office 365, Gmail Workspace, Brevo, etc.). If Smtp:Host is empty, emails are only logged.</summary>
+/// <summary>
+/// SMTP through MailKit, so both port 465 (implicit SSL, e.g. MilesWeb / Plesk) and 587 (STARTTLS) work.
+/// If Smtp:Host is empty, emails are only logged.
+/// </summary>
 public sealed class SmtpEmailSender : IAppEmailSender
 {
     private readonly SmtpOptions _o;
@@ -41,48 +47,55 @@ public sealed class SmtpEmailSender : IAppEmailSender
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_o.Host);
 
-    public async Task SendAsync(IEnumerable<string> to, string subject, string html, EmailCalendarPart? calendar = null)
+    /// <summary>Port 465 means SSL from the start; any other port upgrades with STARTTLS when EnableSsl is on.</summary>
+    private SecureSocketOptions SocketOptions =>
+        !_o.EnableSsl ? SecureSocketOptions.None
+        : _o.Port == 465 ? SecureSocketOptions.SslOnConnect
+        : SecureSocketOptions.StartTls;
+
+    public async Task<bool> SendAsync(IEnumerable<string> to, string subject, string html, EmailCalendarPart? calendar = null)
     {
         var recipients = to.Where(e => !string.IsNullOrWhiteSpace(e)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (recipients.Count == 0) return;
+        if (recipients.Count == 0) return false;
 
         if (!IsConfigured)
         {
             _log.LogInformation("SMTP not configured. Would have sent '{Subject}' to {Recipients}.", subject, string.Join(", ", recipients));
-            return;
+            return false;
         }
-
-        using var message = new MailMessage
-        {
-            From = new MailAddress(_o.FromAddress, _o.FromName),
-            Subject = subject,
-            Body = html,
-            IsBodyHtml = true
-        };
-        foreach (var r in recipients) message.To.Add(r);
-
-        if (calendar is not null)
-        {
-            var bytes = Encoding.UTF8.GetBytes(calendar.IcsContent);
-            var type = new ContentType("text/calendar") { CharSet = "utf-8" };
-            type.Parameters.Add("method", "REQUEST");
-            message.Attachments.Add(new System.Net.Mail.Attachment(new MemoryStream(bytes), calendar.FileName, type.ToString()));
-        }
-
-        using var client = new SmtpClient(_o.Host, _o.Port)
-        {
-            EnableSsl = _o.EnableSsl,
-            Credentials = string.IsNullOrEmpty(_o.UserName) ? null : new NetworkCredential(_o.UserName, _o.Password)
-        };
 
         try
         {
-            await client.SendMailAsync(message);
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress(_o.FromName, _o.FromAddress));
+            foreach (var r in recipients) message.To.Add(MailboxAddress.Parse(r));
+            message.Subject = subject;
+
+            var body = new BodyBuilder { HtmlBody = html };
+            if (calendar is not null)
+            {
+                // the .ics invite Outlook / Google Calendar turn into an "Accept / Decline" event
+                var ics = body.Attachments.Add(calendar.FileName, Encoding.UTF8.GetBytes(calendar.IcsContent), new ContentType("text", "calendar"));
+                ics.ContentType.Charset = "utf-8";
+                ics.ContentType.Parameters.Add("method", "REQUEST");
+            }
+            message.Body = body.ToMessageBody();
+
+            using var client = new SmtpClient { Timeout = 30_000 };
+            await client.ConnectAsync(_o.Host, _o.Port, SocketOptions);
+            if (!string.IsNullOrEmpty(_o.UserName))
+                await client.AuthenticateAsync(new NetworkCredential(_o.UserName, _o.Password));
+            await client.SendAsync(message);
+            await client.DisconnectAsync(true);
+
+            _log.LogInformation("Sent '{Subject}' to {Count} recipient(s).", subject, recipients.Count);
+            return true;
         }
         catch (Exception ex)
         {
-            // An email failure must never break scheduling a meeting.
-            _log.LogError(ex, "Sending '{Subject}' failed.", subject);
+            // An email failure must never break scheduling a meeting or adding a person.
+            _log.LogError(ex, "Sending '{Subject}' failed (SMTP {Host}:{Port}).", subject, _o.Host, _o.Port);
+            return false;
         }
     }
 }
@@ -97,7 +110,7 @@ public static class IcsBuilder
 
         var sb = new StringBuilder();
         sb.Append("BEGIN:VCALENDAR\r\n");
-        sb.Append("PRODID:-//CloudWheel Ltd//Sahyog//EN\r\n");
+        sb.Append("PRODID:-//CloudWheel Ltd//ShankhNaad//EN\r\n");
         sb.Append("VERSION:2.0\r\n");
         sb.Append("METHOD:REQUEST\r\n");
         sb.Append("BEGIN:VEVENT\r\n");
@@ -105,8 +118,16 @@ public static class IcsBuilder
         sb.Append($"DTSTAMP:{Utc(DateTime.UtcNow)}\r\n");
         sb.Append($"DTSTART:{Utc(meeting.StartUtc)}\r\n");
         sb.Append($"DTEND:{Utc(meeting.EndUtc)}\r\n");
-        if (meeting.Recurrence == MeetingRecurrence.Weekly) sb.Append("RRULE:FREQ=WEEKLY\r\n");
-        if (meeting.Recurrence == MeetingRecurrence.Daily) sb.Append("RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR\r\n");
+        var until = meeting.RepeatUntilUtc is DateTime u ? $";UNTIL={Utc(u)}" : "";
+        if (meeting.Recurrence == MeetingRecurrence.Weekly) sb.Append($"RRULE:FREQ=WEEKLY{until}\r\n");
+        if (meeting.Recurrence == MeetingRecurrence.Daily) sb.Append($"RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR{until}\r\n");
+        if (meeting.Recurrence == MeetingRecurrence.Custom && meeting.RepeatDays != 0)
+        {
+            // iCalendar day codes: SU MO TU WE TH FR SA, in DayOfWeek order
+            var codes = new[] { "SU", "MO", "TU", "WE", "TH", "FR", "SA" };
+            var byDay = string.Join(",", Enumerable.Range(0, 7).Where(i => (meeting.RepeatDays & (1 << i)) != 0).Select(i => codes[i]));
+            sb.Append($"RRULE:FREQ=WEEKLY;BYDAY={byDay}{until}\r\n");
+        }
         sb.Append($"SUMMARY:{Esc(meeting.Title)}\r\n");
         sb.Append($"DESCRIPTION:{Esc((meeting.Agenda ?? "") + "\n\nJoin: " + joinUrl)}\r\n");
         sb.Append($"LOCATION:{Esc(joinUrl)}\r\n");

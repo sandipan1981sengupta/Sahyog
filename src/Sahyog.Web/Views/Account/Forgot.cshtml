@@ -1,0 +1,50 @@
+@model ForgotPasswordViewModel
+@{
+    Layout = "_AuthLayout";
+    ViewData["Title"] = "Forgot password";
+}
+<partial name="_AuthHero" />
+
+<div class="sn-window-wrap">
+    <div class="sn-window-orbs" aria-hidden="true"><span class="w1"></span><span class="w2"></span><span class="w3"></span></div>
+
+    <form method="post" asp-action="Forgot" class="sn-window glass-clear" novalidate>
+        <div class="sn-window-top">
+            <div>
+                <div class="sn-eyebrow">Forgot your password?</div>
+                <h2>Get a new one</h2>
+            </div>
+            <span class="sn-lock"><i class="fa fa-key" aria-hidden="true"></i></span>
+        </div>
+
+        @if (Model.Sent)
+        {
+            <div class="sn-sent">
+                <span class="sn-sent-ic"><i class="fa fa-envelope-open-o" aria-hidden="true"></i></span>
+                <div>
+                    <b>Check your email</b>
+                    <p>If <b>@Model.Email</b> belongs to a ShankhNaad account, we've sent it a link to choose a new password. The link works once, for 1 hour.</p>
+                    <p class="sn-small">Nothing arrived after a few minutes? Check your spam folder, or ask your workspace admin.</p>
+                </div>
+            </div>
+            <a class="cee-btn cee-btn-gradient sn-signin" href="/account/login">Back to sign in <i class="fa fa-arrow-right" aria-hidden="true"></i></a>
+        }
+        else if (!Model.CanEmail)
+        {
+            <div class="notice warn">Email isn't set up on this ShankhNaad server yet, so we can't send a reset link. Ask your workspace admin to set a new password for you (Team → Edit).</div>
+            <a class="cee-btn sn-btn-light sn-signin" href="/account/login"><i class="fa fa-arrow-left" aria-hidden="true"></i> Back to sign in</a>
+        }
+        else
+        {
+            <p class="sn-small">Enter the email you sign in with. We'll email you a link to choose a new password.</p>
+            <div asp-validation-summary="ModelOnly" class="form-error" role="alert"></div>
+            <div>
+                <modern-input id="Email" name="Email" label="Email" mandatory="true" placeholder="you@company.com"
+                              value="@Model.Email" max-length="200" label-font-size="13.5px"></modern-input>
+                <span asp-validation-for="Email" class="field-error"></span>
+            </div>
+            <button type="submit" class="cee-btn cee-btn-gradient sn-signin">Email me a link <i class="fa fa-paper-plane" aria-hidden="true"></i></button>
+            <p class="sn-small center"><a href="/account/login"><i class="fa fa-arrow-left" aria-hidden="true"></i> Back to sign in</a></p>
+        }
+    </form>
+</div>

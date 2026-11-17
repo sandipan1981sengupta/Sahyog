@@ -37,6 +37,28 @@ public static class CookieAuth
     }
 
     /// <summary>
+    /// Re-issues your own sign-in cookie after you edit yourself on the Team page,
+    /// so the new name / email / security stamp take effect without signing you out.
+    /// </summary>
+    public static async Task RefreshSelfAsync(HttpContext http, string displayName, string email, Guid securityStamp)
+    {
+        var current = await http.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        if (!current.Succeeded || current.Principal is null) return;
+
+        var replaced = new HashSet<string> { ClaimTypes.Name, ClaimTypes.Email, AppClaims.DisplayName, AppClaims.SecurityStamp };
+        var claims = current.Principal.Claims.Where(c => !replaced.Contains(c.Type)).ToList();
+        claims.Add(new Claim(ClaimTypes.Name, email));
+        claims.Add(new Claim(ClaimTypes.Email, email));
+        claims.Add(new Claim(AppClaims.DisplayName, displayName));
+        claims.Add(new Claim(AppClaims.SecurityStamp, securityStamp.ToString()));
+
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
+        var properties = current.Properties ?? new AuthenticationProperties();
+        properties.Items.Remove(".sahyog.checked");   // re-check against the database on the next request
+        await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal, properties);
+    }
+
+    /// <summary>
     /// Every 5 minutes, re-checks the person in the database so a removed person or a paused client
     /// is signed out quickly (one small stored procedure call, not one per request).
     /// </summary>

@@ -250,7 +250,7 @@ button.avatar { cursor: pointer; }
 
 /* ---------- dialogs, toasts, incoming call ---------- */
 .dialog { border: none; padding: 0; width: min(440px, calc(100vw - 32px)); color: var(--ink); }
-.dialog::backdrop { background: rgba(15, 23, 42, .35); backdrop-filter: blur(4px); }
+.dialog::backdrop { background: rgba(15, 23, 42, .35); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
 .dialog-body { padding: 26px; display: flex; flex-direction: column; gap: 16px; margin: 0; }
 .dm-pick { display: flex; flex-direction: column; gap: 4px; max-height: 360px; overflow-y: auto; }
 .dm-pick form { margin: 0; }
@@ -262,7 +262,7 @@ button.avatar { cursor: pointer; }
 .toast button { margin-left: 10px; }
 @keyframes pop { from { transform: translateY(8px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
 
-.call-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(15, 23, 42, .35); backdrop-filter: blur(6px); }
+.call-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(15, 23, 42, .35); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .call-card { width: min(380px, calc(100vw - 32px)); padding: 32px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; background: rgba(255, 255, 255, .78); animation: pop .3s ease-out; }
 .call-label { margin: 8px 0 0; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--pink); text-transform: uppercase; }
 .call-actions { display: flex; gap: 12px; margin-top: 14px; }

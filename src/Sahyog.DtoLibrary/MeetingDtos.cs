@@ -8,6 +8,14 @@ public sealed record MeetingDto(
 {
     public string? ChannelName { get; init; }
     public bool ChannelIsDirect { get; init; }
+    /// <summary>Takes the whole day (start = local midnight, 1440 minutes).</summary>
+    public bool IsAllDay { get; init; }
+    /// <summary>All-day event that does not block the day (shown in the all-day row only).</summary>
+    public bool ShowAsFree { get; init; }
+    /// <summary>Custom repeat days: bit (1 &lt;&lt; (int)DayOfWeek), so Sun = 1, Mon = 2 … Sat = 64.</summary>
+    public byte RepeatDays { get; init; }
+    /// <summary>Start of the last occurrence (UTC). Null = repeats with no end.</summary>
+    public DateTime? RepeatUntilUtc { get; init; }
     public DateTime EndUtc => StartUtc.AddMinutes(DurationMinutes);
 }
 
@@ -39,6 +47,12 @@ public sealed class CreateMeetingRequest
     public bool CaptionsOn { get; set; }
     public List<Guid> InviteeIds { get; set; } = new();
     public List<string> GuestEmails { get; set; } = new();
+    public bool IsAllDay { get; set; }
+    public bool ShowAsFree { get; set; }
+    /// <summary>Custom repeat days bit mask (see <see cref="MeetingDto.RepeatDays"/>).</summary>
+    public byte RepeatDays { get; set; }
+    /// <summary>Start of the last occurrence (UTC). Null = no end.</summary>
+    public DateTime? RepeatUntilUtc { get; set; }
 }
 
 /// <summary>One appearance of a meeting on the calendar (recurring meetings appear many times).</summary>

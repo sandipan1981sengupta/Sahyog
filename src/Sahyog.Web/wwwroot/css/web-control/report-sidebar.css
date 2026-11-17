@@ -1,0 +1,843 @@
+/* =========================================================
+   REPORT SIDEBAR (icon rail + slide-out "Report Details" panel)
+   Colors/spacing come from controls-theme.css — load that file first,
+   same convention as modern-sidebar.css.
+   ========================================================= */
+
+.report-rail {
+    --rr-active-start: #7c3aed;
+    --rr-active-end: #db2777;
+    width: 92px; /* fallback — normally overridden by inline style from RailWidth */
+    position: relative;
+    z-index: 502; /* above the scrim (500) and panels (501) so the rail stays clickable even while a panel is open */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: var(--ctrl-bg);
+    border-right: 1px solid var(--ctrl-border);
+    padding: 14px 0 10px;
+    overflow-y: auto;
+    box-sizing: border-box;
+    font-family: var(--ctrl-font);
+    flex-shrink: 0;
+}
+
+.rr-logo {
+    width: 52px;
+    height: 52px;
+    border-radius: var(--rr-logo-border-radius, 14px);
+    background: var(--rr-logo-bg, linear-gradient(135deg, var(--rr-active-start), var(--rr-active-end)));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    margin-bottom: var(--rr-logo-divider-gap, 10px);
+    flex-shrink: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.rr-logo-image {
+    background: none;
+    padding: 0;
+}
+
+    .rr-logo-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: calc(var(--rr-logo-border-radius, 14px) - var(--rr-logo-border-width, 0px));
+        display: block;
+    }
+
+.rr-carets {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    color: var(--ctrl-text);
+    margin-bottom: var(--rr-logo-divider-gap, 8px);
+    cursor: pointer;
+}
+
+.rr-divider {
+    width: var(--rr-divider-width, 46px);
+    height: var(--rr-divider-thickness, 1px);
+    background: var(--rr-divider-color, var(--ctrl-border));
+    margin-bottom: var(--rr-divider-icons-gap, 6px);
+    border-radius: var(--rr-divider-thickness, 1px);
+    flex-shrink: 0;
+}
+
+.rr-items {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    align-items: center;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    flex: 1 1 auto;
+}
+
+.rr-item {
+    width: 100%;
+    position: relative;
+}
+
+.rr-item-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 12px 4px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    position: relative;
+    z-index: 1;
+    text-decoration: none;
+    color: inherit;
+}
+
+    .rr-item-btn::after {
+        content: '';
+        position: absolute;
+        top: var(--rr-hover-inset, 4px);
+        bottom: var(--rr-hover-inset, 4px);
+        left: var(--rr-hover-inset, 6px);
+        right: var(--rr-hover-inset, 6px);
+        border-radius: var(--rr-hover-radius, 12px);
+        background: var(--rr-hover-color, var(--ctrl-bg-hover));
+        box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+        opacity: 0;
+        transform: scale(0.9);
+        z-index: -1;
+        transition: opacity .22s cubic-bezier(0.22, 1, 0.36, 1), transform .3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow .3s ease;
+        pointer-events: none;
+    }
+
+    .rr-item-btn:hover::after {
+        opacity: 1;
+        transform: scale(1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .rr-item-btn:active::after {
+        transform: scale(0.96);
+        transition-duration: .1s;
+    }
+
+.rr-item-icon,
+.rr-item-label {
+    transition: transform .28s cubic-bezier(0.34, 1.56, 0.64, 1), color .2s ease;
+}
+
+.rr-item-btn:hover .rr-item-icon {
+    transform: translateY(-1px) scale(1.06);
+}
+
+.rr-item-btn:hover .rr-item-label {
+    transform: translateY(-1px);
+}
+
+.rr-item-btn:active .rr-item-icon,
+.rr-item-btn:active .rr-item-label {
+    transform: translateY(0) scale(0.98);
+    transition-duration: .1s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rr-item-btn::after,
+    .rr-item-icon,
+    .rr-item-label {
+        transition: opacity .12s linear, color .12s linear !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+}
+
+.rr-item-icon {
+    width: var(--rr-icon-size, 24px);
+    height: var(--rr-icon-size, 24px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--rr-icon-size, 24px);
+    color: var(--ctrl-text);
+}
+
+.rr-item-label {
+    font-size: var(--rr-label-size, 12.5px);
+    font-weight: var(--rr-label-weight, 500);
+    color: var(--ctrl-text);
+}
+
+.rr-item.rr-active .rr-item-icon {
+    color: var(--rr-active-icon-color, var(--rr-active-color, var(--rr-active-label-color, var(--rr-active-start))));
+}
+
+.rr-item.rr-active .rr-item-label {
+    color: var(--rr-active-label-color, var(--rr-active-color, var(--rr-active-start)));
+}
+
+/* Gradient text mode — used only when --rr-active-gradient-on is set by the tag helper */
+.rr-item.rr-active.rr-active-gradient .rr-item-icon,
+.rr-item.rr-active.rr-active-gradient .rr-item-label {
+    background: var(--rr-active-gradient, linear-gradient(135deg, var(--rr-active-start), var(--rr-active-end)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* ---- Per-icon / per-label GRADIENT foreground mode ----
+   Used when ActiveIconColor and/or ActiveLabelColor (rail-wide, on
+   <report-rail>, or per-item on <rail-item>) is itself a gradient
+   function (linear-gradient/radial-gradient/conic-gradient) or a
+   var(...) reference rather than a flat color. A plain `color:` can't
+   render a gradient, so instead we paint the gradient as a background
+   clipped to the icon/label's own text, with the actual foreground text
+   made transparent so the gradient shows through. This is independent
+   per icon/label — one can be a flat color while the other is a
+   gradient — and independent of the rail-wide two-stop
+   .rr-active-gradient toggle above, which only ever uses the shared
+   start/end stops.
+
+   These rules key off [data-icon-gradient="true"] / [data-label-gradient="true"]
+   rather than a JS-toggled class. The tag helper stamps these two data
+   attributes onto EVERY <rail-item> at render time (not just the one
+   marked active="true"), since whether an item's icon/label WOULD be a
+   gradient once active is fully determined server-side and never
+   changes at runtime. Combining the attribute selector with the plain
+   .rr-active class means the gradient paints correctly the instant
+   .rr-active is present, however it got there — server-rendered on
+   page load, or added later by a click handler — with no dependency on
+   any particular JS also remembering to add a matching gradient class.
+   The tag helper still supplies the actual gradient value itself via
+   --rr-active-icon-color / --rr-active-label-color, which these rules
+   consume directly. */
+.rr-item.rr-active[data-icon-gradient="true"] .rr-item-icon {
+    background: var(--rr-active-icon-color, var(--rr-active-gradient, linear-gradient(135deg, var(--rr-active-start), var(--rr-active-end))));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.rr-item.rr-active[data-label-gradient="true"] .rr-item-label {
+    background: var(--rr-active-label-color, var(--rr-active-gradient, linear-gradient(135deg, var(--rr-active-start), var(--rr-active-end))));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* Kept for backward compatibility with any JS still adding these
+   classes explicitly (harmless duplication — same rules, same result). */
+.rr-item.rr-active.rr-icon-gradient .rr-item-icon {
+    background: var(--rr-active-icon-color, var(--rr-active-gradient, linear-gradient(135deg, var(--rr-active-start), var(--rr-active-end))));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.rr-item.rr-active.rr-label-gradient .rr-item-label {
+    background: var(--rr-active-label-color, var(--rr-active-gradient, linear-gradient(135deg, var(--rr-active-start), var(--rr-active-end))));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.rr-item.rr-active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--rr-active-bar, linear-gradient(180deg, var(--rr-active-start), var(--rr-active-end)));
+}
+
+.report-rail.rr-indicator-active .rr-item.rr-active::before {
+    display: none;
+}
+
+.rr-active-indicator {
+    position: absolute;
+    left: 0;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--rr-active-bar, linear-gradient(180deg, var(--rr-active-start), var(--rr-active-end)));
+    opacity: 0;
+    z-index: 2;
+    transition: transform .38s cubic-bezier(0.22, 1, 0.36, 1), opacity .2s ease, height .28s ease, width .18s ease;
+    pointer-events: none;
+}
+
+    .rr-active-indicator.rr-indicator-visible {
+        opacity: 1;
+    }
+
+    .rr-active-indicator.rr-indicator-hover {
+        width: 5px;
+    }
+
+@media (prefers-reduced-motion: reduce) {
+    .rr-active-indicator {
+        transition: opacity .15s linear !important;
+    }
+}
+
+.rr-item.rr-active::after {
+    content: '';
+    position: absolute;
+    top: var(--rr-selection-inset, 6px);
+    bottom: var(--rr-selection-inset, 6px);
+    left: var(--rr-selection-inset, 6px);
+    right: var(--rr-selection-inset, 6px);
+    border-radius: var(--rr-selection-radius, 12px);
+    background: var(--rr-selection-color, transparent);
+    z-index: 0;
+    pointer-events: none;
+}
+
+.rr-footer-image {
+    flex-shrink: 0;
+    margin-top: 10px;
+    background: none;
+    padding: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+    .rr-footer-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        border-radius: calc(var(--rr-footer-border-radius, 14px) - var(--rr-footer-border-width, 0px));
+    }
+
+
+/* ============ SLIDE-OUT PANEL ============ */
+
+.rp-scrim {
+    position: fixed;
+    inset: 0;
+    /* Soft, barely-there dim rather than a heavy dark overlay — just
+       enough to separate the panel from the page behind it. Override
+       with the ScrimColor attribute if you want it even lighter, or
+       fully transparent (e.g. "transparent" or "rgba(0,0,0,0)"). */
+    background: var(--rp-scrim-color, rgba(15, 18, 25, 0.08));
+    z-index: 500;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .45s ease;
+}
+
+    .rp-scrim.rp-scrim-visible {
+        opacity: 1;
+        visibility: visible;
+    }
+
+.report-panel {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    /* left/right are set inline by JS (report-sidebar.js), computed from
+       the rail's actual on-screen position so the panel always opens
+       adjacent to the rail, whichever side it's on. This fallback only
+       applies before JS has run once. */
+    left: 92px;
+    width: 520px; /* fallback — overridden by inline style from PanelWidth */
+    background: var(--rp-panel-bg, var(--ctrl-bg));
+    box-shadow: 4px 0 20px rgba(0,0,0,0.10);
+    display: flex;
+    flex-direction: column;
+    z-index: 501;
+    overflow: hidden;
+    font-family: var(--ctrl-font);
+    box-sizing: border-box;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(var(--rp-slide-offset, -12px));
+    transition: opacity .45s ease, transform .45s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear .45s;
+}
+
+    .report-panel.rp-open {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: translateX(0);
+        transition: opacity .45s ease, transform .45s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0s;
+    }
+
+    .report-panel.rp-nested {
+        box-shadow: -2px 0 0 rgba(0,0,0,0.04) inset, 4px 0 20px rgba(0,0,0,0.10);
+    }
+
+@media (prefers-reduced-motion: reduce) {
+    .report-panel,
+    .rp-scrim {
+        transition: opacity .15s linear !important;
+        transform: none !important;
+    }
+}
+
+.rp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--rp-header-bg, #efeff1);
+    padding: 22px 20px;
+    flex-shrink: 0;
+}
+
+.rp-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.rp-pin-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--ctrl-radius-md);
+    border: none;
+    background: transparent;
+    color: var(--ctrl-text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background .18s ease, color .18s ease, transform .25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+    .rp-pin-btn:hover {
+        background: rgba(0, 0, 0, 0.06);
+    }
+
+.rp-pin-icon {
+    transition: transform .3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Pinned state — the pin head fills solid and tilts upright (like a
+   pin actually pushed in), and the button itself gets a soft tinted
+   background so "this panel stays open" reads at a glance. */
+.rp-pin-btn[aria-pressed="true"] {
+    background: var(--rp-pin-active-bg, var(--ctrl-accent-tint));
+    color: var(--rp-pin-active-color, var(--ctrl-accent));
+}
+
+    .rp-pin-btn[aria-pressed="true"] .rp-pin-icon {
+        fill: currentColor;
+        transform: rotate(0deg) scale(1.05);
+    }
+
+.rp-pin-btn:not([aria-pressed="true"]) .rp-pin-icon {
+    transform: rotate(-40deg);
+}
+
+.rp-pin-btn:active {
+    transform: scale(0.9);
+}
+
+.rp-header h1 {
+    margin: 0;
+    font-size: var(--rp-title-size, 24px);
+    font-weight: var(--rp-title-weight, 800);
+    color: var(--rp-title-color, var(--ctrl-text));
+}
+
+.rp-back-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--rp-back-radius, var(--ctrl-radius-sm));
+    border: none;
+    background: transparent;
+    color: var(--ctrl-text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    margin-right: 8px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+    .rp-back-btn:hover {
+        background: var(--ctrl-bg-hover);
+    }
+
+.rp-header-titlewrap {
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.rp-close-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--rp-close-radius, var(--ctrl-radius-md));
+    border: none;
+    background: var(--rp-close-bg, linear-gradient(135deg, #7c3aed, #db2777));
+    color: var(--rp-close-color, #fff);
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+    .rp-close-btn:hover {
+        filter: brightness(1.05);
+    }
+
+.rp-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+}
+
+
+/* ---- Section header (collapsible group) ---- */
+
+.rp-section {
+    border-bottom: 1px solid var(--ctrl-border-light);
+}
+
+.rp-section-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--rp-panel-bg, var(--ctrl-bg));
+    border: none;
+    padding: 16px 20px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: background .2s ease;
+}
+
+    .rp-section-header:hover {
+        background: var(--rp-row-hover, var(--ctrl-bg-hover));
+    }
+
+    .rp-section-header[aria-expanded="true"] {
+        background: var(--rp-section-expanded-bg, transparent);
+    }
+
+.rp-section-title {
+    font-size: var(--rp-section-title-size, 16px);
+    font-weight: var(--rp-section-title-weight, 700);
+    color: var(--rp-section-label-color, #1d5fae);
+}
+
+.rp-section-suffix {
+    color: var(--rp-section-suffix-color, #c22a8d);
+    margin-left: 4px;
+    font-weight: var(--rp-section-title-weight, 700);
+}
+
+.rp-chevron {
+    color: var(--rp-chevron-color, var(--ctrl-text-muted));
+    transition: transform .35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    flex-shrink: 0;
+    display: flex;
+}
+
+.rp-section-header[aria-expanded="true"] .rp-chevron {
+    transform: rotate(180deg);
+}
+
+/* max-height is set inline by JS to the section's real measured content
+   height (not a fixed large ceiling), so this transition duration always
+   maps onto the actual content length — short sections and long ones
+   both animate at a consistent, natural speed instead of a short section
+   looking instant against a duration tuned for a tall one. */
+.rp-section-items {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height .38s cubic-bezier(0.22, 1, 0.36, 1), opacity .28s ease;
+}
+
+    .rp-section-items.rp-open {
+        opacity: 1;
+        transition: max-height .38s cubic-bezier(0.22, 1, 0.36, 1), opacity .3s ease .08s;
+    }
+
+
+/* ---- Leaf report row (inside a section) ---- */
+
+.rp-item-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 20px 14px 30px;
+    border: none;
+    background: var(--rp-panel-bg, var(--ctrl-bg));
+    border-bottom: 1px solid var(--ctrl-border-light);
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    font-size: var(--rp-item-font-size, 15px);
+    color: var(--rp-item-label-color, var(--ctrl-text));
+    font-weight: var(--rp-item-font-weight, 400);
+    position: relative;
+    text-decoration: none;
+    transition: background .22s ease, transform .22s cubic-bezier(0.22, 1, 0.36, 1), color .22s ease;
+}
+
+    .rp-item-row:hover {
+        background: var(--rp-row-hover, var(--ctrl-bg-hover));
+        transform: translateX(3px);
+    }
+
+    .rp-item-row:active {
+        transform: translateX(3px) scale(0.985);
+        transition-duration: .1s;
+    }
+
+    .rp-item-row.rp-active {
+        background: var(--rp-item-selection-color, var(--rp-selection-color, var(--ctrl-accent-tint)));
+        color: var(--rp-item-active-label-color, var(--rp-item-label-color, var(--ctrl-text)));
+        font-weight: var(--rp-item-active-font-weight, 700);
+    }
+
+        .rp-item-row.rp-active:hover {
+            transform: translateX(0); /* the active row is already "arrived" — no further nudge on hover */
+        }
+
+    /* The accent bar grows in from the vertical center rather than simply
+   appearing, and eases out with a slight overshoot for a more
+   deliberate, tactile feel when a row becomes the active selection. */
+    .rp-item-row::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        width: 4px;
+        height: 0;
+        border-radius: 0 3px 3px 0;
+        background: var(--rp-item-active-bar, var(--rp-active-bar, linear-gradient(180deg, #7c3aed, #db2777)));
+        transform: translateY(-50%);
+        transition: height .32s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .rp-item-row.rp-active::before {
+        height: 60%; /* matches the original "top:8px; bottom:8px" visual proportion */
+    }
+
+.rp-item-icon {
+    width: var(--rp-item-icon-size, 22px);
+    height: var(--rp-item-icon-size, 22px);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--rp-item-icon-size, 18px);
+    /* Falls back through: this row's own IconColor -> theme muted text.
+       Set per-item via icon-color="..." on <report-item>. */
+    color: var(--rp-item-icon-color, var(--ctrl-text-muted));
+    transition: color .22s ease, transform .22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.rp-item-row:hover .rp-item-icon {
+    transform: scale(1.08);
+}
+
+/* Icon color while selected — every row carries its own
+   --rp-item-active-icon-color (set via active-icon-color="..." on
+   <report-item>), and because this rule keys off the .rp-active CLASS
+   rather than a value baked in at render time, clicking a row in the
+   browser (which only toggles that class) picks up this color live, for
+   every row, not just whichever one happened to be server-rendered as
+   active. Falls back to the panel-wide suffix color if this row didn't
+   set its own. */
+.rp-item-row.rp-active .rp-item-icon {
+    color: var(--rp-item-active-icon-color, var(--rp-section-suffix-color, #c22a8d));
+}
+
+/* ---- Gradient foreground mode for report-item rows ----
+   Mirrors the rail's per-icon/per-label gradient handling: when
+   ActiveIconColor / ActiveLabelColor on a <report-item> is a gradient
+   function or a var(...) reference (which might itself resolve to a
+   gradient), a plain `color:` can't render it, so it's painted instead
+   as a background clipped to the icon/label text. data-icon-gradient /
+   data-label-gradient are stamped on every row at render time
+   (regardless of whether that row starts active), so this works the
+   moment .rp-active is present, however it got there — server-rendered
+   on load, or added later by the click handler that only ever toggles
+   the .rp-active class. Higher specificity (class + attribute selector)
+   than the plain color rule above means this always wins when the
+   attribute is present, with no ordering dependency. */
+.rp-item-row.rp-active[data-icon-gradient="true"] .rp-item-icon {
+    background: var(--rp-item-active-icon-color, var(--rp-section-suffix-color, #c22a8d));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.rp-item-row.rp-active[data-label-gradient="true"] .rp-item-label-text {
+    background: var(--rp-item-active-label-color, var(--rp-item-active-icon-color));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rp-item-row,
+    .rp-item-row::before,
+    .rp-item-icon {
+        transition: background .15s linear, color .15s linear !important;
+        transform: none !important;
+    }
+}
+
+
+/* ---- Flat nav row (chevron-right, may open a nested panel) ---- */
+
+.rp-nav-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    background: var(--rp-panel-bg, var(--ctrl-bg));
+    border: none;
+    border-bottom: 1px solid var(--ctrl-border-light);
+    padding: 16px 20px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    text-decoration: none;
+    position: relative;
+    transition: background .22s ease, transform .22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+    /* Present only when a nav-row sets icon="...". Sized/colored the
+       same as a <report-item>'s icon so a nav-row with an icon reads as
+       visually consistent with the leaf rows above it in the same
+       panel. Falls back through the same --rp-item-icon-color chain. */
+    .rp-nav-row .rp-item-icon {
+        width: var(--rp-item-icon-size, 22px);
+        height: var(--rp-item-icon-size, 22px);
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: var(--rp-item-icon-size, 18px);
+        color: var(--rp-item-icon-color, var(--ctrl-text-muted));
+        transition: color .22s ease, transform .22s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .rp-nav-row:hover .rp-item-icon {
+        transform: scale(1.08);
+    }
+
+/* The title span grows to fill the remaining space between the
+       (optional) icon and the chevron, so the layout works identically
+       whether or not this row has an icon — existing icon-less nav-rows
+       are unaffected since an empty gap on one side collapses naturally. */
+.rp-nav-row-title {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.rp-nav-row:hover {
+    background: var(--rp-row-hover, var(--ctrl-bg-hover));
+    transform: translateX(3px);
+}
+
+.rp-nav-row:active {
+    transform: translateX(3px) scale(0.985);
+    transition-duration: .1s;
+}
+
+/* Only a plain nav-row (no nested panel) ever becomes "selected" — one
+   that drills into a sub-panel is a navigation action, not a persistent
+   choice, so it never gets this class (enforced in JS). Visual language
+   matches .rp-item-row.rp-active exactly: same background, same growing
+   accent bar, same bold weight — so a nav-row and a report-item read as
+   the same kind of "this is the current selection" state to the user. */
+.rp-nav-row.rp-active {
+    background: var(--rp-item-selection-color, var(--rp-selection-color, var(--ctrl-accent-tint)));
+    font-weight: 700;
+}
+
+    .rp-nav-row.rp-active:hover {
+        transform: translateX(0);
+    }
+
+.rp-nav-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 4px;
+    height: 0;
+    border-radius: 0 3px 3px 0;
+    background: var(--rp-item-active-bar, var(--rp-active-bar, linear-gradient(180deg, #7c3aed, #db2777)));
+    transform: translateY(-50%);
+    transition: height .32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.rp-nav-row.rp-active::before {
+    height: 60%;
+}
+
+/* Icon color while this nav-row is active/selected — same convention as
+   .rp-item-row.rp-active .rp-item-icon on <report-item>. Falls back to
+   the panel-wide suffix color if this row didn't set its own. */
+.rp-nav-row.rp-active .rp-item-icon {
+    color: var(--rp-item-active-icon-color, var(--rp-section-suffix-color, #c22a8d));
+}
+
+/* ---- Gradient foreground mode for nav-row's active icon ----
+   Same reasoning as the label rule below: a plain `color:` can't render
+   a gradient function or a var(...) reference that might resolve to
+   one, so it's painted via background-clip: text instead. Higher
+   specificity (attribute selector) than the plain rule above means this
+   always wins when data-icon-gradient is present. */
+.rp-nav-row.rp-active[data-icon-gradient="true"] .rp-item-icon {
+    background: var(--rp-item-active-icon-color, var(--rp-section-suffix-color, #c22a8d));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* ---- Gradient foreground mode for nav-row's active label ----
+   Mirrors the same fix already applied to <rail-item> and
+   <report-item>: a plain `color:` can't render a gradient function or a
+   var(...) reference that might resolve to one, so it's painted instead
+   as a background clipped to the label text. data-label-gradient is
+   stamped on every <nav-row> at render time regardless of active state
+   (NavRow has no server-side Active property at all — activeness here
+   is entirely JS-driven), so this works the instant .rp-active is
+   toggled on by a click, with no JS changes required. */
+.rp-nav-row.rp-active[data-label-gradient="true"] .rp-section-title {
+    background: var(--rp-item-active-label-color);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+@media (max-width: 640px) {
+    .report-panel {
+        width: 100vw !important;
+        left: 0 !important;
+        right: auto !important;
+    }
+}

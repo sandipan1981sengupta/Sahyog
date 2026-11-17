@@ -32,7 +32,9 @@ public static class ServiceRegistration
         services.AddScoped<IChatService, ChatService>();
         services.AddScoped<IMeetingService, MeetingService>();
         services.AddScoped<IAppEmailSender, SmtpEmailSender>();
+        services.AddScoped<IAccountEmailService, AccountEmailService>();
 
+        services.AddSingleton<IEmailDomainCheck, EmailDomainCheck>();
         services.AddSingleton<PresenceTracker>();
         services.AddSingleton<MeetingRoomTracker>();
         services.AddSingleton<IFileStorage, LocalFileStorage>();

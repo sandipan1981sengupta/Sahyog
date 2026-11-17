@@ -1,146 +1,540 @@
 @model AdminViewModel
+@using System.Globalization
 @{
-    ViewData["Title"] = "Super Admin";
+    ViewData["Title"] = "Clients";
     ViewData["Section"] = "admin";
     var n = Model.NewTenant;
+    var inv = CultureInfo.InvariantCulture;
+
+    var rows = Model.Tenants.Select(t => new Dictionary<string, object>
+    {
+        ["Id"] = t.Id.ToString(),
+        ["Name"] = t.Name,
+        ["Slug"] = t.Slug,
+        ["Plan"] = t.Plan,
+        ["PlanId"] = Model.Plans.FirstOrDefault(p => p.Name == t.Plan)?.PlanId ?? 0,   // details panel: pre-selects the current plan
+        ["Users"] = $"{t.Users} / {t.MaxUsers}",
+        ["Storage"] = $"{UserExtensions.FormatBytes(t.StorageUsed)} of {UserExtensions.FormatBytes(t.StorageQuota)}",
+        ["Video"] = t.Provider,
+        ["Since"] = t.CreatedUtc.ToString("dd MMM yyyy", inv),
+        ["Status"] = t.IsActive ? "Active" : "Paused",
+        ["Active"] = t.IsActive,
+        // used by the details panel only (no column)
+        ["UsersText"] = $"{t.Users} of {t.MaxUsers}",
+        ["UsersPct"] = t.MaxUsers > 0 ? Math.Min(100, (int)Math.Round(t.Users * 100.0 / t.MaxUsers)) : 0,
+        ["StoragePct"] = t.StorageQuota > 0 ? Math.Min(100, (int)Math.Round(t.StorageUsed * 100.0 / t.StorageQuota)) : 0
+    }).ToList();
+
+    var planItems = Model.Plans.Select(p => (p.PlanId.ToString(inv), $"{p.Name} · {p.MaxUsers} users · {UserExtensions.FormatBytes(p.StorageQuotaMb * 1024L * 1024L)}")).ToList();
+        var heightItems = new[] { 360, 540, 720, 1080 }.Select(h => (h.ToString(inv), $"{h}p")).ToList();
+    var providerItems = new List<(string, string)> { ("JaaS", "JaaS (8x8)"), ("LiveKit", "LiveKit") };
+    var totalUsers = Model.Tenants.Sum(t => t.Users);
+    var totalStorage = Model.Tenants.Sum(t => t.StorageUsed);
+    var totalQuota = Model.Tenants.Sum(t => t.StorageQuota);
+    var totalSeats = Model.Tenants.Sum(t => t.MaxUsers);
+    var activeCount = Model.Tenants.Count(t => t.IsActive);
+    var storagePct = totalQuota > 0 ? Math.Min(100, (int)Math.Round(totalStorage * 100.0 / totalQuota)) : 0;
 }
-<main class="admin-main">
-    <header class="page-head glass">
-        <div>
-            <h1 class="page-title">Tenants</h1>
-            <p class="muted">Each client gets a plan. Limits apply automatically — no code changes.</p>
-        </div>
-        <button type="button" class="btn btn-primary" data-open="newTenantDialog">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-            Add tenant
-        </button>
-    </header>
+
+<main class="sn-page sn-admin">
+    <div class="sn-head glass">
+        <action-header id="AdminHeader"
+                       heading="Client workspaces"
+                       subtitle="@($"Super admin · {Model.Tenants.Count} clients · {Model.Plans.Count} plans")"
+                       left-icon-css="bi bi-shield-lock-fill" left-icon-size="26"
+                       left-icon-gradient-start="#2563EB" left-icon-gradient-mid="#7C3AED" left-icon-gradient-end="#DB2777"
+                       background-color="transparent" box-shadow="none"
+                       refresh-color="#1D4ED8" add-color="#1D4ED8" delete-color="#DC2626" export-color="#15803D" print-color="#334155"
+                       show-refresh="true" refresh-on-click="SN.reload()"
+                       show-add="true" add-text="New client" add-on-click="SN.open('newTenantDialog')"
+                       show-edit="true" edit-text="Edit" edit-on-click="snEditTenant()"
+                       show-delete="true" delete-text="Delete" delete-on-click="snDeleteTenant()"
+                       show-import="false"
+                       show-export="true" export-on-click="SN.exportTable('TenantTable','clients')"
+                       show-save="false" show-submit="false"
+                       show-print="true" print-on-click="SN.print()">
+            <action-btn text="Pause / Resume" icon-css="bi bi-pause-circle-fill" icon-color="#B45309" tooltip="Pause or resume the selected client" on-click="snToggleTenant()"></action-btn>
+        </action-header>
+    </div>
 
     @if (Model.Message is string msg)
     {
-        <div class="notice success">@msg</div>
+        <div hidden data-toast="@msg" data-toast-kind="success"></div>
     }
     @if (Model.Error is string err)
     {
-        <div class="notice error">@err</div>
+        <div hidden data-toast="@err" data-toast-kind="error"></div>
     }
 
-    <section class="plan-grid" aria-label="Plans">
-        @foreach (var p in Model.Plans)
-        {
-            var count = Model.Tenants.Count(t => t.Plan == p.Name);
-            <form method="post" action="/admin/plans/@p.PlanId" class="plan-card glass">
-                <div class="row between">
-                    <span class="pill tone-pill-@(p.Name.ToLowerInvariant())">@p.Name</span>
-                    <span class="muted small">@count @(count == 1 ? "tenant" : "tenants")</span>
-                </div>
-                <div class="plan-fields">
-                    <label>Users<input class="input input-sm" type="number" name="maxUsers" value="@p.MaxUsers" min="1" /></label>
-                    <label>Per meeting<input class="input input-sm" type="number" name="maxMeetingParticipants" value="@p.MaxMeetingParticipants" min="2" max="500" /></label>
-                    <label>Storage (MB)<input class="input input-sm" type="number" name="storageQuotaMb" value="@p.StorageQuotaMb" min="100" /></label>
-                    <label>Video height
-                        <select class="input input-sm" name="maxVideoHeight">
-                            @foreach (var h in new[] { 360, 540, 720, 1080 })
-                            {
-                                <option value="@h" selected="@(h == p.MaxVideoHeight)">@(h)p</option>
-                            }
-                        </select>
-                    </label>
-                    <label>Max minutes<input class="input input-sm" type="number" name="maxMeetingMinutes" value="@p.MaxMeetingMinutes" min="15" max="1440" /></label>
-                    <label>Provider
-                        <select class="input input-sm" name="videoProvider">
-                            <option value="JaaS" selected="@(p.VideoProvider == "JaaS")">JaaS</option>
-                        </select>
-                    </label>
-                </div>
-                <label class="check"><input type="checkbox" name="recordingEnabled" value="true" checked="@p.RecordingEnabled" /> Recording allowed</label>
-                <input type="hidden" name="recordingEnabled" value="false" />
-                <button type="submit" class="btn btn-ghost btn-sm">Save plan</button>
-            </form>
-        }
+    @* ---- key figures: one calm strip instead of four big tiles ---- *@
+    <section class="sn-kpis glass" aria-label="Summary">
+        <div class="sn-kpi">
+            <span class="sn-kpi-ic blue"><i class="fa fa-building-o" aria-hidden="true"></i></span>
+            <div><div class="sn-kpi-label">Clients</div><div class="sn-kpi-val">@Model.Tenants.Count</div>
+                <div class="sn-kpi-sub"><span class="sn-dot" style="background:#16a34a"></span> @activeCount active · @(Model.Tenants.Count - activeCount) paused</div></div>
+        </div>
+        <div class="sn-kpi">
+            <span class="sn-kpi-ic violet"><i class="fa fa-users" aria-hidden="true"></i></span>
+            <div><div class="sn-kpi-label">Users</div><div class="sn-kpi-val">@totalUsers</div>
+                <div class="sn-kpi-sub">of @totalSeats seats in plans</div></div>
+        </div>
+        <div class="sn-kpi">
+            <span class="sn-kpi-ic pink"><i class="fa fa-hdd-o" aria-hidden="true"></i></span>
+            <div class="sn-kpi-grow"><div class="sn-kpi-label">Storage</div><div class="sn-kpi-val">@UserExtensions.FormatBytes(totalStorage)</div>
+                <div class="sn-meter" title="@storagePct% used"><i style="width:@(storagePct)%"></i></div>
+                <div class="sn-kpi-sub">@storagePct% of @UserExtensions.FormatBytes(totalQuota)</div></div>
+        </div>
+        <div class="sn-kpi">
+            <span class="sn-kpi-ic green"><i class="fa fa-sliders" aria-hidden="true"></i></span>
+            <div><div class="sn-kpi-label">Plans</div><div class="sn-kpi-val">@Model.Plans.Count</div>
+                <div class="sn-kpi-sub">@string.Join(" · ", Model.Plans.Select(p => p.Name))</div></div>
+        </div>
     </section>
 
-    <section class="table-card glass" aria-label="Tenant list">
-        <div class="row between pad">
-            <h2>All tenants</h2>
-            <label class="search wide">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
-                <input type="search" id="tenantFilter" placeholder="Search tenants" aria-label="Search tenants" />
-            </label>
+    @* ---- two views: clients and plans ---- *@
+    <div class="sn-admin-bar">
+        <tab-control id="adminTabs" height="44px" font-size="13.5px" font-weight="600" active-font-weight="600" transition-duration=".38s"
+                     background="rgba(255,255,255,.55)" active-background-color="#ffffff"
+                     text-color="#475569" active-text-color="#0B1220" border-color="rgba(15,23,42,.08)">
+            <tab id="clients" text="@($"Clients  ·  {Model.Tenants.Count}")" active="true"></tab>
+            <tab id="plans" text="@($"Plans and limits  ·  {Model.Plans.Count}")"></tab>
+        </tab-control>
+        <span class="sn-admin-hint" id="adminHint">Select a client to see its details and change its plan.</span>
+    </div>
+
+    <section id="paneClients" class="sn-pane">
+        <div class="sn-admin-grid">
+            <div class="sn-admin-table">
+                <modern-table id="TenantTable" name="SelectedTenant"
+                              grid-name="All clients" icon="building" icon-background-color="#EFF6FF" icon-color="#1D4ED8"
+                              show-grid-name-and-icon="true"
+                              searchable="true" search-placeholder="Search clients..."
+                              show-filter-button="true" filter-row-open="false"
+                              column-toggle="true" selectable="true" enable-paging="true" page-size="25"
+                              is-animated-scrolling="true" row-height="54px" header-height="44px"
+                              row-id-field="Id" table-height="460px"
+                              items="rows">
+                    <column field="Id" header="Id" visible="false" filterable="false" sortable="false"></column>
+                    <column field="Name" header="Company" width="220px"></column>
+                    <column field="Slug" header="Workspace" width="150px"></column>
+                    <column field="Plan" header="Plan" type="badge" width="110px" badge-default-color="#F1F5F9">
+                        <badge value="Small" color="#F1F5F9"></badge>
+                        <badge value="Medium" color="#DBEAFE"></badge>
+                        <badge value="Large" color="#FCE7F3"></badge>
+                    </column>
+                    <column field="Users" header="Users" width="100px" cell-align="right" header-align="right"></column>
+                    <column field="Storage" header="Storage" width="170px"></column>
+                    <column field="Video" header="Video" width="110px"></column>
+                    <column field="Since" header="Client since" width="130px"></column>
+                    <column field="Status" header="Status" type="badge" width="110px">
+                        <badge value="Active" color="#DCFCE7"></badge>
+                        <badge value="Paused" color="#FEF3C7"></badge>
+                    </column>
+                </modern-table>
+            </div>
+
+            @* ---- inspector: details of the selected client ---- *@
+            <aside class="sn-inspector glass" id="clientInspector" data-state="empty" aria-live="polite">
+                <div class="sn-insp-empty">
+                    <span class="sn-insp-empty-ic"><i class="fa fa-hand-pointer-o" aria-hidden="true"></i></span>
+                    <strong>No client selected</strong>
+                    <span>Pick a row in the list to see usage, change the plan or pause the client.</span>
+                </div>
+
+                <div class="sn-insp-body">
+                    <div class="sn-insp-head">
+                        <span class="sn-insp-avatar" id="selIni">?</span>
+                        <div class="sn-insp-id">
+                            <strong id="selName">-</strong>
+                            <button type="button" class="sn-insp-link" id="selUrl" onclick="SN.copy(this.dataset.url)" title="Copy workspace address"><span></span> <i class="fa fa-clone" aria-hidden="true"></i></button>
+                        </div>
+                        <span class="sn-status" id="selStatus">Active</span>
+                    </div>
+
+                    <div class="sn-insp-section">
+                        <div class="sn-insp-label">Usage</div>
+                        <div class="sn-use"><span>Users</span><b id="selUsers">-</b></div>
+                        <div class="sn-meter"><i id="selUsersBar" style="width:0%"></i></div>
+                        <div class="sn-use"><span>Storage</span><b id="selStorage">-</b></div>
+                        <div class="sn-meter"><i id="selStorageBar" style="width:0%"></i></div>
+                        <button type="button" class="sn-link sn-free-btn" onclick="snFreeUpSpace()"><i class="fa fa-eraser" aria-hidden="true"></i> Free up space</button>
+                    </div>
+
+                    <dl class="sn-insp-kv">
+                        <div><dt>Plan</dt><dd id="selPlanName">-</dd></div>
+                        <div><dt>Video</dt><dd id="selVideo">-</dd></div>
+                        <div><dt>Client since</dt><dd id="selSince">-</dd></div>
+                    </dl>
+
+                    <form method="post" asp-antiforgery="true" id="changePlanForm" action="#" class="sn-insp-section">
+                        <div class="sn-insp-label">Change plan</div>
+                        <modern-dropdown-with-label id="selPlan" name="planId" label="New plan" items="planItems" placeholder="Choose a plan"></modern-dropdown-with-label>
+                        <button type="button" class="cee-btn cee-btn-gradient sn-block" onclick="snChangePlan()"><i class="fa fa-check" aria-hidden="true"></i> Apply plan</button>
+                        <span class="sn-insp-note" id="selPlanNote">New limits apply straight away.</span>
+                    </form>
+
+                    <div class="sn-insp-foot">
+                        <button type="button" class="cee-btn sn-btn-light sn-block" onclick="snEditTenant()"><i class="fa fa-pencil" aria-hidden="true"></i> <span>Edit name or workspace</span></button>
+                        <button type="button" class="cee-btn sn-btn-light sn-block" id="selToggle" onclick="snToggleTenant()"><i class="fa fa-pause-circle" aria-hidden="true"></i> <span>Pause client</span></button>
+                        <button type="button" class="cee-btn sn-btn-light sn-block sn-danger-btn" id="selDelete" onclick="snDeleteTenant()"><i class="fa fa-trash" aria-hidden="true"></i> <span>Delete client</span></button>
+                        <span class="sn-insp-note" id="selDeleteNote">Pause the client before deleting it.</span>
+                    </div>
+                </div>
+            </aside>
         </div>
-        <div class="table-scroll">
-            <table class="pill-table">
-                <thead>
-                    <tr><th>Client</th><th>Plan</th><th>Users</th><th>Storage</th><th>Video</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr>
-                </thead>
-                <tbody>
-                    @foreach (var t in Model.Tenants)
-                    {
-                        var pct = t.StorageQuota == 0 ? 0 : (int)Math.Min(100, t.StorageUsed * 100 / t.StorageQuota);
-                        <tr data-filter="@t.Name @t.Slug">
-                            <td>
-                                <span class="row gap-12">
-                                    <span class="avatar av-40 tone-@(t.Slug.Sum(ch => (int)ch) % 6)">@(t.Name.Length > 0 ? t.Name[..1] : "?")</span>
-                                    <span><strong>@t.Name</strong><br /><span class="muted small">@t.Slug</span></span>
-                                </span>
-                            </td>
-                            <td>
-                                <form method="post" action="/admin/tenants/@t.Id/plan" class="inline">
-                                    <select name="planId" class="input input-sm" onchange="this.form.submit()" aria-label="Plan for @t.Name">
-                                        @foreach (var p in Model.Plans)
-                                        {
-                                            <option value="@p.PlanId" selected="@(p.Name == t.Plan)">@p.Name</option>
-                                        }
-                                    </select>
-                                </form>
-                            </td>
-                            <td>@t.Users / @t.MaxUsers</td>
-                            <td class="w-180">
-                                <span class="small">@UserExtensions.FormatBytes(t.StorageUsed) of @UserExtensions.FormatBytes(t.StorageQuota)</span>
-                                <div class="meter"><i style="width:@(pct)%" class="@(pct >= 80 ? "warn" : "")"></i></div>
-                            </td>
-                            <td>@t.Provider</td>
-                            <td><span class="pill @(t.IsActive ? "pill-green" : "pill-amber")">@(t.IsActive ? "Active" : "Paused")</span></td>
-                            <td class="right">
-                                <form method="post" action="/admin/tenants/@t.Id/active" class="inline">
-                                    <button type="submit" class="btn btn-ghost btn-sm">@(t.IsActive ? "Pause" : "Resume")</button>
-                                </form>
-                            </td>
-                        </tr>
-                    }
-                    @if (Model.Tenants.Count == 0)
-                    {
-                        <tr><td colspan="7" class="muted center">No tenants yet. Press Add tenant to create the first client workspace.</td></tr>
-                    }
-                </tbody>
-            </table>
+    </section>
+
+    @* ---- plans: one clean card per plan ---- *@
+    <section id="panePlans" class="sn-pane" hidden>
+        <div class="sn-plan-grid">
+            @foreach (var p in Model.Plans)
+            {
+                var count = Model.Tenants.Count(t => t.Plan == p.Name);
+                var tone = p.Name switch { "Medium" => "blue", "Large" => "pink", _ => "slate" };
+                <modern-group-box title="@($"{p.Name} | plan")" css-class="@($"sn-plan sn-plan-{tone}")" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(15,23,42,.08)" radius="22px" content-layout="block">
+                    <form method="post" asp-antiforgery="true" action="@($"/admin/plans/{p.PlanId}#plans")" class="sn-plan-form">
+                        <div class="sn-plan-sum">
+                            <span class="sn-plan-count">@count @(count == 1 ? "client" : "clients")</span>
+                            <span>@p.MaxUsers users · @UserExtensions.FormatBytes(p.StorageQuotaMb * 1024L * 1024L) · @p.MaxMeetingMinutes min meetings</span>
+                        </div>
+
+                        <div class="sn-plan-label">Capacity</div>
+                        <div class="sn-form-grid">
+                            <modern-input id="@($"pUsers{p.PlanId}")" name="maxUsers" label="Users" input-type="int" value="@p.MaxUsers.ToString(inv)" label-font-size="13px"></modern-input>
+                            <modern-input id="@($"pMeet{p.PlanId}")" name="maxMeetingParticipants" label="People per meeting" input-type="int" value="@p.MaxMeetingParticipants.ToString(inv)" label-font-size="13px"></modern-input>
+                        </div>
+
+                        <div class="sn-plan-label">Storage and time</div>
+                        <div class="sn-form-grid">
+                            <modern-input id="@($"pStore{p.PlanId}")" name="storageQuotaMb" label="Storage (MB)" input-type="int" value="@p.StorageQuotaMb.ToString(inv)" label-font-size="13px"></modern-input>
+                            <modern-input id="@($"pMin{p.PlanId}")" name="maxMeetingMinutes" label="Meeting length (min)" input-type="int" value="@p.MaxMeetingMinutes.ToString(inv)" label-font-size="13px"></modern-input>
+                        </div>
+
+                        <div class="sn-plan-label">Video</div>
+                        <div class="sn-form-grid">
+                            <modern-dropdown-with-label id="@($"pHeight{p.PlanId}")" name="maxVideoHeight" label="Quality" value="@p.MaxVideoHeight.ToString(inv)" items="heightItems"></modern-dropdown-with-label>
+                            <modern-dropdown-with-label id="@($"pProv{p.PlanId}")" name="videoProvider" label="Provider" value="@p.VideoProvider" items="providerItems"></modern-dropdown-with-label>
+                        </div>
+                        <div class="sn-plan-toggle">
+                            @if (Sahyog.ServiceLibrary.Video.VideoFeatures.RecordingAvailable)
+                            {
+                                <modern-checkbox id="@($"pRec{p.PlanId}")" name="recordingEnabled" label="Recording allowed" is-toggle-button="true" checked="@p.RecordingEnabled" label-font-size="13px"></modern-checkbox>
+                            }
+                            else
+                            {
+                                <div class="sn-rec-off" title="Recording is switched off for every plan for now">
+                                    <modern-checkbox id="@($"pRec{p.PlanId}")" name="recordingEnabled" label="Recording allowed" desc-text="Off for now · not available yet" is-toggle-button="true" checked="false" disabled="true" label-font-size="13px"></modern-checkbox>
+                                    <span class="sn-rec-off-tag"><i class="fa fa-lock" aria-hidden="true"></i> Locked</span>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="sn-plan-foot">
+                            <span>Changes apply to @count @(count == 1 ? "client" : "clients") straight away.</span>
+                            <button type="submit" class="cee-btn cee-btn-gradient sn-btn-sm"><i class="fa fa-floppy-o" aria-hidden="true"></i> Save</button>
+                        </div>
+                    </form>
+                </modern-group-box>
+            }
         </div>
     </section>
 </main>
 
-<dialog id="newTenantDialog" class="dialog glass-strong" data-open-on-load="@(Model.Error is not null)">
-    <form method="post" action="/admin/tenants" class="dialog-body">
-        <h2>New tenant</h2>
-        <div class="field"><label for="tName">Company name</label><input id="tName" name="NewTenant.Name" class="input" value="@n.Name" maxlength="120" required /></div>
-        <div class="field">
-            <label for="tSlug">Workspace</label>
-            <div class="input-group"><input id="tSlug" name="NewTenant.Slug" class="input" value="@n.Slug" maxlength="40" pattern="[A-Za-z0-9][A-Za-z0-9-]{1,38}[A-Za-z0-9]" placeholder="acme" required /><span class="input-suffix">.sahyog.app</span></div>
+<dialog id="newTenantDialog" class="sn-dialog glass-strong" data-open-on-load="@(Context.Request.Method == "POST" && Model.Error is not null ? "true" : "false")">
+    <form method="post" asp-antiforgery="true" action="/admin/tenants">
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-building-o" aria-hidden="true"></i></span><div><h2>New client workspace</h2><p>The client admin can sign in straight away.</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
         </div>
-        <div class="field">
-            <label for="tPlan">Plan</label>
-            <select id="tPlan" name="NewTenant.PlanId" class="input">
-                @foreach (var p in Model.Plans)
-                {
-                    <option value="@p.PlanId" selected="@(p.PlanId == n.PlanId)">@p.Name · @p.MaxUsers users · @UserExtensions.FormatBytes(p.StorageQuotaMb * 1024L * 1024L)</option>
-                }
-            </select>
+        <div class="sn-dlg-body">
+            <modern-group-box title="Company | details" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                <div class="sn-form-grid">
+                    <div class="full"><modern-input id="tName" name="NewTenant.Name" label="Company name" mandatory="true" value="@n.Name" max-length="120" label-font-size="13.5px"></modern-input></div>
+                    <modern-input id="tSlug" name="NewTenant.Slug" label="Workspace" mandatory="true" value="@n.Slug" max-length="40" placeholder="acme" label-font-size="13.5px"></modern-input>
+                    <modern-dropdown-with-label id="tPlan" name="NewTenant.PlanId" label="Plan" required="true" value="@n.PlanId.ToString(inv)" items="planItems"></modern-dropdown-with-label>
+                    <div class="full muted tiny">Workspace address: <b>&lt;workspace&gt;.shankhnaad.app</b> · letters, numbers or hyphens.</div>
+                </div>
+            </modern-group-box>
+            <modern-group-box title="Client | admin" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                <div class="sn-form-grid">
+                    <modern-input id="tAdmin" name="NewTenant.AdminName" label="Admin name" mandatory="true" value="@n.AdminName" max-length="100" label-font-size="13.5px"></modern-input>
+                    <modern-input id="tEmail" name="NewTenant.AdminEmail" label="Admin email" mandatory="true" value="@n.AdminEmail" max-length="200" label-font-size="13.5px"></modern-input>
+                    <div class="full"><modern-input id="tPass" name="NewTenant.AdminPassword" label="Temporary password" mandatory="true" is-password="true" placeholder="At least 8 characters" label-font-size="13.5px"></modern-input></div>
+                </div>
+            </modern-group-box>
         </div>
-        <div class="field"><label for="tAdmin">Admin name</label><input id="tAdmin" name="NewTenant.AdminName" class="input" value="@n.AdminName" maxlength="100" required /></div>
-        <div class="field"><label for="tEmail">Admin email</label><input id="tEmail" name="NewTenant.AdminEmail" type="email" class="input" value="@n.AdminEmail" required /></div>
-        <div class="field"><label for="tPass">Temporary password</label><input id="tPass" name="NewTenant.AdminPassword" type="password" class="input" minlength="8" required autocomplete="new-password" /></div>
-        <div class="row end gap-8">
-            <button type="button" class="btn btn-ghost" data-close>Cancel</button>
-            <button type="submit" class="btn btn-primary">Create workspace</button>
+        <div class="sn-dlg-foot">
+            <span></span>
+            <span style="display:flex;gap:10px">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Create workspace</button>
+            </span>
         </div>
     </form>
 </dialog>
+
+@* ---- edit a client: company name + workspace name ---- *@
+<dialog id="editTenantDialog" class="sn-dialog glass-strong">
+    <form method="post" asp-antiforgery="true" id="editTenantForm" action="#" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-pencil" aria-hidden="true"></i></span><div><h2>Edit client</h2><p id="editTenantSub">Change the company name or workspace name.</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body">
+            <div class="sn-form-grid">
+                <div class="full"><modern-input id="eName" name="name" label="Company name" mandatory="true" max-length="120" label-font-size="13.5px"></modern-input></div>
+                <div class="full"><modern-input id="eSlug" name="slug" label="Workspace" mandatory="true" max-length="40" placeholder="acme" label-font-size="13.5px"></modern-input></div>
+                <div class="full sn-hint" id="eSlugHint"><i class="fa fa-info-circle" aria-hidden="true"></i> Lowercase letters, numbers and hyphens. People type this to sign in.</div>
+                <div class="full sn-warn-box" id="eSlugWarn" hidden><i class="fa fa-exclamation-triangle" aria-hidden="true"></i> <span></span></div>
+            </div>
+        </div>
+        <div class="sn-dlg-foot">
+            <span></span>
+            <span style="display:flex;gap:10px">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Save</button>
+            </span>
+        </div>
+    </form>
+</dialog>
+
+@* ---- free up a client's storage: remove chat files (old ones, or all) ---- *@
+<dialog id="freeSpaceDialog" class="sn-dialog glass-strong">
+    <form method="post" asp-antiforgery="true" id="freeSpaceForm" action="#" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-eraser" aria-hidden="true"></i></span><div><h2>Free up space</h2><p id="fsSub">Remove chat files this client no longer needs.</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body">
+            <div class="sn-fs-now"><span>Using now</span><b id="fsTotal">-</b></div>
+            <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> Only files sent in chat use storage. Messages, meetings and recordings don't.</span>
+            <div style="margin-top:14px">
+                <modern-radio-group id="fsAge" name="age" label="Remove files sent" selected-value="90" label-font-size="13.5px">
+                    <modern-radio value="30" label="Over 30 days ago"></modern-radio>
+                    <modern-radio value="90" label="Over 3 months ago"></modern-radio>
+                    <modern-radio value="180" label="Over 6 months ago"></modern-radio>
+                    <modern-radio value="365" label="Over a year ago"></modern-radio>
+                    <modern-radio value="all" label="All files"></modern-radio>
+                </modern-radio-group>
+            </div>
+            <div class="sn-fs-result" id="fsResult" aria-live="polite">Checking…</div>
+            <span class="sn-hint">Each chat message stays and says the file was removed. Removed files can't be recovered.</span>
+        </div>
+        <div class="sn-dlg-foot">
+            <span></span>
+            <span style="display:flex;gap:10px">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="submit" class="cee-btn sn-btn-danger" id="fsSubmit" disabled><i class="fa fa-eraser" aria-hidden="true"></i> <span>Remove files</span></button>
+            </span>
+        </div>
+    </form>
+</dialog>
+
+@* ---- delete a client: type the workspace name to confirm ---- *@
+<dialog id="deleteTenantDialog" class="sn-dialog glass-strong">
+    <form method="post" asp-antiforgery="true" id="deleteTenantForm" action="#" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon sn-dlg-icon-danger"><i class="fa fa-trash" aria-hidden="true"></i></span><div><h2>Delete client</h2><p>This can't be undone.</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body">
+            <div class="sn-danger-box">
+                <strong>Deleting <span id="dName">this client</span> removes for good:</strong>
+                <ul>
+                    <li><span id="dUsers">All</span> people and their sign-ins</li>
+                    <li>All channels, direct chats and messages</li>
+                    <li>All uploaded files (<span id="dStorage">-</span>)</li>
+                    <li>All scheduled meetings</li>
+                </ul>
+                <span>Want to keep the data? Leave the client paused instead.</span>
+            </div>
+            <div style="margin-top:14px">
+                <modern-input id="dConfirm" name="confirmSlug" label="Type the workspace name to confirm" mandatory="true" max-length="40" label-font-size="13.5px"></modern-input>
+                <span class="sn-hint">Type <b id="dSlug">-</b> exactly.</span>
+            </div>
+        </div>
+        <div class="sn-dlg-foot">
+            <span></span>
+            <span style="display:flex;gap:10px">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="submit" class="cee-btn sn-btn-danger" id="dSubmit" disabled><i class="fa fa-trash" aria-hidden="true"></i> Delete forever</button>
+            </span>
+        </div>
+    </form>
+</dialog>
+
+@section Scripts {
+    <script>
+        (function () {
+            var $insp = $("#clientInspector");
+            // ---- tabs: Clients / Plans (remembered in the address, so saving a plan comes back to Plans) ----
+            var hints = { clients: "Select a client to see its details and change its plan.", plans: "Edit a plan and press Save. Every client on that plan gets the new limits." };
+            function showPane(id) {
+                $("#paneClients").prop("hidden", id !== "clients");
+                $("#panePlans").prop("hidden", id !== "plans");
+                $("#adminHint").text(hints[id] || "");
+                history.replaceState(null, "", id === "plans" ? "#plans" : location.pathname + location.search);
+            }
+            $("#adminTabs").on("tabcontrol:select", function (e, id) { showPane(id); });
+            $(function () {
+                if (location.hash === "#plans") { var api = $("#adminTabs").data("tc-api"); if (api) api.select("plans"); showPane("plans"); }
+            });
+
+            // ---- table heading: count badge + "active · paused" line under "All clients" ----
+            $(function () {
+                SN.tableHeading("TenantTable", @Model.Tenants.Count, [
+                    { text: "@activeCount active", dot: "live" },
+                    { text: "@(Model.Tenants.Count - activeCount) paused", dot: "paused" }
+                ]);
+            });
+
+            // ---- details panel ----
+            window.snFillInspector = function (row) {
+                if (!row) { $insp.attr("data-state", "empty"); return; }
+                var url = row.Slug + ".shankhnaad.app";
+                $("#selName").text(row.Name);
+                $("#selUrl").attr("data-url", url).find("span").text(url);
+                $("#selIni").text((row.Name || "?").split(/\s+/).map(function (w) { return w.charAt(0); }).slice(0, 2).join("").toUpperCase());
+                $("#selStatus").text(row.Status).attr("data-status", row.Status);
+                $("#selUsers").text(row.UsersText);
+                $("#selUsersBar").css("width", (row.UsersPct || 0) + "%");
+                $("#selStorage").text(row.Storage);
+                $("#selStorageBar").css("width", (row.StoragePct || 0) + "%");
+                $("#selPlanName").text(row.Plan);
+                $("#selVideo").text(row.Video);
+                $("#selSince").text(row.Since);
+                // "New plan" starts on the client's current plan
+                var $planOpt = $("#selPlan .ddwl-option").filter(function () { return String($(this).data("value")) === String(row.PlanId); });
+                if ($planOpt.length) { $planOpt.first().trigger("click"); $("#selPlan").removeClass("open"); }
+                else {
+                    $("#selPlan_value").val("");
+                    $("#selPlan .ddwl-option").removeClass("selected");
+                    $("#selPlan .ddwl-selected").text("Choose a plan");
+                    $("#selPlan").removeClass("has-value");
+                }
+                $("#selPlanNote").text("Currently on " + row.Plan + ". Pick another plan to move this client. New limits apply straight away.");
+                var paused = row.Status !== "Active";
+                $("#selToggle").toggleClass("is-resume", paused)
+                    .find("i").attr("class", paused ? "fa fa-play-circle" : "fa fa-pause-circle").end()
+                    .find("span").text(paused ? "Resume client" : "Pause client");
+                $("#selDelete").toggleClass("is-locked", !paused);
+                $("#selDeleteNote").prop("hidden", paused);
+                $insp.attr("data-state", "filled");
+                $insp.find(".sn-insp-body").removeClass("sn-in"); void $insp[0].offsetWidth; $insp.find(".sn-insp-body").addClass("sn-in");
+            };
+            $("#TenantTable").on("table:select", function (e, row) { snFillInspector(row); });
+        })();
+
+        function snEditTenant() {
+            var row = SN.need("TenantTable", "a client");
+            if (!row) return;
+            $("#editTenantForm").attr("action", "/admin/tenants/" + row.Id + "/edit");
+            $("#editTenantSub").text("Currently " + row.Name + " · workspace " + row.Slug);
+            $("#eName").val(row.Name).trigger("input");
+            $("#eSlug").val(row.Slug).attr("data-original", row.Slug).trigger("input");
+            $("#eSlugWarn").prop("hidden", true);
+            SN.open("editTenantDialog");
+            setTimeout(function () { $("#eName").trigger("focus"); }, 300);
+        }
+        // workspace name: keep it valid while typing and warn that sign-in changes
+        $(document).on("input", "#eSlug", function () {
+            var v = this.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+            if (v !== this.value) this.value = v;
+            var original = this.getAttribute("data-original") || "";
+            var changed = v && v !== original;
+            $("#eSlugWarn").prop("hidden", !changed).find("span")
+                .text(changed ? "Everyone in this client must sign in with workspace “" + v + "” from now on. Tell them before you save." : "");
+        });
+        $("#editTenantForm").on("submit", function (e) {
+            var name = $.trim($("#eName").val()), slug = $.trim($("#eSlug").val());
+            if (!name || !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug)) {
+                e.preventDefault();
+                Sahyog.toast("Enter a company name, and a workspace name of 3–40 lowercase letters, numbers or hyphens.", { kind: "warn", title: "Check the details" });
+            }
+        });
+
+        function snDeleteTenant() {
+            var row = SN.need("TenantTable", "a client");
+            if (!row) return;
+            if (row.Status === "Active") {
+                Sahyog.toast(row.Name + " is active. Pause it (everyone is signed out), then delete it.", { kind: "info", title: "Pause the client first" });
+                return;
+            }
+            $("#deleteTenantForm").attr("action", "/admin/tenants/" + row.Id + "/delete").data("slug", row.Slug);
+            $("#dName").text(row.Name);
+            $("#dUsers").text(String(row.UsersText || "").split(" of ")[0] || "All");
+            $("#dStorage").text(String(row.Storage || "").split(" of ")[0] || "0 B");
+            $("#dSlug").text(row.Slug);
+            $("#dConfirm").val("").trigger("input");
+            $("#dSubmit").prop("disabled", true);
+            SN.open("deleteTenantDialog");
+            setTimeout(function () { $("#dConfirm").trigger("focus"); }, 300);
+        }
+        $(document).on("input", "#dConfirm", function () {
+            var want = $("#deleteTenantForm").data("slug") || "";
+            $("#dSubmit").prop("disabled", $.trim(this.value).toLowerCase() !== want);
+        });
+        $("#deleteTenantForm").on("submit", function (e) {
+            if ($("#dSubmit").prop("disabled")) { e.preventDefault(); return; }
+            $("#dSubmit").prop("disabled", true).html('<i class="fa fa-spinner fa-spin" aria-hidden="true"></i> Deleting…');
+        });
+
+        // ---- free up space: live preview of what each choice removes ----
+        var fsTenant = null, fsSeq = 0;
+        function fsAge() { return $('input[name="age"]:checked').val() || "90"; }
+        function fsPreview() {
+            if (!fsTenant) return;
+            var seq = ++fsSeq, age = fsAge();
+            $("#fsResult").removeClass("none").text("Checking…");
+            $("#fsSubmit").prop("disabled", true);
+            $.getJSON("/admin/tenants/" + fsTenant + "/files", { age: age }).done(function (d) {
+                if (seq !== fsSeq) return;            // an older answer arrived late
+                $("#fsTotal").text(d.totalText + " in " + d.totalFiles + " file" + (d.totalFiles === 1 ? "" : "s"));
+                if (d.files === 0) {
+                    $("#fsResult").addClass("none").text("No files match. Nothing to remove.");
+                } else {
+                    $("#fsResult").text("This removes " + d.files + " file" + (d.files === 1 ? "" : "s") + " and frees " + d.text + ".");
+                    $("#fsSubmit").prop("disabled", false).find("span").text("Remove " + d.files + " file" + (d.files === 1 ? "" : "s"));
+                }
+            }).fail(function () {
+                if (seq === fsSeq) $("#fsResult").addClass("none").text("Couldn't check the files. Try again.");
+            });
+        }
+        function snFreeUpSpace() {
+            var row = SN.need("TenantTable", "a client");
+            if (!row) return;
+            fsTenant = row.Id;
+            $("#freeSpaceForm").attr("action", "/admin/tenants/" + row.Id + "/files/purge");
+            $("#fsSub").text(row.Name + " · " + row.Storage);
+            $("#fsTotal").text("-");
+            $("#fsSubmit").find("span").text("Remove files");
+            SN.open("freeSpaceDialog");
+            fsPreview();
+        }
+        $(document).on("change", 'input[name="age"]', fsPreview);
+        $("#freeSpaceForm").on("submit", function (e) {
+            if ($("#fsSubmit").prop("disabled")) { e.preventDefault(); return; }
+            $("#fsSubmit").prop("disabled", true).html('<i class="fa fa-spinner fa-spin" aria-hidden="true"></i> Removing…');
+        });
+
+        function snChangePlan() {
+            var row = SN.need("TenantTable", "a client");
+            if (!row) return;
+            var planId = $("#selPlan_value").val();
+            if (!planId) { Sahyog.toast("Pick the new plan first.", { kind: "info", title: "Choose a plan" }); return; }
+            if (String(planId) === String(row.PlanId)) { Sahyog.toast(row.Name + " is already on the " + row.Plan + " plan. Pick a different plan to change it.", { kind: "info", title: "Already on this plan" }); return; }
+            SN.post("/admin/tenants/" + row.Id + "/plan", { planId: planId });
+        }
+        function snToggleTenant() {
+            var row = SN.need("TenantTable", "a client");
+            if (!row) return;
+            var pausing = row.Status === "Active";
+            SN.confirmPost("/admin/tenants/" + row.Id + "/active", {
+                title: pausing ? "Pause client" : "Resume client",
+                text: pausing ? "Pause " + row.Name + "? Its users are signed out and cannot sign in." : "Resume " + row.Name + "? Its users can sign in again.",
+                confirmText: pausing ? "Pause" : "Resume",
+                danger: pausing
+            });
+        }
+    </script>
+}

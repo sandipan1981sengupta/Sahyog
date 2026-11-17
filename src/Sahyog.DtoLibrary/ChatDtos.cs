@@ -3,9 +3,19 @@ namespace Sahyog.DtoLibrary;
 /// <summary>One line in the chat sidebar (sahyog_Chat_GetSidebar). For DMs, Other* is the other person.</summary>
 public sealed record SidebarItemDto(
     Guid ChannelId, string Name, string? Description, bool IsDirect, int UnreadCount, DateTime LastMessageUtc,
-    Guid? OtherUserId, string? OtherName, int? OtherTone);
+    Guid? OtherUserId, string? OtherName, int? OtherTone)
+{
+    /// <summary>A group of chosen people (not the whole workspace). Needs 16_Groups.sql.</summary>
+    public bool IsPrivate { get; init; }
+}
 
-public sealed record ChannelDto(Guid ChannelId, string Name, string? Description, bool IsDirect);
+public sealed record ChannelDto(Guid ChannelId, string Name, string? Description, bool IsDirect)
+{
+    /// <summary>Who created the channel (null for #general and before 14_ChannelEdit.sql).</summary>
+    public Guid? CreatedBy { get; init; }
+    /// <summary>The workspace's first channel (#general): everyone is in it, so it can't be deleted. Null before 14_ChannelEdit.sql.</summary>
+    public bool? IsMain { get; init; }
+}
 
 public sealed record MemberDto(Guid UserId, string DisplayName, int AvatarTone, string Email)
 {
@@ -41,9 +51,19 @@ public enum SendStatus { Ok = 0, NotMember = 1, StorageFull = 2 }
 
 public sealed record SendResultDto(SendStatus Status, MessageDto? Message);
 
-public sealed record CreateChannelRequest(Guid TenantId, Guid ChannelId, string Name, string? Description, Guid CreatedBy);
+public sealed record CreateChannelRequest(Guid TenantId, Guid ChannelId, string Name, string? Description, Guid CreatedBy)
+{
+    /// <summary>Set for a private group: only these people (plus the creator) are added.</summary>
+    public List<Guid>? MemberIds { get; init; }
+}
 
-public sealed record CreateChannelResultDto(bool NameTaken, List<Guid> MemberIds);
+public sealed record CreateChannelResultDto(bool NameTaken, List<Guid> MemberIds)
+{
+    public bool NobodyPicked { get; init; }
+}
+
+/// <summary>How far someone has read in a conversation (for the ✓✓ read ticks).</summary>
+public sealed record ReadStateDto(Guid UserId, string DisplayName, DateTime LastReadUtc);
 
 /// <summary>Sent over SignalR to ring someone's screen.</summary>
 public sealed record IncomingCallDto(Guid MeetingId, string Title, string CallerName, string CallerInitials, int CallerTone, string RoomUrl);

@@ -1,0 +1,207 @@
+/* =====================================================================
+   CloudWheel Loader — reusable styles
+   Every color/behavior is driven by CSS custom properties set on the
+   root element (.cw-loader), so you can theme multiple instances on
+   the same page just by changing the variables — no CSS edits needed.
+   ===================================================================== */
+
+.cw-loader {
+  /* ---------- Configurable design tokens (override via inline style,
+     a class, or the JS helper's `options`) ---------- */
+  --cw-bg: #0f2036;                 /* stage background; use "transparent" for none */
+  --cw-cloud-color: #8FB8CE;        /* cloud outline color (solid) */
+  --cw-cloud-color-light: #FFFFFF;  /* lightest stop of the cloud gradient */
+  --cw-cloud-color-dark: #6E9DBE;   /* darkest stop of the cloud gradient */
+  --cw-wheel-color: #1F3A5F;        /* wheel rim / plate color */
+  --cw-wheel-color-light: #4A7AA6;  /* lightest stop of the wheel rim gradient */
+  --cw-wheel-color-dark: #0B1928;   /* darkest stop of the wheel rim gradient */
+  --cw-spoke-color: #D9AE45;        /* spoke + hub color */
+  --cw-spoke-color-light: #FCE7A6;  /* hub gradient light stop */
+  --cw-spoke-color-dark: #8A6716;   /* hub gradient dark stop */
+  --cw-text-color: #ffffff;         /* main wordmark color */
+  --cw-subtext-color: #8FB8CE;      /* "SOLUTION" subtitle color */
+  --cw-glow-color: 143,184,206;     /* r,g,b triple used for the ambient glow */
+
+  --cw-size: 150px;                 /* emblem width/height */
+  --cw-wheel-spin-speed: 2.8s;
+  --cw-cloud-drift-speed: 3.4s;
+
+  /* ---------- Layout ---------- */
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+  background: var(--cw-bg);
+  padding: 40px;
+  font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+}
+
+.cw-loader * { box-sizing: border-box; }
+
+/* Full-viewport variant: add this class to use as a page loader/splash */
+.cw-loader--fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10000;
+  padding: 0;
+}
+
+/* ---------- Ambient glow behind the emblem ---------- */
+.cw-loader__glow {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  width: 220px;
+  height: 220px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle closest-side,
+    rgba(var(--cw-glow-color), 0.30) 0%,
+    rgba(var(--cw-glow-color), 0.10) 55%,
+    rgba(var(--cw-glow-color), 0) 100%);
+  animation: cw-pulseGlow 2.6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes cw-pulseGlow {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.65; }
+  50%      { transform: translate(-50%, -50%) scale(1.08); opacity: 1; }
+}
+
+/* ---------- Emblem (cloud + wheel SVG) ---------- */
+.cw-loader__svg {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: var(--cw-size);
+  height: var(--cw-size);
+  filter: drop-shadow(0 8px 20px rgba(0,0,0,0.4));
+}
+
+.cw-loader__svg .cw-wheel-part,
+.cw-loader__svg .cw-cloud-part {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.cw-loader__svg .cw-wheel-part {
+  animation: cw-wheelSpin var(--cw-wheel-spin-speed) linear infinite;
+}
+
+.cw-loader__svg .cw-cloud-part {
+  animation: cw-cloudDrift var(--cw-cloud-drift-speed) ease-in-out infinite;
+}
+
+@keyframes cw-wheelSpin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Cloud moves left -> right -> left continuously, with a slight bob */
+@keyframes cw-cloudDrift {
+  0%, 100% { transform: translate(0, 0); }
+  25%      { transform: translate(-6px, -2px); }
+  50%      { transform: translate(0, 0); }
+  75%      { transform: translate(6px, -2px); }
+}
+
+/* Small floating dots near the cloud for atmosphere */
+.cw-loader__svg .cw-puff { fill: rgba(255,255,255,0.5); }
+.cw-loader__svg .cw-puff-a { animation: cw-floatPuff 4.5s ease-in-out infinite; }
+.cw-loader__svg .cw-puff-b { animation: cw-floatPuff 5.5s ease-in-out infinite 0.6s; }
+.cw-loader__svg .cw-puff-c { animation: cw-floatPuff 5s ease-in-out infinite 1.2s; }
+@keyframes cw-floatPuff {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50%      { transform: translateY(-5px); opacity: 0.85; }
+}
+
+/* ---------- Wordmark ---------- */
+.cw-loader__text {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 18px;
+}
+
+.cw-loader__word {
+  font-weight: 700;
+  font-size: 1.9rem;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  color: var(--cw-text-color);
+  text-align: center;
+  text-shadow: 0 2px 12px rgba(var(--cw-glow-color), 0.5);
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.cw-loader__subword {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  color: var(--cw-subtext-color);
+  margin-top: 4px;
+  text-transform: uppercase;
+}
+
+/* ---------- Shimmering loading bar ---------- */
+.cw-loader__bar {
+  margin-top: 16px;
+  width: 140px;
+  height: 3px;
+  border-radius: 3px;
+  background: rgba(var(--cw-glow-color), 0.18);
+  overflow: hidden;
+  position: relative;
+}
+.cw-loader__bar::after {
+  content: "";
+  position: absolute;
+  top: 0; left: -40%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg,
+    transparent,
+    var(--cw-spoke-color),
+    var(--cw-cloud-color),
+    transparent);
+  animation: cw-barSlide 1.4s ease-in-out infinite;
+}
+@keyframes cw-barSlide {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
+
+/* Hide the bar entirely: <div class="cw-loader__bar" hidden> or via JS option */
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-loader__svg .cw-wheel-part,
+  .cw-loader__svg .cw-cloud-part,
+  .cw-loader__glow,
+  .cw-loader__svg .cw-puff-a,
+  .cw-loader__svg .cw-puff-b,
+  .cw-loader__svg .cw-puff-c,
+  .cw-loader__bar::after {
+    animation: none;
+  }
+}
+
+
+
+.loader-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.85);
+    z-index: 10;
+}

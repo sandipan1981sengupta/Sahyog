@@ -1,0 +1,405 @@
+/* =========================================================
+   MODERN SIDEBAR
+   Colors/spacing come from controls-theme.css — load that file first.
+   Requires Font Awesome for icons (same CDN already used by modern-table):
+   https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css
+   ========================================================= */
+
+.modern-sidebar {
+    --ms-dark-bg: #1e2432;
+    --ms-dark-bg-soft: #262d3d;
+    --ms-dark-text: #b8bfcc;
+    --ms-dark-text-muted: #7b8394;
+    --ms-dark-border: #333c4f;
+    width: 260px; /* fallback if SidebarWidth isn't set — normally overridden by inline style */
+    display: flex;
+    flex-direction: column;
+    background: var(--ctrl-bg);
+    border: 1px solid var(--ctrl-border);
+    border-radius: var(--ctrl-radius-lg);
+    box-shadow: var(--ctrl-shadow-sm);
+    font-family: var(--ctrl-font);
+    overflow: hidden;
+    transition: width .25s ease;
+    box-sizing: border-box;
+}
+
+    .modern-sidebar.ms-no-border {
+        border: none;
+        box-shadow: none;
+    }
+
+    .modern-sidebar.ms-dark {
+        background: var(--ms-dark-bg);
+        border-color: var(--ms-dark-border);
+    }
+
+    .modern-sidebar.ms-collapsed {
+        width: 72px;
+    }
+
+
+/* ---- Header (logo + toggle) ---- */
+
+.ms-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 16px;
+    flex-shrink: 0;
+}
+
+.ms-logo {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--ctrl-accent);
+    flex-shrink: 0;
+}
+
+.ms-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: transparent;
+    color: var(--ctrl-text-muted);
+    cursor: pointer;
+    border-radius: var(--ctrl-radius-sm);
+    transition: background .15s ease;
+    flex-shrink: 0;
+}
+
+.ms-dark .ms-toggle-btn {
+    color: var(--ms-dark-text-muted);
+}
+
+.ms-toggle-btn:hover {
+    background: var(--ctrl-bg-hover);
+}
+
+.ms-dark .ms-toggle-btn:hover {
+    background: var(--ms-dark-bg-soft);
+}
+
+.ms-collapsed .ms-toggle-btn {
+    display: none; /* hidden in collapsed state — not enough room, click the logo area or use JS to expand again */
+}
+
+
+/* ---- Nav / menu list ---- */
+
+.ms-nav {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 4px 12px;
+}
+
+.ms-menu-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.ms-menu-item {
+    margin-bottom: 2px;
+}
+
+.ms-item-link {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 10px;
+    border: none;
+    background: transparent;
+    border-radius: var(--ctrl-radius-md);
+    cursor: pointer;
+    text-decoration: none;
+    color: var(--ctrl-text);
+    font-size: var(--ms-menu-font-size, 14px);
+    font-weight: var(--ms-menu-font-weight, 600);
+    font-family: inherit;
+    text-align: left;
+    transition: background .15s ease, color .15s ease;
+}
+
+.ms-dark .ms-item-link {
+    color: var(--ms-dark-text);
+}
+
+.ms-item-link:hover {
+    background: var(--ms-hover-color, var(--ctrl-bg-hover));
+}
+
+.ms-dark .ms-item-link:hover {
+    background: var(--ms-hover-color, var(--ms-dark-bg-soft));
+}
+
+.ms-menu-item.ms-active > .ms-item-link {
+    color: var(--ctrl-accent);
+    font-weight: 700;
+}
+
+/* Background fill only applies to leaf items (no children) — a parent
+       with an active descendant just gets colored/bold text, avoiding a
+       redundant double-highlight when both are "active" at once */
+.ms-menu-item.ms-active:not(.ms-has-children) > .ms-item-link {
+    background: var(--ms-selection-color, var(--ctrl-accent-tint));
+    border-radius: var(--ctrl-radius-md);
+    position: relative;
+}
+
+.ms-dark .ms-menu-item.ms-active:not(.ms-has-children) > .ms-item-link {
+    background: var(--ms-selection-color, rgba(59, 130, 246, 0.18));
+}
+
+.ms-menu-item.ms-active > .ms-item-link .ms-item-icon {
+    color: var(--ctrl-accent);
+}
+
+/* Left accent bar — specific to submenu leaf items, since it's
+   positioned to reach the submenu's own left guide line, which only
+   exists in that nested context */
+.ms-submenu .ms-menu-item.ms-active > .ms-item-link::before {
+    content: '';
+    position: absolute;
+    left: -14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: var(--ctrl-accent);
+    border-radius: 0 3px 3px 0;
+}
+
+.ms-item-icon {
+    width: var(--ms-icon-size, 15px);
+    text-align: center;
+    font-size: var(--ms-icon-size, 15px);
+    color: var(--ctrl-text-muted);
+    flex-shrink: 0;
+}
+
+.ms-dark .ms-item-icon {
+    color: var(--ms-dark-text-muted);
+}
+
+.ms-item-icon-spacer {
+    width: var(--ms-icon-size, 15px);
+    flex-shrink: 0;
+}
+
+.ms-item-label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ms-chevron {
+    flex-shrink: 0;
+    color: var(--ctrl-text-faint);
+    transition: transform .2s ease;
+}
+
+.ms-dark .ms-chevron {
+    color: var(--ms-dark-text-muted);
+}
+
+.ms-menu-item.ms-open > .ms-item-link .ms-chevron {
+    transform: rotate(180deg);
+}
+
+
+/* ---- Submenu (nested list) — smooth expand/collapse ---- */
+
+.ms-submenu {
+    list-style: none;
+    margin: 0 0 0 16px;
+    padding: 0 0 0 14px;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(-4px);
+    border-left: 2px solid var(--ctrl-border-light);
+    background: var(--ms-submenu-bg, var(--ctrl-bg-soft));
+    border-radius: 0 var(--ctrl-radius-md) var(--ctrl-radius-md) 0;
+    transition: max-height .35s cubic-bezier(0.4, 0, 0.2, 1), opacity .25s ease, transform .25s ease;
+    /* padding/margin intentionally NOT transitioned — they change
+       instantly with the class toggle so scrollHeight measurements
+       (taken synchronously in JS right after the class change) always
+       reflect the correct target value, not a mid-transition one */
+}
+
+    .ms-submenu.ms-open {
+        margin-top: 4px;
+        margin-bottom: 4px;
+        padding-top: 6px;
+        padding-bottom: 12px;
+        opacity: 1;
+        transform: translateY(0);
+        /* max-height is set inline by JS to the measured content height,
+           so the animation duration always matches the actual content
+           length rather than a fixed guess */
+    }
+
+.ms-dark .ms-submenu {
+    border-left-color: var(--ms-dark-border);
+    background: var(--ms-submenu-bg, var(--ms-dark-bg-soft));
+}
+
+.ms-submenu .ms-item-link {
+    font-size: var(--ms-submenu-font-size, 13.5px);
+    font-weight: var(--ms-submenu-font-weight, 500);
+    padding: 8px 10px;
+}
+
+
+/* ---- Collapsed state — icon-only ---- */
+
+.ms-collapsed .ms-nav {
+    padding: 4px 8px;
+}
+
+.ms-collapsed .ms-item-link {
+    justify-content: center;
+    padding: 10px 0;
+}
+
+.ms-collapsed .ms-item-label,
+.ms-collapsed .ms-chevron {
+    display: none;
+}
+
+.ms-collapsed .ms-submenu {
+    display: none; /* nested items aren't shown in icon-only mode */
+}
+
+
+/* ---- Fixed bottom section (footer menu + profile) — never scrolls ---- */
+
+.ms-fixed-bottom {
+    flex-shrink: 0;
+    border-top: 1px solid var(--ctrl-border-light);
+}
+
+.ms-dark .ms-fixed-bottom {
+    border-top-color: var(--ms-dark-border);
+}
+
+.ms-footer-menu-list {
+    padding: 8px 12px 4px 12px;
+}
+
+.ms-collapsed .ms-footer-menu-list {
+    padding: 8px 8px 4px 8px;
+}
+
+
+/* ---- Footer (user profile) ---- */
+
+.ms-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    flex-shrink: 0;
+}
+
+.ms-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.ms-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--ctrl-bg-soft);
+    display: block;
+}
+
+.ms-status-dot {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #16a34a;
+    border: 2px solid var(--ctrl-bg);
+}
+
+.ms-dark .ms-status-dot {
+    border-color: var(--ms-dark-bg);
+}
+
+.ms-user-info {
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+.ms-user-name {
+    font-size: var(--ms-user-name-size, 13.5px);
+    font-weight: var(--ms-user-name-weight, 700);
+    color: var(--ms-user-name-color, var(--ctrl-text));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ms-dark .ms-user-name {
+    color: var(--ms-user-name-color, #ffffff);
+}
+
+.ms-user-email {
+    font-size: 12px;
+    color: var(--ctrl-text-faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ms-dark .ms-user-email {
+    color: var(--ms-dark-text-muted);
+}
+
+.ms-more-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: transparent;
+    color: var(--ctrl-text-faint);
+    cursor: pointer;
+    border-radius: var(--ctrl-radius-sm);
+    flex-shrink: 0;
+}
+
+.ms-dark .ms-more-btn {
+    color: var(--ms-dark-text-muted);
+}
+
+.ms-more-btn:hover {
+    background: var(--ctrl-bg-hover);
+}
+
+.ms-dark .ms-more-btn:hover {
+    background: var(--ms-dark-bg-soft);
+}
+
+.ms-collapsed .ms-footer {
+    padding: 14px 0;
+    justify-content: center;
+}
+
+.ms-collapsed .ms-user-info,
+.ms-collapsed .ms-more-btn {
+    display: none;
+}

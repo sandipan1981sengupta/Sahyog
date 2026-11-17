@@ -51,7 +51,7 @@ public sealed partial class ChatController : Controller
 
         var channels = sidebar.Where(s => !s.IsDirect)
             .OrderBy(s => s.Name)
-            .Select(s => new ChannelVm(s.ChannelId, s.Name, false, s.UnreadCount, null))
+            .Select(s => new ChannelVm(s.ChannelId, s.Name, false, s.UnreadCount, null, s.IsPrivate))
             .ToList();
         var directs = sidebar.Where(s => s.IsDirect && s.OtherUserId is not null)
             .OrderByDescending(s => s.LastMessageUtc)
@@ -72,6 +72,8 @@ public sealed partial class ChatController : Controller
         var members = new List<PersonVm>();
         var files = new List<AttachmentDto>();
         var hasOlder = false;
+        bool isMain = false, canEdit = false, canDelete = false;
+        var readState = new List<ReadStateDto>();
 
         if (current is not null)
         {
@@ -86,7 +88,18 @@ public sealed partial class ChatController : Controller
 
             files = await _chat.GetRecentFilesAsync(tenantId, current.Id);
 
-            await _chat.MarkReadAsync(tenantId, current.Id, Me);
+            if (!current.IsDirect && await _chat.GetChannelAsync(tenantId, current.Id) is ChannelDto info)
+            {
+                var isAdmin = User.IsInRole(AppRoles.TenantAdmin);
+                isMain = info.IsMain ?? info.Name == "general";
+                // admins always see Edit / Delete (if 14_ChannelEdit.sql isn't run yet, clicking says so)
+                canEdit = isAdmin || (info.CreatedBy is Guid by && by == Me);
+                canDelete = isAdmin && !isMain;
+            }
+
+            if (await _chat.MarkReadAsync(tenantId, current.Id, Me) is DateTime readUtc)
+                await _hub.Clients.Group(ChatHub.ChannelGroup(current.Id)).SendAsync("ChannelRead", current.Id, Me.ToString(), readUtc);
+            readState = await _chat.GetReadStateAsync(tenantId, current.Id);
             var currentId = current.Id;
             current = current with { Unread = 0 };
             channels = channels.Select(c => c.Id == currentId ? c with { Unread = 0 } : c).ToList();
@@ -105,6 +118,10 @@ public sealed partial class ChatController : Controller
             Channels = channels,
             Directs = directs,
             Current = current,
+            CanEditChannel = canEdit,
+            CanDeleteChannel = canDelete,
+            CurrentIsMain = isMain,
+            ReadState = readState,
             CurrentDescription = sidebar.FirstOrDefault(s => s.ChannelId == current?.Id)?.Description,
             Messages = messages,
             Members = members,
@@ -132,7 +149,7 @@ public sealed partial class ChatController : Controller
     private static partial Regex NonSlug();
 
     [HttpPost("channels")]
-    public async Task<IActionResult> CreateChannel(string name, string? description)
+    public async Task<IActionResult> CreateChannel(string name, string? description, bool isPrivate = false, List<Guid>? members = null)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var clean = NonSlug().Replace((name ?? "").Trim().ToLowerInvariant().Replace(' ', '-'), "").Trim('-');
@@ -143,16 +160,125 @@ public sealed partial class ChatController : Controller
         }
 
         var channelId = Guid.NewGuid();
-        var (nameTaken, memberIds) = await _chat.CreateChannelAsync(new CreateChannelRequest(tenantId, channelId, clean, description?.Trim(), Me));
+        var created = await _chat.CreateChannelAsync(new CreateChannelRequest(tenantId, channelId, clean, description?.Trim(), Me)
+        {
+            // a private group: only the people picked (and you)
+            MemberIds = isPrivate ? (members ?? new List<Guid>()) : null
+        });
+        var (nameTaken, memberIds) = created;
         if (nameTaken)
         {
             TempData["Error"] = $"#{clean} already exists.";
             return RedirectToAction(nameof(Index));
         }
+        if (created.NobodyPicked)
+        {
+            TempData["Error"] = "Pick at least one person for the group.";
+            return RedirectToAction(nameof(Index));
+        }
+        if (isPrivate)
+        {
+            await AddConnectionsToGroupAsync(channelId, memberIds.Select(m => m.ToString()));
+            TempData["Message"] = $"Group #{clean} is ready with {memberIds.Count} people. Only they can see it.";
+            return RedirectToAction(nameof(Index), new { id = channelId });
+        }
 
         await AddConnectionsToGroupAsync(channelId, memberIds.Select(m => m.ToString()));
         await _hub.Clients.Group(ChatHub.TenantGroup(tenantId)).SendAsync("ChannelCreated", channelId, clean);
         return RedirectToAction(nameof(Index), new { id = channelId });
+    }
+
+    private const string MissingScript = "Editing channels needs one database update: run database/14_ChannelEdit.sql in SQL Server Management Studio, then try again.";
+
+    /// <summary>Renames a channel and changes its description (workspace admins, or whoever created it).</summary>
+    [HttpPost("{id:guid}/edit-channel")]
+    public async Task<IActionResult> EditChannel(Guid id, string name, string? description)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var clean = NonSlug().Replace((name ?? "").Trim().ToLowerInvariant().Replace(' ', '-'), "").Trim('-');
+        if (clean.Length is < 2 or > 60)
+        {
+            TempData["Error"] = "Channel name must be 2–60 letters or numbers.";
+            return RedirectToAction(nameof(Index), new { id });
+        }
+        var desc = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        int status;
+        try { status = await _chat.UpdateChannelAsync(tenantId, id, Me, User.IsInRole(AppRoles.TenantAdmin), clean, desc); }
+        catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 2812)   // stored procedure not found
+        {
+            TempData["Error"] = MissingScript;
+            return RedirectToAction(nameof(Index), new { id });
+        }
+        switch (status)
+        {
+            case 1: return NotFound();
+            case 2:
+                TempData["Error"] = "Only workspace admins, or the person who created this channel, can rename it.";
+                return RedirectToAction(nameof(Index), new { id });
+            case 3:
+                TempData["Error"] = $"#{clean} already exists. Pick another name.";
+                return RedirectToAction(nameof(Index), new { id });
+        }
+        // everyone in the workspace sees the new name straight away
+        await _hub.Clients.Group(ChatHub.TenantGroup(tenantId)).SendAsync("ChannelUpdated", id, clean, desc);
+        TempData["Message"] = $"Saved. The channel is now #{clean}.";
+        return RedirectToAction(nameof(Index), new { id });
+    }
+
+    /// <summary>Deletes a group channel with its messages and files (workspace admins; never #general).</summary>
+    [HttpPost("{id:guid}/delete-channel")]
+    [Authorize(Roles = AppRoles.TenantAdmin)]
+    public async Task<IActionResult> DeleteChannel(Guid id)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var name = (await _chat.GetChannelAsync(tenantId, id))?.Name;
+        int status;
+        List<string> files;
+        try { (status, files) = await _chat.DeleteChannelAsync(tenantId, id); }
+        catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 2812)
+        {
+            TempData["Error"] = MissingScript;
+            return RedirectToAction(nameof(Index), new { id });
+        }
+        if (status == 1) return NotFound();
+        if (status == 4)
+        {
+            TempData["Error"] = "This is your workspace's main channel. Everyone is in it, so it can't be deleted (you can rename it).";
+            return RedirectToAction(nameof(Index), new { id });
+        }
+        foreach (var path in files)
+        {
+            try { _files.Delete(path); } catch { /* the record is gone; a stray file is harmless */ }
+        }
+        await _hub.Clients.Group(ChatHub.TenantGroup(tenantId)).SendAsync("ChannelDeleted", id);
+        TempData["Message"] = $"#{name} is deleted, with its messages and files.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // one ping per person every 15 seconds, so nobody can be spammed
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> LastPing = new();
+
+    /// <summary>
+    /// "Ping": a quick nudge (sound + pop-up, and a desktop alert if the tab is in the background)
+    /// with a button to open your chat. Called from the hover buttons in the conversations list.
+    /// </summary>
+    [HttpPost("ping/{userId:guid}")]
+    public async Task<IActionResult> Ping(Guid userId)
+    {
+        if (User.TenantId() is not Guid tenantId || userId == Me) return BadRequest();
+        var key = $"{Me:N}>{userId:N}";
+        if (LastPing.TryGetValue(key, out var last) && DateTime.UtcNow - last < TimeSpan.FromSeconds(15))
+            return StatusCode(429, new { error = "You just pinged them. Give it a few seconds." });
+
+        var channelId = await _chat.GetOrCreateDirectAsync(tenantId, Me, userId);   // null: not an active teammate
+        if (channelId is null) return NotFound(new { error = "That person isn't in this workspace any more." });
+        LastPing[key] = DateTime.UtcNow;
+
+        await AddConnectionsToGroupAsync(channelId.Value, new[] { Me.ToString(), userId.ToString() });
+        var online = _presence.OnlineUsers(tenantId).Contains(userId.ToString());
+        await _hub.Clients.User(userId.ToString()).SendAsync("Pinged",
+            User.DisplayName(), User.Initials(), User.AvatarTone(), $"/chat/{channelId}");
+        return Json(new { ok = true, online });
     }
 
     /// <summary>Opens (or creates) the one-to-one conversation with another person.</summary>
@@ -165,6 +291,43 @@ public sealed partial class ChatController : Controller
 
         await AddConnectionsToGroupAsync(channelId.Value, new[] { Me.ToString(), userId.ToString() });
         return RedirectToAction(nameof(Index), new { id = channelId });
+    }
+
+    /// <summary>Deletes one message: your own, or any message if you are a workspace admin. Called from chat.js.</summary>
+    [HttpPost("messages/{messageId:long}/delete")]
+    public async Task<IActionResult> DeleteMessage(long messageId)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var (status, channelId, path) = await _chat.DeleteMessageAsync(tenantId, messageId, Me, User.IsInRole(AppRoles.TenantAdmin));
+        if (status == 1) return NotFound(new { error = "That message no longer exists." });
+        if (status == 2) return StatusCode(403, new { error = "You can delete only your own messages." });
+        if (path is not null)
+        {
+            try { _files.Delete(path); } catch { /* the record is gone; a stray file is harmless */ }
+        }
+        await _hub.Clients.Group(ChatHub.ChannelGroup(channelId!.Value)).SendAsync("MessageDeleted", channelId.Value, messageId);
+        return Json(new { ok = true });
+    }
+
+    /// <summary>Deletes a one-to-one conversation (messages and files) for both people.</summary>
+    [HttpPost("{id:guid}/delete")]
+    public async Task<IActionResult> DeleteDirect(Guid id)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var members = (await _chat.GetMembersAsync(tenantId, id)).Select(m => m.Id.ToString()).ToList();
+        var (deleted, files) = await _chat.DeleteDirectAsync(tenantId, id, Me);
+        if (!deleted)
+        {
+            TempData["Error"] = "Only a one-to-one chat you are part of can be deleted.";
+            return RedirectToAction(nameof(Index), new { id });
+        }
+        foreach (var path in files)
+        {
+            try { _files.Delete(path); } catch { /* the record is gone; a stray file is harmless */ }
+        }
+        if (members.Count > 0)
+            await _hub.Clients.Users(members).SendAsync("ChannelDeleted", id);
+        return RedirectToAction(nameof(Index));
     }
 
     [HttpPost("{id:guid}/upload")]

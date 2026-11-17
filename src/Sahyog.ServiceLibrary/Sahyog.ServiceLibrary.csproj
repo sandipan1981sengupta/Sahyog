@@ -13,6 +13,9 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <!-- Plain ADO.NET for SQL Server / Azure SQL stored procedures. No Entity Framework. -->
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
+    <!-- Email over SMTP: supports port 465 (SSL on connect, used by Plesk / MilesWeb) and 587 (STARTTLS). -->
+    <PackageReference Include="MailKit" Version="4.8.0" />
+    <PackageReference Include="DnsClient" Version="1.7.0" />
   </ItemGroup>
 
   <ItemGroup>

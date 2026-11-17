@@ -3,57 +3,88 @@
     Layout = "_AuthLayout";
     ViewData["Title"] = "Sign in";
 }
-<section class="auth-hero">
-    <div class="brand">
-        <span class="brand-mark"><img src="~/images/logo.svg" alt="" width="44" height="44" /></span>
-        <span class="brand-text"><strong>Sahyog</strong><small>by CloudWheel Ltd</small></span>
-    </div>
-    <h1>Speak together.<br />Work together.</h1>
-    <p class="lead">Channels, direct messages, video meetings and file sharing for your whole team — from 10 people to 500 in one call.</p>
-    <div class="verse glass">
-        <em>Sam gacchadhvam sam vadadhvam,<br />sam vo manamsi janatam.</em>
-        <span>“Walk together, speak together, let your minds be in harmony.” — Rig Veda 10.191.2</span>
-    </div>
-</section>
+<partial name="_AuthHero" />
 
-<form method="post" asp-action="Login" class="auth-card glass-strong" novalidate>
-    <div>
-        <h2>Sign in</h2>
-        <p class="muted">Welcome back to your workspace.</p>
+<div class="sn-window-wrap">
+    @* colour behind the glass window *@
+    <div class="sn-window-orbs" aria-hidden="true"><span class="w1"></span><span class="w2"></span><span class="w3"></span></div>
+
+    <div class="sn-float sn-float-a glass-clear" aria-hidden="true">
+        <span class="sn-float-ic live"><i class="fa fa-video-camera"></i></span>
+        <span><b>Daily stand-up</b><small>Live · your team is in</small></span>
+    </div>
+    <div class="sn-float sn-float-b glass-clear" aria-hidden="true">
+        <span class="sn-float-ic"><i class="fa fa-comments"></i></span>
+        <span><b>New messages</b><small>Waiting in #general</small></span>
     </div>
 
-    @if (TempData["SetupMessage"] is string setupMessage)
-    {
-        <div class="notice success">@setupMessage</div>
-    }
-    <div asp-validation-summary="ModelOnly" class="form-error" role="alert"></div>
-    <input type="hidden" asp-for="ReturnUrl" />
-
-    <div class="field">
-        <label asp-for="Workspace">Workspace</label>
-        <div class="input-group">
-            <input asp-for="Workspace" class="input" placeholder="acme" autocomplete="organization" />
-            <span class="input-suffix">.sahyog.app</span>
+    <form method="post" asp-action="Login" class="sn-window glass-clear" novalidate>
+        <div class="sn-window-top">
+            <div>
+                <div class="sn-eyebrow">Welcome back</div>
+                <h2>Sign in</h2>
+            </div>
+            <span class="sn-lock"><i class="fa fa-lock" aria-hidden="true"></i></span>
         </div>
-        <small class="muted">CloudWheel admins can leave this empty.</small>
-    </div>
 
-    <div class="field">
-        <label asp-for="Email">Email</label>
-        <input asp-for="Email" class="input" placeholder="you@company.com" autocomplete="email" />
-        <span asp-validation-for="Email" class="field-error"></span>
-    </div>
+        @if (TempData["SetupMessage"] is string setupMessage)
+        {
+            <div hidden data-toast="@setupMessage" data-toast-kind="success" data-toast-title="All set"></div>
+        }
+        <div asp-validation-summary="ModelOnly" class="form-error" role="alert"></div>
+        <input type="hidden" asp-for="ReturnUrl" />
 
-    <div class="field">
-        <label asp-for="Password">Password</label>
-        <input asp-for="Password" class="input" placeholder="Enter your password" autocomplete="current-password" />
-        <span asp-validation-for="Password" class="field-error"></span>
-    </div>
+        @* No workspace box: every email belongs to exactly one person, so the email tells us the workspace
+           (and whether this is a CloudWheel admin). *@
 
-    <label class="check"><input asp-for="RememberMe" /> Keep me signed in</label>
+        <div>
+            <modern-input id="Email" name="Email" label="Work email" mandatory="true" placeholder="you@company.com"
+                          value="@Model.Email" max-length="200" label-font-size="13.5px"></modern-input>
+            <span asp-validation-for="Email" class="field-error"></span>
+        </div>
 
-    <button type="submit" class="btn btn-primary btn-lg">Sign in</button>
-    <p class="muted center small">New here? Ask your workspace admin for an invite.</p>
-    <p class="muted center tiny">Installing Sahyog for the first time? <a href="/setup">Run setup</a></p>
-    <p class="muted center tiny">© CloudWheel Ltd</p>
-</form>
+        <div>
+            <modern-input id="Password" name="Password" label="Password" mandatory="true" is-password="true"
+                          placeholder="Enter your password" label-font-size="13.5px"></modern-input>
+            <span asp-validation-for="Password" class="field-error"></span>
+        </div>
+
+        <div class="sn-window-row sn-window-row-split">
+            <modern-checkbox id="RememberMe" name="RememberMe" label="Keep me signed in" is-toggle-button="true"
+                             checked="@Model.RememberMe" label-font-size="13.5px"></modern-checkbox>
+            <a class="sn-forgot" href="/account/forgot" id="forgotLink">Forgot password?</a>
+        </div>
+
+        <button type="submit" class="cee-btn cee-btn-gradient sn-signin">Sign in <i class="fa fa-arrow-right" aria-hidden="true"></i></button>
+
+        <div class="sn-divider"><span></span>Secured with encryption<span></span></div>
+        <p class="sn-small center">New here? Ask your workspace admin for an invite.</p>
+        <p class="sn-small center">Installing ShankhNaad for the first time? <a href="/setup">Run setup</a></p>
+        <p class="sn-small center" data-install-only><button type="button" class="link-btn" onclick="SN.installApp()"><i class="fa fa-desktop" aria-hidden="true"></i> Install ShankhNaad as a desktop app</button></p>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            // "Forgot password?" takes the email typed so far
+            $("#forgotLink").on("click", function () {
+                var email = ($("#Email").val() || "").trim();
+                if (email) this.href = "/account/forgot?email=" + encodeURIComponent(email);
+            });
+            // Remember the last email on this device, so next time only the password is needed.
+            var KEY = "sn-last-email", box = document.getElementById("Email"), pass = document.getElementById("Password");
+            try {
+                if (box && !box.value) { var last = localStorage.getItem(KEY); if (last) { box.value = last; $(box).trigger("input"); } }
+                if (box && box.value && pass) setTimeout(function () { pass.focus(); }, 60);
+            } catch (e) { }
+            $(box).closest("form").on("submit", function () {
+                try {
+                    var keep = document.getElementById("RememberMe");
+                    if (!keep || keep.checked) localStorage.setItem(KEY, (box.value || "").trim().toLowerCase());
+                    else localStorage.removeItem(KEY);
+                } catch (e) { }
+            });
+        })();
+    </script>
+}

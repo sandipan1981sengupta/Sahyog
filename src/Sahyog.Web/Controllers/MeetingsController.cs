@@ -38,11 +38,23 @@ public sealed class MeetingsController : Controller
 
     private Guid Me => User.UserGuid();
 
+    private static readonly string[] Views = { "day", "week", "month", "list" };
+
+    /// <summary>
+    /// Meetings page. view = day | week | month | list (the last one used is kept in the "sn-mview" cookie);
+    /// date = any day inside the period to show. "week" is still accepted for older links.
+    /// </summary>
     [HttpGet("")]
-    public async Task<IActionResult> Index(DateOnly? week)
+    public async Task<IActionResult> Index(DateOnly? week, DateOnly? date, string? view)
     {
         if (User.TenantId() is not Guid tenantId) return Redirect("/");
-        return View(await BuildIndexAsync(tenantId, week, null));
+        return View(await BuildIndexAsync(tenantId, date ?? week, null, CurrentView(view)));
+    }
+
+    private string CurrentView(string? view = null)
+    {
+        var v = (view ?? Request.Cookies["sn-mview"] ?? "week").Trim().ToLowerInvariant();
+        return Views.Contains(v) ? v : "week";
     }
 
     [HttpPost("schedule")]
@@ -52,12 +64,55 @@ public sealed class MeetingsController : Controller
         var limits = (await _tenants.GetLimitsAsync(tenantId))!;
         var zone = MeetingCalendar.FindZone(limits.TimeZoneId);
         var nowLocal = MeetingCalendar.ToLocal(DateTime.UtcNow, zone);
-        var startLocal = input.Date.ToDateTime(input.Time);
 
-        if (input.DurationMinutes > limits.MaxMeetingMinutes)
-            ModelState.AddModelError("Form.DurationMinutes", $"Your {limits.PlanName} plan allows meetings up to {limits.MaxMeetingMinutes} minutes.");
-        if (startLocal < nowLocal.AddMinutes(-5))
-            ModelState.AddModelError("Form.Time", "That time has already passed.");
+        // ---- repeat: which days, and until when ----
+        byte repeatDays = 0;
+        if (input.Recurrence == MeetingRecurrence.Custom)
+        {
+            foreach (var d in input.RepeatDays.Where(d => d is >= 0 and <= 6).Distinct())
+                repeatDays |= MeetingCalendar.DayBit((DayOfWeek)d);
+            if (repeatDays == 0)
+                ModelState.AddModelError("Form.RepeatDays", "Pick at least one day to repeat on.");
+        }
+        // The first meeting is the first picked day on or after the chosen date
+        // (e.g. date 1 Jan 2027 + Mon/Wed/Fri → Fri 1 Jan; date Sat 2 Jan → Mon 4 Jan).
+        var firstDate = input.Date;
+        if (input.Recurrence is MeetingRecurrence.Daily || repeatDays != 0)
+        {
+            for (var i = 0; i < 7 && !MeetingCalendar.Occurs(input.Recurrence, repeatDays, firstDate.DayOfWeek, firstDate.DayOfWeek); i++)
+                firstDate = firstDate.AddDays(1);
+        }
+        DateOnly? lastDate = null;
+        if (input.Recurrence != MeetingRecurrence.None && input.RepeatEnds)
+        {
+            if (input.RepeatUntil is not DateOnly until)
+                ModelState.AddModelError("Form.RepeatUntilText", "Pick the last day the meeting repeats.");
+            else if (until < firstDate)
+                ModelState.AddModelError("Form.RepeatUntilText", $"The last day must be on or after the first meeting ({firstDate:d MMM yyyy}).");
+            else if (until > firstDate.AddYears(1))
+                ModelState.AddModelError("Form.RepeatUntilText", "A meeting can repeat for up to one year. Schedule it again for the next year.");
+            else
+                lastDate = until;
+        }
+
+        var startLocal = input.AllDay ? firstDate.ToDateTime(TimeOnly.MinValue) : firstDate.ToDateTime(input.Time);
+        var duration = input.AllDay ? 24 * 60 : input.DurationMinutes;
+
+        if (input.AllDay)
+        {
+            // an all-day block is a calendar entry, so the plan's meeting length does not apply to it
+            if (firstDate < DateOnly.FromDateTime(nowLocal))
+                ModelState.AddModelError("Form.DateText", "That day has already passed.");
+            ModelState.Remove("Form.Time");
+            ModelState.Remove("Form.DurationMinutes");
+        }
+        else
+        {
+            if (input.DurationMinutes > limits.MaxMeetingMinutes)
+                ModelState.AddModelError("Form.DurationMinutes", $"Your {limits.PlanName} plan allows meetings up to {limits.MaxMeetingMinutes} minutes. Choose All day, or ask your admin for a bigger plan.");
+            if (startLocal < nowLocal.AddMinutes(-5))
+                ModelState.AddModelError("Form.Time", "That time has already passed.");
+        }
 
         var guestEmails = new List<string>();
         foreach (var raw in (input.GuestEmails ?? "").Split(new[] { ',', ';', ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
@@ -69,7 +124,7 @@ public sealed class MeetingsController : Controller
             ModelState.AddModelError("Form.GuestEmails", "Invite up to 25 guests per meeting.");
 
         if (!ModelState.IsValid)
-            return View(nameof(Index), await BuildIndexAsync(tenantId, WeekOf(input.Date), input));
+            return View(nameof(Index), await BuildIndexAsync(tenantId, input.Date, input, CurrentView()));
 
         var meeting = new CreateMeetingRequest
         {
@@ -77,8 +132,14 @@ public sealed class MeetingsController : Controller
             Title = input.Title.Trim(),
             Agenda = input.Agenda?.Trim(),
             StartUtc = MeetingCalendar.ToUtc(startLocal, zone),
-            DurationMinutes = input.DurationMinutes,
+            DurationMinutes = duration,
+            IsAllDay = input.AllDay,
+            ShowAsFree = input.AllDay && string.Equals(input.ShowAs, "free", StringComparison.OrdinalIgnoreCase),
             Recurrence = input.Recurrence,
+            RepeatDays = repeatDays,
+            RepeatUntilUtc = lastDate is DateOnly last
+                ? MeetingCalendar.ToUtc(input.AllDay ? last.ToDateTime(TimeOnly.MinValue) : last.ToDateTime(input.Time), zone)
+                : null,
             RoomName = MeetingCalendar.NewRoomName(),
             GuestCode = MeetingCalendar.NewGuestCode(),
             HostId = Me,
@@ -100,14 +161,17 @@ public sealed class MeetingsController : Controller
         }
 
         TempData["ScheduledId"] = meeting.MeetingId.ToString();
-        return RedirectToAction(nameof(Index), new { week = WeekOf(input.Date).ToString("yyyy-MM-dd") });
+        return RedirectToAction(nameof(Index), new { date = firstDate.ToString("yyyy-MM-dd") });
     }
 
     /// <summary>"Meet now" from a channel or DM: creates the meeting and rings everyone in it.</summary>
     [HttpPost("instant")]
-    public async Task<IActionResult> Instant(Guid? channelId)
+    public async Task<IActionResult> Instant(Guid? channelId, Guid? userId)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
+        // "Call" next to a person in Chat: use (or create) your one-to-one chat with them
+        if (channelId is null && userId is Guid other && other != Me)
+            channelId = await _chat.GetOrCreateDirectAsync(tenantId, Me, other);
         var limits = (await _tenants.GetLimitsAsync(tenantId))!;
 
         var title = "Meeting";
@@ -208,7 +272,7 @@ public sealed class MeetingsController : Controller
 
     private static DateOnly WeekOf(DateOnly date) => MeetingCalendar.WeekOf(date);
 
-    private async Task<MeetingsViewModel> BuildIndexAsync(Guid tenantId, DateOnly? week, ScheduleMeetingInput? form)
+    private async Task<MeetingsViewModel> BuildIndexAsync(Guid tenantId, DateOnly? anchorDate, ScheduleMeetingInput? form, string view = "week")
     {
         var limits = (await _tenants.GetLimitsAsync(tenantId))!;
         var zone = MeetingCalendar.FindZone(limits.TimeZoneId);
@@ -216,9 +280,26 @@ public sealed class MeetingsController : Controller
         var nowLocal = MeetingCalendar.ToLocal(nowUtc, zone);
         var today = DateOnly.FromDateTime(nowLocal);
 
-        var weekStart = WeekOf(week ?? today);
-        var fromLocal = weekStart.ToDateTime(TimeOnly.MinValue);
-        var toLocal = fromLocal.AddDays(7);
+        var anchor = anchorDate ?? today;
+        var weekStart = WeekOf(anchor);
+        // the period on screen: one day, one week, or the full weeks that cover the month
+        DateOnly rangeStart;
+        int rangeDays;
+        switch (view)
+        {
+            case "day":
+                rangeStart = anchor; rangeDays = 1; break;
+            case "month":
+                var first = new DateOnly(anchor.Year, anchor.Month, 1);
+                rangeStart = WeekOf(first);
+                var afterLast = WeekOf(first.AddMonths(1).AddDays(-1)).AddDays(7);
+                rangeDays = afterLast.DayNumber - rangeStart.DayNumber;
+                break;
+            default:
+                rangeStart = weekStart; rangeDays = 7; break;
+        }
+        var fromLocal = rangeStart.ToDateTime(TimeOnly.MinValue);
+        var toLocal = fromLocal.AddDays(rangeDays);
 
         Guid? justId = Guid.TryParse(TempData["ScheduledId"] as string, out var g) ? g : null;
         var online = _presence.OnlineUsers(tenantId);
@@ -241,18 +322,22 @@ public sealed class MeetingsController : Controller
                     : new PersonVm("guest", "Guest", "G", 3, false));
             }
             var tone = m.IsInstant ? "slate" : m.HostId == me ? "blue" : "pink";
-            return new CalendarEventVm(m.MeetingId, m.Title, o.StartLocal, o.EndLocal, tone, m.HostId == me, people, m.MeetingId == justId);
+            return new CalendarEventVm(m.MeetingId, m.Title, o.StartLocal, o.EndLocal, tone, m.HostId == me, people, m.MeetingId == justId)
+            {
+                IsAllDay = m.IsAllDay,
+                ShowAsFree = m.ShowAsFree
+            };
         }
 
         var occurrences = MeetingCalendar.Expand(meetings, fromLocal, toLocal, zone).ToList();
-        var days = Enumerable.Range(0, 7)
-            .Select(i => weekStart.AddDays(i))
+        var days = Enumerable.Range(0, rangeDays)
+            .Select(i => rangeStart.AddDays(i))
             .Select(d => new CalendarDayVm(d, d == today,
                 occurrences.Where(o => DateOnly.FromDateTime(o.StartLocal) == d).OrderBy(o => o.StartLocal).Select(ToVm).ToList()))
             .ToList();
 
         var next = MeetingCalendar.Expand(meetings, nowLocal.AddHours(-2), nowLocal.AddDays(1), zone)
-            .Where(o => o.EndLocal > nowLocal)
+            .Where(o => o.EndLocal > nowLocal && !o.Meeting.IsAllDay)
             .OrderBy(o => o.StartLocal)
             .FirstOrDefault();
 
@@ -288,7 +373,11 @@ public sealed class MeetingsController : Controller
             Limits = limits,
             JustScheduled = just,
             JustScheduledGuestUrl = just is { GuestLinkEnabled: true } ? _meetings.GuestUrl(just.GuestCode) : null,
-            NowHour = weekStart <= today && today < weekStart.AddDays(7) ? nowLocal.Hour + nowLocal.Minute / 60.0 : -1
+            NowHour = rangeStart <= today && today < rangeStart.AddDays(rangeDays) ? nowLocal.Hour + nowLocal.Minute / 60.0 : -1,
+            NowLocal = nowLocal,
+            View = view,
+            Anchor = anchor,
+            RangeStart = rangeStart
         };
     }
 }

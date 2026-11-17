@@ -46,7 +46,10 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles();
+// Static files. ".webmanifest" is listed explicitly so the desktop-app manifest is always served.
+var contentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+contentTypes.Mappings[".webmanifest"] = "application/manifest+json";
+app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = contentTypes });
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -56,6 +59,6 @@ app.MapHub<ChatHub>("/hubs/chat");
 
 // Start the web server first, so the browser opens even if the database is slow or unreachable.
 await app.StartAsync();
-app.Logger.LogInformation("Sahyog is running. Checking the database…");
+app.Logger.LogInformation("ShankhNaad is running. Checking the database…");
 await DatabaseSeeder.InitializeAsync(app.Services, app.Configuration, app.Logger);
 await app.WaitForShutdownAsync();

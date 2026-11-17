@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using Sahyog.DtoLibrary;
 using Sahyog.ServiceLibrary;
 using Sahyog.ServiceLibrary.Video;
@@ -25,11 +26,35 @@ public sealed class LoginViewModel
     public string? ReturnUrl { get; set; }
 }
 
+/// <summary>"Forgot password?" page.</summary>
+public sealed class ForgotPasswordViewModel
+{
+    [Required, EmailAddress, MaxLength(200)]
+    public string Email { get; set; } = "";
+    /// <summary>True after the form is sent: the page then shows the same "check your email" note for any address.</summary>
+    public bool Sent { get; set; }
+    /// <summary>False when this server can't send email yet (Smtp:Host empty).</summary>
+    public bool CanEmail { get; set; } = true;
+}
+
+/// <summary>"Set your password" page, opened from a welcome or reset email.</summary>
+public sealed class SetPasswordViewModel
+{
+    public string Token { get; set; } = "";
+    public PasswordLinkInfo? Link { get; set; }
+
+    [Required, MinLength(8), DataType(DataType.Password)]
+    public string NewPassword { get; set; } = "";
+
+    [Required, DataType(DataType.Password), Compare(nameof(NewPassword), ErrorMessage = "The two passwords don't match.")]
+    public string ConfirmPassword { get; set; } = "";
+}
+
 // ---------- Chat ----------
 
-public sealed record PersonVm(string Id, string Name, string Initials, int Tone, bool Online, string? Role = null);
+public sealed record PersonVm(string Id, string Name, string Initials, int Tone, bool Online, string? Role = null, bool Pending = false);
 
-public sealed record ChannelVm(Guid Id, string Name, bool IsDirect, int Unread, PersonVm? DirectWith);
+public sealed record ChannelVm(Guid Id, string Name, bool IsDirect, int Unread, PersonVm? DirectWith, bool IsPrivate = false);
 
 public sealed class ChatViewModel
 {
@@ -37,6 +62,13 @@ public sealed class ChatViewModel
     public required List<ChannelVm> Channels { get; init; }
     public required List<ChannelVm> Directs { get; init; }
     public ChannelVm? Current { get; init; }
+    /// <summary>Workspace admins, and the person who created the channel, can rename it.</summary>
+    public bool CanEditChannel { get; init; }
+    /// <summary>Only workspace admins, and never the main channel (#general).</summary>
+    public bool CanDeleteChannel { get; init; }
+    public bool CurrentIsMain { get; init; }
+    /// <summary>Who has read up to when in this conversation (for ✓✓ read ticks).</summary>
+    public List<ReadStateDto> ReadState { get; init; } = new();
     public string? CurrentDescription { get; init; }
     public required List<MessageDto> Messages { get; init; }
     public required List<PersonVm> Members { get; init; }
@@ -56,7 +88,11 @@ public sealed record CalendarEventVm(
     string Tone,
     bool IsHost,
     List<PersonVm> People,
-    bool IsNew);
+    bool IsNew)
+{
+    public bool IsAllDay { get; init; }
+    public bool ShowAsFree { get; init; }
+}
 
 public sealed record CalendarDayVm(DateOnly Date, bool IsToday, List<CalendarEventVm> Events);
 
@@ -71,6 +107,19 @@ public sealed class ScheduleMeetingInput
     [Required]
     public DateOnly Date { get; set; }
 
+    /// <summary>
+    /// The date as the Template 1 date picker posts it (dd-MM-yyyy). Setting it fills <see cref="Date"/>.
+    /// </summary>
+    public string DateText
+    {
+        get => Date.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture);
+        set
+        {
+            if (DateOnly.TryParseExact(value?.Trim(), new[] { "dd-MM-yyyy", "d-M-yyyy", "yyyy-MM-dd" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
+                Date = d;
+        }
+    }
+
     [Required]
     public TimeOnly Time { get; set; } = new(10, 0);
 
@@ -78,6 +127,23 @@ public sealed class ScheduleMeetingInput
     public int DurationMinutes { get; set; } = 30;
 
     public MeetingRecurrence Recurrence { get; set; }
+
+    /// <summary>For Repeat = Custom: the picked days as DayOfWeek numbers (0 = Sun … 6 = Sat).</summary>
+    public List<int> RepeatDays { get; set; } = new();
+
+    /// <summary>Stop repeating after <see cref="RepeatUntil"/>; off = repeats with no end.</summary>
+    public bool RepeatEnds { get; set; }
+
+    /// <summary>The last day a repeating meeting can happen (inclusive).</summary>
+    public DateOnly? RepeatUntil { get; set; }
+
+    /// <summary>The last day as the date picker posts it (dd-MM-yyyy). Empty clears it.</summary>
+    public string RepeatUntilText
+    {
+        get => RepeatUntil?.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture) ?? "";
+        set => RepeatUntil = DateOnly.TryParseExact(value?.Trim(), new[] { "dd-MM-yyyy", "d-M-yyyy", "yyyy-MM-dd" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            ? d : null;
+    }
 
     public List<string> InviteeIds { get; set; } = new();
 
@@ -89,6 +155,12 @@ public sealed class ScheduleMeetingInput
     public bool LobbyEnabled { get; set; } = true;
     public bool SendEmail { get; set; } = true;
     public bool CaptionsOn { get; set; }
+
+    /// <summary>Takes the whole day; Time and DurationMinutes are ignored.</summary>
+    public bool AllDay { get; set; }
+
+    /// <summary>For all-day events: "busy" blocks the day, "free" only shows it at the top of the day.</summary>
+    public string ShowAs { get; set; } = "busy";
 }
 
 public sealed class MeetingsViewModel
@@ -103,8 +175,16 @@ public sealed class MeetingsViewModel
     public MeetingDto? JustScheduled { get; init; }
     public string? JustScheduledGuestUrl { get; init; }
     public double NowHour { get; init; }
+    /// <summary>Current time in the workspace's time zone (used for Live / Ended badges).</summary>
+    public DateTime NowLocal { get; init; }
     public int StartHour { get; init; } = 8;
     public int EndHour { get; init; } = 19;
+    /// <summary>day | week | month | list</summary>
+    public string View { get; init; } = "week";
+    /// <summary>The day the person is looking at (any day inside the period).</summary>
+    public DateOnly Anchor { get; init; }
+    /// <summary>First day shown (Monday for week and month).</summary>
+    public DateOnly RangeStart { get; init; }
 }
 
 public sealed class RoomViewModel
@@ -183,10 +263,14 @@ public sealed class AddMemberInput
     [Required, EmailAddress]
     public string Email { get; set; } = "";
 
-    [Required, MinLength(8), DataType(DataType.Password)]
-    public string TemporaryPassword { get; set; } = "";
+    /// <summary>Needed only when SendInvite is off (or email isn't set up).</summary>
+    [MinLength(8), DataType(DataType.Password)]
+    public string? TemporaryPassword { get; set; }
 
     public bool MakeAdmin { get; set; }
+
+    /// <summary>Email them a welcome link to set their own password (instead of a temporary password).</summary>
+    public bool SendInvite { get; set; } = true;
 }
 
 public sealed class TeamViewModel
@@ -196,8 +280,12 @@ public sealed class TeamViewModel
     public required List<PersonVm> People { get; init; }
     public required List<PersonVm> Inactive { get; init; }
     public required AddMemberInput NewMember { get; init; }
+    /// <summary>Email per user id (for the people grid).</summary>
+    public Dictionary<string, string> Emails { get; init; } = new();
     public string? Message { get; init; }
     public string? Error { get; init; }
+    /// <summary>True when this server can send email (welcome and set-password links).</summary>
+    public bool CanEmail { get; init; }
 }
 
 // ---------- First-time setup ----------

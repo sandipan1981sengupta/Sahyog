@@ -49,6 +49,17 @@ public sealed class VideoProviderFactory : IVideoProviderFactory
         ?? throw new NotSupportedException($"Video provider '{providerName}' is not installed. Set the plan's provider to JaaS.");
 }
 
+/// <summary>
+/// App-wide video feature switches.
+/// Recording is OFF for now: there is no Record button yet, and JaaS charges per recorded minute
+/// and keeps recordings for only 24 hours. While false, no meeting pass allows recording and the
+/// super admin cannot switch it on for any plan. Set to true when the record-and-save flow is built.
+/// </summary>
+public static class VideoFeatures
+{
+    public static readonly bool RecordingAvailable = false;
+}
+
 public sealed class JaasOptions
 {
     /// <summary>"vpaas-magic-cookie-…" from the JaaS console.</summary>
@@ -124,7 +135,7 @@ public sealed class JaasVideoProvider : IVideoProvider, IDisposable
                 ["features"] = new Dictionary<string, object>
                 {
                     ["livestreaming"] = "false",
-                    ["recording"] = r.RecordingAllowed && r.IsModerator ? "true" : "false",
+                    ["recording"] = VideoFeatures.RecordingAvailable && r.RecordingAllowed && r.IsModerator ? "true" : "false",
                     ["transcription"] = "false",
                     ["outbound-call"] = "false",
                     ["sip-outbound-call"] = "false"

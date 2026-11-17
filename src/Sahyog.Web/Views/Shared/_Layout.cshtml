@@ -2,6 +2,9 @@
     var section = ViewData["Section"] as string ?? "";
     var isTenantAdmin = User.IsInRole(AppRoles.TenantAdmin);
     var isSuperAdmin = User.IsInRole(AppRoles.SuperAdmin);
+    var roleText = isSuperAdmin ? "CloudWheel super admin" : isTenantAdmin ? "Workspace admin" : "Member";
+    var workspace = isSuperAdmin ? "CloudWheel Ltd" : User.TenantName();
+    var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -9,52 +12,264 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#2563EB" />
-    <title>@(ViewData["Title"] is string t ? $"{t} · Sahyog" : "Sahyog")</title>
+    <title>@(ViewData["Title"] is string t ? $"{t} · ShankhNaad" : "ShankhNaad")</title>
+    @* Theme (light / dark) is applied before anything paints, so there is no flash. *@
+    <script>
+        (function () {
+            var root = document.documentElement;
+            var t = null;
+            try { t = localStorage.getItem("sn-theme"); } catch (e) { }
+            if (t !== "dark" && t !== "light") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+            root.setAttribute("data-theme", t);
+
+            // Background spheres keep moving from where they were on the last page (no jump on every page change).
+            root.style.setProperty("--sn-orb-t", "-" + ((Date.now() / 1000) % 600).toFixed(2) + "s");
+
+            // Page arrival in three steps, so the animation runs on its own and the data never fights it:
+            //   1. the page frame slides in (view transition)   2. header and cards rise in
+            //   3. only then the data (table rows, gauges, chat messages) fades in, row by row.
+            var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+            var started = false;
+            function arrive(vt) {
+                if (started || reduce) return;
+                started = true;
+                root.classList.add("sn-arriving", "sn-data-wait");
+                var shown = false;
+                function showData() {
+                    if (shown) return;
+                    shown = true;
+                    root.classList.remove("sn-data-wait");
+                    root.classList.add("sn-data-in");
+                    setTimeout(function () { root.classList.remove("sn-data-in", "sn-arriving"); }, 1700);
+                }
+                setTimeout(showData, 1200);                         // safety net: data always appears
+                if (vt && vt.finished) vt.finished.then(function () { setTimeout(showData, 40); }, showData);
+                else if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(showData, 340); });
+                else setTimeout(showData, 340);
+            }
+
+            window.addEventListener("pagereveal", function (e) {
+                var dir = null;
+                try { dir = sessionStorage.getItem("sn-dir"); sessionStorage.removeItem("sn-dir"); } catch (x) { }
+                if (e.viewTransition) {
+                    root.classList.add("sn-arrive");
+                    if (dir && e.viewTransition.types) e.viewTransition.types.add(dir);
+                }
+                arrive(e.viewTransition);
+            });
+            if (!("onpagereveal" in window)) { root.classList.add("sn-no-vt"); arrive(null); }
+        })();
+    </script>
+    @* Fetch a page as soon as the pointer rests on its link, so a click has nothing to wait for. *@
+    <script type="speculationrules">
+        { "prefetch": [ { "where": { "or": [ { "href_matches": "/chat" }, { "href_matches": "/team" }, { "href_matches": "/admin" },
+                                              { "href_matches": "/meetings" } ] },
+                          "eagerness": "moderate" } ] }
+    </script>
+    @* Edge/Chrome: show the new page only once the whole page (and its scripts) is in, so the tab highlight
+       and table are already in place when the page change starts. Other browsers ignore this. *@
+    <link rel="expect" href="#sn-ready" blocking="render" />
     <link rel="icon" href="~/favicon.svg" type="image/svg+xml" />
+    @* Desktop app (installable web app) *@
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="~/icons/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" />
+
+    @* Template 1 control libraries (offline copies) *@
+    <link rel="stylesheet" href="~/lib/Mordern-Controls/CSS/flatpickr.min.css" />
+    <link rel="stylesheet" href="~/lib/Mordern-Controls/bootstrap-icon/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="~/lib/Mordern-Controls/font-awesome-4.7.0/css/font-awesome.min.css" />
+
+    @* Template 1 control styles *@
+    <link rel="stylesheet" href="~/css/Theme/controls-theme.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/Theme/flatpickr-theme.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/buttons.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/report-sidebar.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/modern-table.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/modern-input.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/modern-input-with-search.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/modern-dropdown.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/modern-dropdown-with-label.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/modern-datepicker.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/modern-datepicker-with-label.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/modern-radio.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/modern-checkbox.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/tab-control.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/cee-group-box-modern.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/modern-donut-chart.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/modern-half-donut-chart.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/web-control/messagebox.css" asp-append-version="true" />
+
+    @* ShankhNaad: existing app styles (chat, dialogs, calls) + the liquid glass skin on top *@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/shankhnaad.css" asp-append-version="true" />
     @await RenderSectionAsync("Head", required: false)
 </head>
-<body>
-    <div class="bg-blobs" aria-hidden="true"><span></span><span></span><span></span></div>
+<body class="sn-body">
+    <div class="sn-backdrop" aria-hidden="true">
+        <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span>
+        <span class="orb o1"></span><span class="orb o2"></span><span class="orb o3"></span><span class="orb o4"></span><span class="orb o5"></span>
+    </div>
     @Html.AntiForgeryToken()
 
-    <div class="shell">
-        <nav class="rail glass" aria-label="App">
-            <a class="rail-logo" href="/" aria-label="Sahyog home"><img src="~/images/logo.svg" alt="" width="34" height="34" /></a>
-            @if (!isSuperAdmin)
-            {
-                <a class="rail-btn @(section == "chat" ? "active" : "")" href="/chat" aria-label="Chat" title="Chat">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z" /></svg>
-                </a>
-                <a class="rail-btn @(section == "meetings" ? "active" : "")" href="/meetings" aria-label="Meetings" title="Meetings">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
-                </a>
-                @if (isTenantAdmin)
-                {
-                    <a class="rail-btn @(section == "team" ? "active" : "")" href="/team" aria-label="Team" title="Team">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7" /><path d="M18 14a6 6 0 0 1 3.5 6" /></svg>
-                    </a>
-                }
-            }
-            @if (isSuperAdmin)
-            {
-                <a class="rail-btn @(section == "admin" ? "active" : "")" href="/admin" aria-label="Super admin" title="Super admin">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z" /></svg>
-                </a>
-            }
-            <div class="rail-spacer"></div>
-            <button type="button" class="rail-btn" id="alertsBtn" hidden aria-label="Turn on call alerts" title="Turn on call alerts">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0" /></svg>
-            </button>
-            <form method="post" action="/account/logout" class="rail-me">
-                <button type="submit" class="avatar av-44 tone-@(User.AvatarTone()) ring-white" title="Sign out (@User.DisplayName())" aria-label="Sign out">@User.Initials()</button>
-            </form>
-        </nav>
+    <script src="~/lib/Mordern-Controls/JS/jquery-3.7.1.min.js"></script>
 
-        @RenderBody()
+    <div class="shell sn-shell">
+        @* "rail" class is kept: site.js starts the live connection only when it finds .rail *@
+        <div class="rail sn-rail glass">
+            <report-rail id="MainRail"
+                         rail-width="88px"
+                         rail-height="auto"
+                         show-logo="true"
+                         logo-image-url="/images/logo.svg"
+                         logo-background="linear-gradient(115deg, #2563EB 0%, #DB2777 100%)"
+                         logo-width="50px"
+                         logo-height="50px"
+                         logo-border-radius="16px"
+                         divider-width="40px"
+                         divider-color="rgba(15,23,42,.12)"
+                         background-color="transparent"
+                         selection-color="rgba(255,255,255,.85)"
+                         active-icon-color="#BE185D"
+                         active-label-color="#0B1220"
+                         active-bar-color="linear-gradient(180deg, #2563EB, #DB2777)"
+                         icon-size="20px"
+                         label-font-size="11.5px"
+                         label-font-weight="600">
+                @if (!isSuperAdmin)
+                {
+                    <rail-item key="chat" label="Chat" icon="comments-o" href="/chat" active="@(section == "chat")"></rail-item>
+                    <rail-item key="meetings" label="Meetings" icon="calendar" href="/meetings" active="@(section == "meetings")"></rail-item>
+                    @* everyone in the workspace can see the team; only admins can change it (see TeamController) *@
+                    <rail-item key="team" label="Team" icon="users" href="/team" active="@(section == "team")"></rail-item>
+                }
+                @if (isSuperAdmin)
+                {
+                    <rail-item key="admin" label="Clients" icon="shield" href="/admin" active="@(section == "admin")"></rail-item>
+                }
+            </report-rail>
+
+            <div class="sn-rail-foot">
+                <button type="button" class="sn-rail-btn sn-alerts-btn" id="alertsBtn" hidden aria-label="Turn on call alerts" title="Turn on call alerts">
+                    <i class="fa fa-bell-o" style="font-size:19px" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="sn-col">
+            @* ---------- top bar: Template 1 strip-header with the user menu ---------- *@
+            <div class="sn-topbar glass">
+                <strip-header heading="@workspace"
+                              subheading="@(isSuperAdmin ? "ShankhNaad · all client workspaces" : "ShankhNaad workspace")"
+                              icon-src="/images/workspace.svg"
+                              icon-size="42"
+                              icon-image-size="58%"
+                              icon-background-color="rgba(255,255,255,.65)"
+                              icon-border-color="rgba(255,255,255,.95)"
+                              icon-border-width="1"
+                              heading-font-size="18"
+                              heading-font-weight="800"
+                              heading-font-family="Roboto, system-ui, sans-serif"
+                              heading-gradient-start="#1D4ED8"
+                              heading-gradient-mid="#6D28D9"
+                              heading-gradient-end="#BE185D"
+                              heading-gradient-start-hold-percent="20"
+                              heading-gradient-mid-stop-percent="65"
+                              heading-fallback-color="#1D4ED8"
+                              subheading-font-size="12"
+                              subheading-font-weight="600"
+                              subheading-font-family="Roboto, system-ui, sans-serif"
+                              subheading-gradient-start="#334155"
+                              subheading-gradient-end="#334155"
+                              background-transparent="true"
+                              padding="0 6px 0 4px"
+                              border-radius="22px"
+                              user-name="@User.DisplayName()"
+                              user-initials="@User.Initials()"
+                              login-time="@roleText"
+                              user-avatar-size="40"
+                              help-text="About ShankhNaad"
+                              show-install="true"
+                              install-text="Install desktop app"
+                              chevron-background-color="#2563EB">
+                    <button type="button" class="sn-theme-btn" onclick="SN.toggleTheme(event)" aria-label="Switch light or dark theme" title="Light / dark theme">
+                        <i class="fa fa-moon-o sn-ic-moon" aria-hidden="true"></i><i class="fa fa-sun-o sn-ic-sun" aria-hidden="true"></i>
+                    </button>
+                    <span class="sn-pill" id="snConn" data-state="wait"><span class="sn-pill-dot"></span><span>Connecting…</span></span>
+                    <span class="sn-pill"><i class="fa fa-clock-o" aria-hidden="true"></i><span id="snClock"></span></span>
+                </strip-header>
+            </div>
+            <form method="post" asp-antiforgery="true" action="/account/logout" id="logoutForm" hidden></form>
+
+            <div class="sn-body-row">
+                @RenderBody()
+            </div>
+        </div>
     </div>
+
+    @* ---------- About ShankhNaad ---------- *@
+    <dialog id="aboutDialog" class="sn-dialog glass-strong" aria-labelledby="aboutTitle">
+        <div>
+            <div class="sn-about-head">
+                <button type="button" class="sn-close" data-close aria-label="Close" style="position:absolute;right:16px;top:16px"><i class="fa fa-times" aria-hidden="true"></i></button>
+                <img src="~/favicon.svg" alt="" width="84" height="84" class="sn-about-logo" />
+                <h2 id="aboutTitle" class="sn-about-title">SHANKHNAAD</h2>
+                <div class="muted small">Team chat and video meetings · by CloudWheel Ltd</div>
+                <span class="sn-pill">Version @version</span>
+            </div>
+            <div class="sn-dlg-body" style="gap:8px">
+                <div class="sn-kv"><span>Licensed to</span><b>CloudWheel Ltd</b></div>
+                <div class="sn-kv"><span>Workspace</span><b>@workspace</b></div>
+                <div class="sn-kv"><span>Signed in as</span><b>@User.DisplayName() · @roleText</b></div>
+                <div class="sn-kv"><span>Running as</span><b data-running-as>Web browser</b></div>
+                <div class="sn-verse-box">
+                    <em>Sam gacchadhvam sam vadadhvam, sam vo manamsi janatam.</em>
+                    <span>“Walk together, speak together, let your minds be in harmony.” — Rig Veda 10.191.2</span>
+                </div>
+            </div>
+            <div class="sn-dlg-foot">
+                <span class="muted small">© @DateTime.UtcNow.Year CloudWheel Ltd</span>
+                <span style="display:flex;gap:10px">
+                    <button type="button" class="cee-btn sn-btn-light" data-install-only onclick="document.getElementById('aboutDialog').close();document.getElementById('installDialog').showModal()"><i class="fa fa-desktop"></i> Desktop app</button>
+                    <button type="button" class="cee-btn cee-btn-gradient" data-close>Close</button>
+                </span>
+            </div>
+        </div>
+    </dialog>
+
+    @* ---------- Install as a desktop app ---------- *@
+    <dialog id="installDialog" class="sn-dialog glass-strong" aria-labelledby="installTitle" style="width:min(640px, calc(100vw - 32px))">
+        <div>
+            <div class="sn-dlg-head">
+                <div class="sn-dlg-title">
+                    <span class="sn-dlg-icon"><i class="fa fa-desktop" aria-hidden="true"></i></span>
+                    <div><h2 id="installTitle">Use ShankhNaad as a desktop app</h2><p>Install once. It opens in its own window, without the browser.</p></div>
+                </div>
+                <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+            </div>
+            <div class="sn-dlg-body">
+                <div class="sn-perks">
+                    <div><span class="sn-perk-ic"><i class="fa fa-window-maximize"></i></span><span><b>Its own window and taskbar icon</b><small>Pin it next to Outlook and Excel</small></span></div>
+                    <div><span class="sn-perk-ic"><i class="fa fa-bell-o"></i></span><span><b>Calls ring on your desktop</b><small>Windows notifications for incoming calls</small></span></div>
+                    <div><span class="sn-perk-ic"><i class="fa fa-arrows-alt"></i></span><span><b>Opens fast, full screen meetings</b><small>No tabs or address bar in the way</small></span></div>
+                    <div><span class="sn-perk-ic"><i class="fa fa-refresh"></i></span><span><b>Always up to date</b><small>Updates itself from your server</small></span></div>
+                </div>
+                <div class="sn-steps">
+                    <span><b>1</b>Press Install app</span>
+                    <span><b>2</b>Confirm in the browser box</span>
+                    <span><b>3</b>Pin it to the taskbar</span>
+                </div>
+            </div>
+            <div class="sn-dlg-foot">
+                <span class="muted small">Works in Chrome and Edge on Windows and Mac</span>
+                <span style="display:flex;gap:10px">
+                    <button type="button" class="cee-btn sn-btn-light" data-close>Not now</button>
+                    <button type="button" class="cee-btn cee-btn-gradient" onclick="SN.installApp()"><i class="fa fa-download"></i> Install app</button>
+                </span>
+            </div>
+        </div>
+    </dialog>
 
     <div class="call-overlay" id="callOverlay" hidden>
         <div class="call-card glass" role="alertdialog" aria-labelledby="callTitle" aria-describedby="callWho">
@@ -70,8 +285,24 @@
     </div>
     <div class="toasts" id="toasts" aria-live="polite"></div>
 
+    @* Template 1 control scripts *@
+    <script src="~/lib/Mordern-Controls/JS/flatpickr-v4.6.13.js"></script>
+    <script src="~/js/web-control/report-sidebar.js" asp-append-version="true"></script>
+    <script src="~/js/web-control/modern-table.js" asp-append-version="true"></script>
+    <script src="~/js/web-control/modern-input.js" asp-append-version="true"></script>
+    <script src="~/js/web-control/modern-dropdown-with-label.js" asp-append-version="true"></script>
+    <script src="~/js/web-control/modern-datepicker-with-label.js" asp-append-version="true"></script>
+    <script src="~/js/web-control/modern-radio.js" asp-append-version="true"></script>
+    <script src="~/js/web-control/modern-checkbox.js" asp-append-version="true"></script>
+    <script src="~/js/web-control/tab-control.js" asp-append-version="true"></script>
+    <script src="~/js/web-control/messagebox.js" asp-append-version="true"></script>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <script src="~/js/toast.js" asp-append-version="true"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/shankhnaad.js" asp-append-version="true"></script>
+    <script src="~/js/pwa-install.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
+    <span id="sn-ready" hidden></span>
 </body>
 </html>

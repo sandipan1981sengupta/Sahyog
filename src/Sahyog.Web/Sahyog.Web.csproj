@@ -6,6 +6,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Sahyog.Web</RootNamespace>
+    <!-- Shown in About ShankhNaad -->
+    <Version>1.0.0</Version>
+    <Product>ShankhNaad</Product>
+    <Company>CloudWheel Ltd</Company>
     <UserSecretsId>sahyog-web-cloudwheel-2026</UserSecretsId>
   </PropertyGroup>
 

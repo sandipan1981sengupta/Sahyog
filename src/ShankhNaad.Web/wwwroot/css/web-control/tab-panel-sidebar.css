@@ -1,0 +1,544 @@
+/* =========================================================
+   VERTICAL TAB STRIP + SLIDE-OUT PANEL
+   Colors/spacing come from controls-theme.css — load that file first,
+   same convention as report-sidebar.css / modern-sidebar.css.
+   ========================================================= */
+
+.tab-strip {
+    position: fixed;
+    z-index: 400;
+    display: flex;
+    flex-direction: column;
+}
+
+.tab-strip-right {
+    right: 0;
+}
+
+.tab-strip-left {
+    left: 0;
+}
+
+.ts-list {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--ts-gap, 0px);
+}
+
+.tab-strip-left .ts-list {
+    align-items: flex-start;
+}
+
+/* ---- Individual rotated tab ----
+   Two-layer structure to get correct layout AND correct visual rotation
+   at the same time:
+     .ts-tab       — sized with dimensions ALREADY SWAPPED for its
+                     post-rotation footprint (width = thickness,
+                     height = length), so the flex column stacks tabs
+                     using their real on-screen size — this is what
+                     fixes the overlap/clipping.
+     .ts-tab-inner — the actual rotated content, sized length x
+                     thickness (its PRE-rotation size), rotated in
+                     place and centered inside the swapped-size outer
+                     box via absolute positioning. */
+.ts-tab {
+    position: relative;
+    width: var(--ts-btn-thickness, 40px);
+    height: var(--ts-btn-length, 160px);
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.ts-tab-inner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--ts-btn-length, 160px);
+    height: var(--ts-btn-thickness, 40px);
+    background: var(--ts-tab-bg, var(--ts-btn-bg, var(--ctrl-bg)));
+    border: 1px solid var(--ctrl-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px;
+    box-shadow: -2px 2px 6px rgba(0, 0, 0, 0.06);
+    box-sizing: border-box;
+    transition: background .2s ease;
+}
+
+.tab-strip-right .ts-tab-inner {
+    transform: translate(-50%, -50%) rotate(-90deg);
+    border-radius: 10px 10px 0 0;
+    border-right: none;
+}
+
+.tab-strip-left .ts-tab-inner {
+    transform: translate(-50%, -50%) rotate(90deg);
+    border-radius: 10px 10px 0 0;
+    border-left: none;
+}
+
+.ts-tab:hover .ts-tab-inner {
+    background: var(--ts-tab-hover-bg, var(--ctrl-bg-hover));
+}
+
+.ts-tab.ts-active .ts-tab-inner {
+    background: var(--ts-tab-active-bg, var(--ctrl-bg));
+}
+
+.ts-tab-label {
+    font-size: var(--ts-tab-font-size, 14px);
+    font-weight: var(--ts-tab-font-weight, 700);
+    color: var(--ts-tab-label-color, var(--ctrl-text));
+    white-space: nowrap;
+    font-family: var(--ctrl-font);
+    transition: color .2s ease;
+}
+
+.ts-tab.ts-active .ts-tab-label {
+    color: var(--ts-tab-active-label-color, var(--ts-tab-label-color, var(--ctrl-accent)));
+}
+
+/* Gradient label text. A flat CSS `color` can't take a gradient
+   directly, so when LabelColor/ActiveLabelColor is a gradient() string
+   the tag helper sets --ts-tab-label-color / --ts-tab-active-label-color
+   as usual AND flips on its own data attribute — these rules then paint
+   the gradient as a background clipped to the text shape. The two
+   attributes are independent since resting and active label colors are
+   independent properties; plain colors never set either attribute. */
+.ts-tab[data-label-gradient="true"] .ts-tab-label {
+    background: var(--ts-tab-label-color, var(--ctrl-text));
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+}
+
+.ts-tab.ts-active[data-active-label-gradient="true"] .ts-tab-label {
+    background: var(--ts-tab-active-label-color, var(--ctrl-accent));
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+}
+
+.ts-tab-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--ts-bar-width, 3px);
+    background: linear-gradient( 90deg, var(--ts-bar-top, var(--ctrl-accent)) 0%, var(--ts-bar-top, var(--ctrl-accent)) 50%, var(--ts-bar-bottom, var(--ctrl-accent-secondary, #c22a8d)) 50%, var(--ts-bar-bottom, var(--ctrl-accent-secondary, #c22a8d)) 100% );
+}
+
+
+/* ============ SLIDE-OUT PANEL ============ */
+
+.tp-scrim {
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    z-index: 449;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+    .tp-scrim.tp-scrim-visible {
+        visibility: visible;
+        pointer-events: auto;
+    }
+
+.tp-strip {
+    position: fixed;
+    top: var(--tp-strip-margin-top, 12px);
+    height: var(--tp-strip-height, calc(100vh - var(--tp-strip-margin-top, 12px) - var(--tp-strip-margin-bottom, 12px)));
+    max-height: calc(100vh - var(--tp-strip-margin-top, 12px));
+    width: calc(var(--tp-panel-w, 600px) + var(--tp-strip-extra, 20px));
+    /* --- FROSTED GLASS EFFECT --- */
+    background:  rgb(255, 255, 255, 0.09); /* Translucent fallback/default */
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%); /* Safari support */
+    border: 1px solid rgba(255, 255, 255, 0.3); /* Soft subtle glass edge */
+
+    border-radius: var(--tp-strip-radius-tl, 20px) var(--tp-strip-radius-tr, 20px) var(--tp-strip-radius-br, 20px) var(--tp-strip-radius-bl, 20px);
+    box-shadow: var(--tp-strip-shadow, 0 8px 32px 0 rgba(0, 0, 0, 0.12));
+    z-index: 450;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity .35s ease;
+}
+
+
+.tp-strip-right {
+    right: var(--tp-strip-margin-right, 0px);
+}
+
+.tp-strip-left {
+    left: var(--tp-strip-margin-left, 0px);
+}
+
+.tp-strip.tp-strip-visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.tab-panel {
+    position: fixed;
+    top: var(--tp-panel-margin-top, 20px);
+    height: var(--tp-panel-height, calc(100vh - var(--tp-panel-margin-top, 20px) - var(--tp-panel-margin-bottom, 20px)));
+    max-height: calc(100vh - var(--tp-panel-margin-top, 20px));
+    width: 600px; /* fallback — overridden by inline style from PanelWidth */
+    background: var(--tp-panel-bg, var(--ctrl-bg));
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.12);
+    display: flex;
+    flex-direction: column;
+    z-index: 451;
+    overflow: visible; /* visible so the corner badge (::before-positioned, absolutely placed) can straddle the edge; the actual content still clips via .tp-body below */
+    font-family: var(--ctrl-font);
+    box-sizing: border-box;
+    border-radius: var(--tp-panel-radius, 16px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity .4s ease, transform .4s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear .4s;
+}
+
+.tab-panel-right {
+    right: var(--tp-panel-margin-right, 20px);
+    transform: translateX(24px);
+}
+
+.tab-panel-left {
+    left: var(--tp-panel-margin-left, 20px);
+    transform: translateX(-24px);
+}
+
+.tab-panel.tp-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(0);
+    transition: opacity .4s ease, transform .4s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tab-panel {
+        transition: opacity .15s linear !important;
+        transform: none !important;
+    }
+}
+
+.tp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--tp-header-bg, transparent);
+    padding: var(--tp-header-pad-top, 28px) 32px 20px var(--tp-header-pad-left, 32px);
+    flex-shrink: 0;
+    gap: 16px;
+    position: relative; /* harmless if unused elsewhere — no longer needed for badge positioning, since .tp-corner-badge is position:fixed and anchors to the viewport directly */
+}
+
+.tab-panel-right .tp-header {
+    border-radius: var(--tp-panel-radius, 16px) var(--tp-panel-radius, 16px) 0 0;
+}
+
+.tab-panel-left .tp-header {
+    border-radius: var(--tp-panel-radius, 16px) var(--tp-panel-radius, 16px) 0 0;
+}
+
+/* Decorative corner badge — purely visual, not interactive. Sits ON
+   the backing strip's top corner (not straddling the panel and strip
+   like before). It stays a child of .tab-panel in the DOM (rendered by
+   the tag helper at page load, same as everything else in the panel),
+   but is positioned with `fixed` instead of `absolute` so it aligns
+   with .tp-strip — a separate element created later by JS — using the
+   same edge offset the strip itself uses, rather than needing to
+   physically live inside the strip's DOM node. --tp-corner-icon-top
+   controls how far down from the true screen top it sits; negative
+   values let it peek above the strip if wanted. A visible 2px border
+   ring (default white) gives the circle its own clean edge against
+   whatever's behind it. */
+.tp-corner-badge {
+    position: fixed;
+    top: var(--tp-corner-icon-top, 16px);
+    width: var(--tp-corner-icon-size, 40px);
+    height: var(--tp-corner-icon-size, 40px);
+    border-radius: 50%;
+    background: var(--tp-corner-icon-bg, #ffffff);
+    color: var(--tp-corner-icon-color, #7c3aed);
+    border: 2px solid var(--tp-corner-icon-border-color, #ffffff);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--tp-corner-icon-size, 40px) * 0.45);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+    z-index: 452; /* above both .tp-strip (450) and .tab-panel (451) */
+    pointer-events: none;
+    box-sizing: border-box; /* so the 2px border doesn't push the circle past --tp-corner-icon-size */
+    /* entrance animation state — see keyframes below */
+    opacity: 0;
+}
+
+/* The badge sits at the panel's OUTER corner — the corner facing INTO
+   the page, away from whichever true screen edge the panel is docked
+   to — matching every reference screenshot in this project. That means
+   the anchor direction is the OPPOSITE of what the "-right"/"-left"
+   class name might suggest at first glance:
+     side="right"  -> panel docked to the right  -> outer corner is on
+                       the panel's LEFT -> badge anchored with `right`,
+                       offset out past the strip's own right margin by
+                       the strip's full width (panel width + extra).
+     side="left"   -> panel docked to the left   -> outer corner is on
+                       the panel's RIGHT -> badge anchored with `left`,
+                       same idea mirrored.
+   Anchoring with `right`/`left` directly (rather than computing a
+   `left` position from 100%/100vw) avoids the viewport-percentage
+   reliability issues noted elsewhere in this file — the offset is
+   built entirely from the same margin/width variables the strip itself
+   uses, so the two always agree regardless of viewport size. */
+.tp-corner-badge-right {
+    right: calc(var(--tp-strip-margin-right, 0px) + var(--tp-panel-w, 600px) + var(--tp-strip-extra, 20px) - var(--tp-corner-icon-inset, 20px));
+}
+
+.tp-corner-badge-left {
+    left: calc(var(--tp-strip-margin-left, 0px) + var(--tp-panel-w, 600px) + var(--tp-strip-extra, 20px) - var(--tp-corner-icon-inset, 20px));
+}
+
+/* Gradient icon glyph. Same technique as the tab label above — the
+   icon font's glyph is still text under the hood, so background-clip:
+   text works on it identically. Activated by data-icon-gradient="true"
+   on the panel when CornerIconColor is a gradient() string. */
+.tab-panel[data-icon-gradient="true"] .tp-corner-badge i {
+    background: var(--tp-corner-icon-color, #7c3aed);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+}
+
+.tp-header h1 {
+    margin: 0;
+    font-size: var(--tp-title-size, 28px);
+    font-weight: var(--tp-title-weight, 800);
+    color: var(--tp-title-color, var(--ctrl-text));
+    /* entrance animation state — hidden until .tp-open triggers it, so
+       it never flashes visible before the panel finishes sliding */
+    opacity: 0;
+}
+
+/* Gradient title text — same technique as the tab label and corner
+   icon. Activated by data-title-gradient="true" on the panel when
+   TitleColor is a gradient() string. */
+.tab-panel[data-title-gradient="true"] .tp-header h1 {
+    background: var(--tp-title-color, var(--ctrl-text));
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+}
+
+.tp-close-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--tp-close-radius, 10px);
+    border: none;
+    background: var(--tp-close-bg, linear-gradient(135deg, #1d5fae, #c22a8d));
+    color: var(--tp-close-color, #ffffff);
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    transition: filter .15s ease;
+}
+
+    .tp-close-btn:hover {
+        filter: brightness(1.05);
+    }
+
+/* Gradient close-icon color. Same technique as above. Activated by
+   data-close-color-gradient="true" on the panel when CloseButtonColor
+   is a gradient() string. Rare in practice — the close button's
+   BACKGROUND is already a gradient by default — but supported for
+   consistency and for cases where CloseButtonBackground is set flat
+   and only the ✕ glyph itself should carry the gradient instead. */
+.tab-panel[data-close-color-gradient="true"] .tp-close-icon {
+    background: var(--tp-close-color, #ffffff);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+}
+
+.tp-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 0 32px 32px;
+    position: relative;
+    /* entrance animation state — body content arrives last in the
+       stagger, after the badge and title */
+    opacity: 0;
+}
+
+/* ---- Staggered open animation ----
+   Sequence: badge (top of header) pops in first, title (below the
+   badge) slides in a beat after, then the body content fades up last.
+   All three are driven purely by the .tp-open class the JS already
+   toggles — no JS changes needed. */
+
+/* Badge entrance is two chained animations for a more polished feel
+   than a flat scale-pop:
+   1. tp-badge-in — rotates in from a slight tilt while scaling up past
+      100% and settling back (an overshoot "bounce"), rather than
+      scaling linearly to 1.
+   2. tp-badge-ring-pulse — starts right as (1) finishes, and briefly
+      expands+fades a copy of the border ring outward, like a soft
+      ping/sonar settle. Implemented on ::after so it doesn't affect
+      the badge's own layout or icon. */
+@keyframes tp-badge-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.4) rotate(-35deg);
+    }
+
+    60% {
+        opacity: 1;
+        transform: scale(1.12) rotate(4deg);
+    }
+
+    80% {
+        transform: scale(0.96) rotate(-1deg);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+@keyframes tp-badge-ring-pulse {
+    0% {
+        opacity: 0.55;
+        transform: scale(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(1.6);
+    }
+}
+
+.tp-corner-badge::after {
+    content: "";
+    position: absolute;
+    inset: -2px; /* aligns with the badge's own 2px border ring so the pulse appears to emanate from it */
+    border-radius: 50%;
+    border: 2px solid var(--tp-corner-icon-border-color, #ffffff);
+    opacity: 0;
+    pointer-events: none;
+}
+
+@keyframes tp-title-in {
+    from {
+        opacity: 0;
+        transform: translateX(var(--tp-title-slide-from, 16px));
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes tp-body-in {
+    from {
+        opacity: 0;
+        transform: translateY(var(--tp-body-slide-from, 10px));
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.tab-panel.tp-open .tp-corner-badge {
+    animation: tp-badge-in .5s cubic-bezier(0.34, 1.56, 0.64, 1) .05s both;
+}
+
+    .tab-panel.tp-open .tp-corner-badge::after {
+        /* starts at .05s (with the badge) but the pulse itself is short and
+       only becomes visible once the badge has mostly landed, since the
+       ring's own opacity ramps from 0 at its start — timed to read as
+       "the badge landed, then rippled" rather than two effects at once */
+        animation: tp-badge-ring-pulse .5s ease-out .4s both;
+    }
+
+.tab-panel.tp-open .tp-header h1 {
+    /* .12s delay lets the panel start sliding and the badge pop in
+       first, so the title visibly "catches up" a beat after both */
+    animation: tp-title-in .45s cubic-bezier(0.22, 1, 0.36, 1) .12s both;
+}
+
+.tab-panel.tp-open .tp-body {
+    /* .2s delay puts body content last in the sequence: badge, then
+       title, then body — a deliberate cascade rather than everything
+       arriving at once */
+    animation: tp-body-in .4s cubic-bezier(0.22, 1, 0.36, 1) .2s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tp-corner-badge,
+    .tp-header h1,
+    .tp-body {
+        opacity: 1 !important;
+        transform: none !important;
+        animation: none !important;
+    }
+
+        .tp-corner-badge::after {
+            /* the pulse is a pure motion effect with nothing to show once
+           settled, so under reduced motion it stays fully hidden rather
+           than being forced visible like the badge itself above */
+            opacity: 0 !important;
+            animation: none !important;
+        }
+}
+
+/* ---- AJAX-loaded content: loading spinner ---- */
+
+.tp-loading {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 0;
+}
+
+.tp-body[data-loading="true"] .tp-loading {
+    display: flex;
+}
+
+.tp-spinner {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 3px solid var(--ctrl-border-light);
+    border-top-color: var(--ctrl-accent);
+    animation: tp-spin .7s linear infinite;
+}
+
+@keyframes tp-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (max-width: 640px) {
+    .tab-panel {
+        width: calc(100vw - var(--tp-panel-margin-left, 20px) - var(--tp-panel-margin-right, 20px)) !important;
+    }
+}

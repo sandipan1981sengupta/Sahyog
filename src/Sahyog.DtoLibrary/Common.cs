@@ -21,7 +21,9 @@ public enum MeetingRecurrence : byte
     None = 0,
     Weekly = 1,
     /// <summary>Every weekday (Mon–Fri).</summary>
-    Daily = 2
+    Daily = 2,
+    /// <summary>On the days picked in RepeatDays (e.g. Mon, Wed, Fri).</summary>
+    Custom = 3
 }
 
 /// <summary>Result of a create/update call: success, or a message to show the user.</summary>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Web app: controllers, Razor views, SignalR hub. All business functions are in ShankhNaad.ServiceLibrary. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ShankhNaad.Web</RootNamespace>
+    <!-- Shown in About ShankhNaad -->
+    <Version>1.0.0</Version>
+    <Product>ShankhNaad</Product>
+    <Company>CloudWheel Ltd</Company>
+    <!-- kept from Sahyog so your saved secrets (Smtp password etc.) keep working -->
+    <UserSecretsId>sahyog-web-cloudwheel-2026</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ShankhNaad.DtoLibrary\ShankhNaad.DtoLibrary.csproj" />
+    <ProjectReference Include="..\ShankhNaad.ServiceLibrary\ShankhNaad.ServiceLibrary.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="App_Data\**" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+</Project>

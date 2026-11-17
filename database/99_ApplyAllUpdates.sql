@@ -1,0 +1,1408 @@
+/* =====================================================================
+   ShankhNaad · 99_ApplyAllUpdates.sql
+   ONE file with every database update (03 → 21), in the right order.
+   Safe to run more than once: each step only adds or replaces what it needs,
+   and no data is deleted.
+
+   How: SQL Server Management Studio → File → Open → this file →
+        pick your Sahyog database in the toolbar → Execute (F5).
+   It should end with "ShankhNaad database is up to date."
+
+   (01_Tables.sql and 02_StoredProcedures.sql are only for a brand-new database.)
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+/* ############################## 03_Setup.sql ############################## */
+PRINT N'Applying 03_Setup.sql ...';
+GO
+/* =====================================================================
+   Sahyog · 03_Setup.sql
+   Run this once if you already ran 02_StoredProcedures.sql before the /setup page existed.
+   (Running the whole 02_StoredProcedures.sql again does the same thing.)
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+CREATE OR ALTER PROCEDURE dbo.sahyog_User_SuperAdminExists
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.sahyog_Users WHERE Role = N'SuperAdmin') THEN 1 ELSE 0 END AS BIT) AS AnyExists;
+END
+GO
+
+/* ############################## 04_DeleteDirectChat.sql ############################## */
+PRINT N'Applying 04_DeleteDirectChat.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad: delete a one-to-one (direct) conversation.
+   New stored procedure only; no table changes. Run after 02_StoredProcedures.sql.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+/* Deletes a direct conversation, its messages and its files for both people.
+   Only a member of that conversation can do it; group channels cannot be deleted here.
+   Returns one row per deleted file (StoragePath) so the app can remove them from disk.
+   @Result: 1 = deleted, 0 = not found / not a direct chat / not a member. */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_DeleteDirect
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER,
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    SET @Result = 0;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM dbo.sahyog_Channels c
+        JOIN dbo.sahyog_ChannelMembers m ON m.ChannelId = c.ChannelId AND m.UserId = @UserId
+        WHERE c.ChannelId = @ChannelId AND c.TenantId = @TenantId AND c.IsDirect = 1)
+        RETURN;
+
+    DECLARE @Files TABLE (StoragePath NVARCHAR(400) NOT NULL, SizeBytes BIGINT NOT NULL);
+    INSERT @Files (StoragePath, SizeBytes)
+    SELECT StoragePath, SizeBytes FROM dbo.sahyog_Attachments WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+
+    BEGIN TRANSACTION;
+        -- calls started from this chat stay in Meetings; they just no longer point at the deleted chat
+        UPDATE dbo.sahyog_Meetings SET ChannelId = NULL WHERE ChannelId = @ChannelId;
+        DELETE dbo.sahyog_Messages       WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+        DELETE dbo.sahyog_Attachments    WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+        DELETE dbo.sahyog_ChannelMembers WHERE ChannelId = @ChannelId;
+        DELETE dbo.sahyog_Channels       WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+
+        -- give the storage back to the workspace
+        UPDATE dbo.sahyog_Tenants
+        SET StorageUsedBytes = CASE WHEN StorageUsedBytes - x.Total < 0 THEN 0 ELSE StorageUsedBytes - x.Total END
+        FROM (SELECT COALESCE(SUM(SizeBytes), 0) AS Total FROM @Files) x
+        WHERE TenantId = @TenantId;
+    COMMIT;
+
+    SET @Result = 1;
+    SELECT StoragePath FROM @Files;
+END
+GO
+
+/* ############################## 05_AllDayAndMessageDelete.sql ############################## */
+PRINT N'Applying 05_AllDayAndMessageDelete.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 10 (run once, after 01–04):
+     1. All-day events that show as Busy or Free  (two new columns with defaults)
+     2. Delete a single chat message              (one new procedure)
+   Existing data is untouched: every current meeting stays a normal (timed, busy) meeting.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF COL_LENGTH(N'dbo.sahyog_Meetings', N'IsAllDay') IS NULL
+    ALTER TABLE dbo.sahyog_Meetings ADD IsAllDay BIT NOT NULL CONSTRAINT DF_sahyog_Meetings_AllDay DEFAULT (0);
+IF COL_LENGTH(N'dbo.sahyog_Meetings', N'ShowAsFree') IS NULL
+    ALTER TABLE dbo.sahyog_Meetings ADD ShowAsFree BIT NOT NULL CONSTRAINT DF_sahyog_Meetings_Free DEFAULT (0);
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Meeting_Create
+    @TenantId UNIQUEIDENTIFIER, @MeetingId UNIQUEIDENTIFIER, @Title NVARCHAR(150), @Agenda NVARCHAR(2000) = NULL,
+    @StartUtc DATETIME2(0), @DurationMinutes INT, @Recurrence TINYINT, @RoomName NVARCHAR(80), @GuestCode NVARCHAR(16),
+    @HostId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER = NULL, @IsInstant BIT,
+    @GuestLinkEnabled BIT, @LobbyEnabled BIT, @CaptionsOn BIT,
+    @InviteeIds dbo.sahyog_GuidList READONLY, @GuestEmails dbo.sahyog_EmailList READONLY,
+    @IsAllDay BIT = 0, @ShowAsFree BIT = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRANSACTION;
+        INSERT dbo.sahyog_Meetings (MeetingId, TenantId, Title, Agenda, StartUtc, DurationMinutes, Recurrence, RoomName, GuestCode,
+                             HostId, ChannelId, IsInstant, GuestLinkEnabled, LobbyEnabled, CaptionsOn, IsAllDay, ShowAsFree)
+        VALUES (@MeetingId, @TenantId, @Title, @Agenda, @StartUtc, @DurationMinutes, @Recurrence, @RoomName, @GuestCode,
+                @HostId, @ChannelId, @IsInstant, @GuestLinkEnabled, @LobbyEnabled, @CaptionsOn, @IsAllDay, @ShowAsFree);
+
+        INSERT dbo.sahyog_MeetingInvitees (TenantId, MeetingId, UserId)
+        SELECT @TenantId, @MeetingId, u.UserId
+        FROM @InviteeIds i
+        JOIN dbo.sahyog_Users u ON u.UserId = i.Id AND u.TenantId = @TenantId AND u.IsActive = 1
+        WHERE u.UserId <> @HostId;
+
+        INSERT dbo.sahyog_MeetingInvitees (TenantId, MeetingId, GuestEmail)
+        SELECT @TenantId, @MeetingId, g.Email FROM @GuestEmails g;
+    COMMIT;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Meeting_ListForUser
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @FromUtc DATETIME2(0), @ToUtc DATETIME2(0)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT m.MeetingId, m.Title, m.Agenda, m.StartUtc, m.DurationMinutes, m.Recurrence, m.RoomName, m.GuestCode,
+           m.HostId, h.DisplayName AS HostName, h.AvatarTone AS HostTone, m.ChannelId, m.IsInstant,
+           m.GuestLinkEnabled, m.LobbyEnabled, m.CaptionsOn, m.IsAllDay, m.ShowAsFree
+    INTO #m
+    FROM dbo.sahyog_Meetings m
+    JOIN dbo.sahyog_Users h ON h.UserId = m.HostId
+    WHERE m.TenantId = @TenantId
+      AND m.StartUtc < @ToUtc
+      AND (m.Recurrence <> 0 OR m.StartUtc >= DATEADD(DAY, -1, @FromUtc))
+      AND (m.HostId = @UserId
+           OR EXISTS (SELECT 1 FROM dbo.sahyog_MeetingInvitees i WHERE i.MeetingId = m.MeetingId AND i.UserId = @UserId));
+
+    SELECT * FROM #m;
+
+    SELECT i.MeetingId, i.UserId, u.DisplayName, u.AvatarTone, u.Email, i.GuestEmail
+    FROM dbo.sahyog_MeetingInvitees i
+    JOIN #m ON #m.MeetingId = i.MeetingId
+    LEFT JOIN dbo.sahyog_Users u ON u.UserId = i.UserId;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Meeting_Get
+    @TenantId UNIQUEIDENTIFIER, @MeetingId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT m.MeetingId, m.Title, m.Agenda, m.StartUtc, m.DurationMinutes, m.Recurrence, m.RoomName, m.GuestCode,
+           m.HostId, h.DisplayName AS HostName, h.AvatarTone AS HostTone, m.ChannelId, m.IsInstant,
+           m.GuestLinkEnabled, m.LobbyEnabled, m.CaptionsOn, m.IsAllDay, m.ShowAsFree,
+           c.Name AS ChannelName, c.IsDirect AS ChannelIsDirect
+    FROM dbo.sahyog_Meetings m
+    JOIN dbo.sahyog_Users h ON h.UserId = m.HostId
+    LEFT JOIN dbo.sahyog_Channels c ON c.ChannelId = m.ChannelId
+    WHERE m.TenantId = @TenantId AND m.MeetingId = @MeetingId;
+END
+GO
+
+/* Deletes one chat message. The sender can delete their own; a workspace admin can delete any.
+   A file attached to the message is removed too and its space is given back to the workspace.
+   @Result: 0 deleted, 1 not found, 2 not allowed. Returns ChannelId and StoragePath (NULL when no file). */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_DeleteMessage
+    @TenantId UNIQUEIDENTIFIER, @MessageId BIGINT, @UserId UNIQUEIDENTIFIER, @IsAdmin BIT,
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DECLARE @SenderId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER, @AttachmentId UNIQUEIDENTIFIER;
+    SELECT @SenderId = SenderId, @ChannelId = ChannelId, @AttachmentId = AttachmentId
+    FROM dbo.sahyog_Messages WHERE MessageId = @MessageId AND TenantId = @TenantId;
+
+    IF @SenderId IS NULL BEGIN SET @Result = 1; RETURN; END
+    IF @SenderId <> @UserId AND @IsAdmin = 0 BEGIN SET @Result = 2; RETURN; END
+    IF NOT EXISTS (SELECT 1 FROM dbo.sahyog_ChannelMembers WHERE ChannelId = @ChannelId AND UserId = @UserId)
+       AND @IsAdmin = 0 BEGIN SET @Result = 2; RETURN; END
+
+    DECLARE @Path NVARCHAR(400) = NULL, @Size BIGINT = 0;
+    IF @AttachmentId IS NOT NULL
+        SELECT @Path = StoragePath, @Size = SizeBytes FROM dbo.sahyog_Attachments WHERE AttachmentId = @AttachmentId AND TenantId = @TenantId;
+
+    BEGIN TRANSACTION;
+        DELETE dbo.sahyog_Messages WHERE MessageId = @MessageId AND TenantId = @TenantId;
+        IF @AttachmentId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.sahyog_Messages WHERE AttachmentId = @AttachmentId)
+        BEGIN
+            DELETE dbo.sahyog_Attachments WHERE AttachmentId = @AttachmentId AND TenantId = @TenantId;
+            UPDATE dbo.sahyog_Tenants
+            SET StorageUsedBytes = CASE WHEN StorageUsedBytes - @Size < 0 THEN 0 ELSE StorageUsedBytes - @Size END
+            WHERE TenantId = @TenantId;
+        END
+        ELSE SET @Path = NULL;
+    COMMIT;
+
+    SET @Result = 0;
+    SELECT @ChannelId AS ChannelId, @Path AS StoragePath;
+END
+GO
+
+/* ############################## 06_CustomRepeat.sql ############################## */
+PRINT N'Applying 06_CustomRepeat.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 11 (safe to run more than once; needs 01–04):
+     Custom repeat: pick the days (e.g. Mon, Wed, Fri) and an optional last day.
+       RepeatDays     TINYINT NULL  bit per day, same numbering as .NET DayOfWeek:
+                                    Sun = 1, Mon = 2, Tue = 4, Wed = 8, Thu = 16, Fri = 32, Sat = 64
+                                    (used when Recurrence = 3 "Custom")
+       RepeatUntilUtc DATETIME2 NULL start of the LAST occurrence (UTC). NULL = repeats with no end.
+   Existing meetings are untouched: NULLs mean "repeat as before, forever".
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+-- from 05_AllDayAndMessageDelete.sql: added here too so this script also works when 05 was skipped
+IF COL_LENGTH(N'dbo.sahyog_Meetings', N'IsAllDay') IS NULL
+    ALTER TABLE dbo.sahyog_Meetings ADD IsAllDay BIT NOT NULL CONSTRAINT DF_sahyog_Meetings_AllDay DEFAULT (0);
+IF COL_LENGTH(N'dbo.sahyog_Meetings', N'ShowAsFree') IS NULL
+    ALTER TABLE dbo.sahyog_Meetings ADD ShowAsFree BIT NOT NULL CONSTRAINT DF_sahyog_Meetings_Free DEFAULT (0);
+
+IF COL_LENGTH(N'dbo.sahyog_Meetings', N'RepeatDays') IS NULL
+    ALTER TABLE dbo.sahyog_Meetings ADD RepeatDays TINYINT NULL;
+IF COL_LENGTH(N'dbo.sahyog_Meetings', N'RepeatUntilUtc') IS NULL
+    ALTER TABLE dbo.sahyog_Meetings ADD RepeatUntilUtc DATETIME2(0) NULL;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Meeting_Create
+    @TenantId UNIQUEIDENTIFIER, @MeetingId UNIQUEIDENTIFIER, @Title NVARCHAR(150), @Agenda NVARCHAR(2000) = NULL,
+    @StartUtc DATETIME2(0), @DurationMinutes INT, @Recurrence TINYINT, @RoomName NVARCHAR(80), @GuestCode NVARCHAR(16),
+    @HostId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER = NULL, @IsInstant BIT,
+    @GuestLinkEnabled BIT, @LobbyEnabled BIT, @CaptionsOn BIT,
+    @InviteeIds dbo.sahyog_GuidList READONLY, @GuestEmails dbo.sahyog_EmailList READONLY,
+    @IsAllDay BIT = 0, @ShowAsFree BIT = 0,
+    @RepeatDays TINYINT = NULL, @RepeatUntilUtc DATETIME2(0) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRANSACTION;
+        INSERT dbo.sahyog_Meetings (MeetingId, TenantId, Title, Agenda, StartUtc, DurationMinutes, Recurrence, RoomName, GuestCode,
+                             HostId, ChannelId, IsInstant, GuestLinkEnabled, LobbyEnabled, CaptionsOn, IsAllDay, ShowAsFree,
+                             RepeatDays, RepeatUntilUtc)
+        VALUES (@MeetingId, @TenantId, @Title, @Agenda, @StartUtc, @DurationMinutes, @Recurrence, @RoomName, @GuestCode,
+                @HostId, @ChannelId, @IsInstant, @GuestLinkEnabled, @LobbyEnabled, @CaptionsOn, @IsAllDay, @ShowAsFree,
+                @RepeatDays, @RepeatUntilUtc);
+
+        INSERT dbo.sahyog_MeetingInvitees (TenantId, MeetingId, UserId)
+        SELECT @TenantId, @MeetingId, u.UserId
+        FROM @InviteeIds i
+        JOIN dbo.sahyog_Users u ON u.UserId = i.Id AND u.TenantId = @TenantId AND u.IsActive = 1
+        WHERE u.UserId <> @HostId;
+
+        INSERT dbo.sahyog_MeetingInvitees (TenantId, MeetingId, GuestEmail)
+        SELECT @TenantId, @MeetingId, g.Email FROM @GuestEmails g;
+    COMMIT;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Meeting_ListForUser
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @FromUtc DATETIME2(0), @ToUtc DATETIME2(0)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT m.MeetingId, m.Title, m.Agenda, m.StartUtc, m.DurationMinutes, m.Recurrence, m.RoomName, m.GuestCode,
+           m.HostId, h.DisplayName AS HostName, h.AvatarTone AS HostTone, m.ChannelId, m.IsInstant,
+           m.GuestLinkEnabled, m.LobbyEnabled, m.CaptionsOn, m.IsAllDay, m.ShowAsFree,
+           m.RepeatDays, m.RepeatUntilUtc
+    INTO #m
+    FROM dbo.sahyog_Meetings m
+    JOIN dbo.sahyog_Users h ON h.UserId = m.HostId
+    WHERE m.TenantId = @TenantId
+      AND m.StartUtc < @ToUtc
+      AND (   (m.Recurrence <> 0 AND (m.RepeatUntilUtc IS NULL OR m.RepeatUntilUtc >= DATEADD(DAY, -1, @FromUtc)))
+           OR m.StartUtc >= DATEADD(DAY, -1, @FromUtc))
+      AND (m.HostId = @UserId
+           OR EXISTS (SELECT 1 FROM dbo.sahyog_MeetingInvitees i WHERE i.MeetingId = m.MeetingId AND i.UserId = @UserId));
+
+    SELECT * FROM #m;
+
+    SELECT i.MeetingId, i.UserId, u.DisplayName, u.AvatarTone, u.Email, i.GuestEmail
+    FROM dbo.sahyog_MeetingInvitees i
+    JOIN #m ON #m.MeetingId = i.MeetingId
+    LEFT JOIN dbo.sahyog_Users u ON u.UserId = i.UserId;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Meeting_Get
+    @TenantId UNIQUEIDENTIFIER, @MeetingId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT m.MeetingId, m.Title, m.Agenda, m.StartUtc, m.DurationMinutes, m.Recurrence, m.RoomName, m.GuestCode,
+           m.HostId, h.DisplayName AS HostName, h.AvatarTone AS HostTone, m.ChannelId, m.IsInstant,
+           m.GuestLinkEnabled, m.LobbyEnabled, m.CaptionsOn, m.IsAllDay, m.ShowAsFree,
+           m.RepeatDays, m.RepeatUntilUtc,
+           c.Name AS ChannelName, c.IsDirect AS ChannelIsDirect
+    FROM dbo.sahyog_Meetings m
+    JOIN dbo.sahyog_Users h ON h.UserId = m.HostId
+    LEFT JOIN dbo.sahyog_Channels c ON c.ChannelId = m.ChannelId
+    WHERE m.TenantId = @TenantId AND m.MeetingId = @MeetingId;
+END
+GO
+
+/* ############################## 07_ClientEditDelete.sql ############################## */
+PRINT N'Applying 07_ClientEditDelete.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 12 (safe to run more than once; needs 01–04):
+     Super admin can rename a client (company name + workspace name) and delete a client.
+       sahyog_Tenant_Update  @Result: 0 saved, 1 workspace name taken, 2 not found
+       sahyog_Tenant_Delete  @Result: 0 deleted, 1 not found, 2 typed workspace name does not match,
+                                      3 client is still active (pause it first)
+   Delete removes everything the client owns: meetings, messages, files (rows), channels and people.
+   The app then removes the client's file folder (tenant-<id>) from disk.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Tenant_Update
+    @TenantId UNIQUEIDENTIFIER, @Name NVARCHAR(120), @Slug NVARCHAR(40),
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.sahyog_Tenants WHERE TenantId = @TenantId) BEGIN SET @Result = 2; RETURN; END
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_Tenants WHERE Slug = @Slug AND TenantId <> @TenantId) BEGIN SET @Result = 1; RETURN; END
+
+    UPDATE dbo.sahyog_Tenants SET Name = @Name, Slug = @Slug WHERE TenantId = @TenantId;
+    SET @Result = 0;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Tenant_Delete
+    @TenantId UNIQUEIDENTIFIER, @ConfirmSlug NVARCHAR(40),
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DECLARE @Slug NVARCHAR(40), @IsActive BIT;
+    SELECT @Slug = Slug, @IsActive = IsActive FROM dbo.sahyog_Tenants WHERE TenantId = @TenantId;
+
+    IF @Slug IS NULL BEGIN SET @Result = 1; RETURN; END
+    IF @Slug <> LOWER(LTRIM(RTRIM(@ConfirmSlug))) BEGIN SET @Result = 2; RETURN; END
+    IF @IsActive = 1 BEGIN SET @Result = 3; RETURN; END
+
+    BEGIN TRANSACTION;
+        -- meetings (invitees first; they also point at people)
+        DELETE i FROM dbo.sahyog_MeetingInvitees i
+        JOIN dbo.sahyog_Meetings m ON m.MeetingId = i.MeetingId
+        WHERE m.TenantId = @TenantId;
+        DELETE dbo.sahyog_Meetings WHERE TenantId = @TenantId;
+
+        -- chat: messages before files (a message can point at a file), then members and channels
+        DELETE msg FROM dbo.sahyog_Messages msg
+        JOIN dbo.sahyog_Channels c ON c.ChannelId = msg.ChannelId
+        WHERE c.TenantId = @TenantId;
+        DELETE a FROM dbo.sahyog_Attachments a
+        JOIN dbo.sahyog_Channels c ON c.ChannelId = a.ChannelId
+        WHERE c.TenantId = @TenantId;
+        DELETE cm FROM dbo.sahyog_ChannelMembers cm
+        JOIN dbo.sahyog_Channels c ON c.ChannelId = cm.ChannelId
+        WHERE c.TenantId = @TenantId;
+        DELETE dbo.sahyog_Channels WHERE TenantId = @TenantId;
+
+        -- people, then the client itself
+        DELETE dbo.sahyog_Users WHERE TenantId = @TenantId;
+        DELETE dbo.sahyog_Tenants WHERE TenantId = @TenantId;
+    COMMIT;
+
+    SET @Result = 0;
+END
+GO
+
+/* ############################## 08_FreeUpStorage.sql ############################## */
+PRINT N'Applying 08_FreeUpStorage.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 13 (safe to run more than once; needs 01–04):
+     Super admin "Free up space" for a client.
+       sahyog_Tenant_FilesSummary  how many chat files (and bytes) are older than a date (NULL = all files)
+       sahyog_Tenant_PurgeFiles    removes those files: the chat message stays and says the file was removed,
+                                   the file row goes, and the client's storage figure is recounted from what's left.
+                                   Returns one row per removed file (StoragePath, SizeBytes) so the app deletes them from disk.
+   Only chat file uploads use storage. Message text, meetings and video recordings (kept by JaaS) do not.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Tenant_FilesSummary
+    @TenantId UNIQUEIDENTIFIER, @OlderThanUtc DATETIME2(3) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT COUNT(*) AS Files, CAST(ISNULL(SUM(SizeBytes), 0) AS BIGINT) AS Bytes
+    FROM dbo.sahyog_Attachments
+    WHERE TenantId = @TenantId AND (@OlderThanUtc IS NULL OR UploadedUtc < @OlderThanUtc);
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Tenant_PurgeFiles
+    @TenantId UNIQUEIDENTIFIER, @OlderThanUtc DATETIME2(3) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    SELECT AttachmentId, FileName, StoragePath, SizeBytes
+    INTO #gone
+    FROM dbo.sahyog_Attachments
+    WHERE TenantId = @TenantId AND (@OlderThanUtc IS NULL OR UploadedUtc < @OlderThanUtc);
+
+    BEGIN TRANSACTION;
+        -- keep the conversation readable: the message stays and says what was there
+        UPDATE m
+        SET m.AttachmentId = NULL,
+            m.Body = LEFT(CASE WHEN m.Body = N'' THEN N'' ELSE m.Body + NCHAR(10) END
+                          + N'[File removed to free up space: ' + g.FileName + N']', 4000)
+        FROM dbo.sahyog_Messages m
+        JOIN #gone g ON g.AttachmentId = m.AttachmentId
+        WHERE m.TenantId = @TenantId;
+
+        DELETE a FROM dbo.sahyog_Attachments a JOIN #gone g ON g.AttachmentId = a.AttachmentId;
+
+        -- recount from what's left (also corrects any drift in the stored figure)
+        UPDATE dbo.sahyog_Tenants
+        SET StorageUsedBytes = (SELECT CAST(ISNULL(SUM(SizeBytes), 0) AS BIGINT) FROM dbo.sahyog_Attachments WHERE TenantId = @TenantId)
+        WHERE TenantId = @TenantId;
+    COMMIT;
+
+    SELECT StoragePath, SizeBytes FROM #gone;
+END
+GO
+
+/* ############################## 09_RecordingOff.sql ############################## */
+PRINT N'Applying 09_RecordingOff.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 15 (safe to run more than once):
+     Recording is switched off for every plan for now.
+     The app also refuses to turn it on (VideoFeatures.RecordingAvailable = false in
+     ShankhNaad.ServiceLibrary/Video/VideoProviders.cs) and never puts recording in a meeting pass,
+     so this script only makes the stored plans match.
+   ===================================================================== */
+SET NOCOUNT ON;
+UPDATE dbo.sahyog_Plans SET RecordingEnabled = 0 WHERE RecordingEnabled = 1;
+SELECT PlanId, Name, RecordingEnabled FROM dbo.sahyog_Plans ORDER BY PlanId;
+GO
+
+/* ############################## 10_EditPerson.sql ############################## */
+PRINT N'Applying 10_EditPerson.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 16 (safe to run more than once; needs 01–04):
+     Workspace admins can edit a person on the Team page: name, email, admin role,
+     and optionally set a new temporary password.
+       sahyog_User_Update  @Result: 0 saved, 1 email used by someone else, 3 not found,
+                                    4 would leave the workspace without an admin
+     Changing the email, role or password signs that person out everywhere (new security stamp),
+     and a new password also clears any sign-in lockout. A name-only change keeps them signed in.
+     @NewStamp returns the person's security stamp after the change (the app refreshes your own
+     sign-in with it when you edit yourself).
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_User_Update
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER,
+    @DisplayName NVARCHAR(100), @Email NVARCHAR(256), @Role NVARCHAR(20),
+    @NewPasswordHash NVARCHAR(400) = NULL,
+    @Result INT OUTPUT, @NewStamp UNIQUEIDENTIFIER OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRANSACTION;
+
+    DECLARE @OldEmail NVARCHAR(256), @OldRole NVARCHAR(20);
+    SELECT @OldEmail = Email, @OldRole = Role
+    FROM dbo.sahyog_Users WITH (UPDLOCK, HOLDLOCK)
+    WHERE UserId = @UserId AND TenantId = @TenantId;
+
+    IF @OldEmail IS NULL BEGIN ROLLBACK; SET @Result = 3; RETURN; END
+
+    IF @Email <> @OldEmail
+       AND EXISTS (SELECT 1 FROM dbo.sahyog_Users WITH (UPDLOCK, HOLDLOCK) WHERE Email = @Email AND UserId <> @UserId)
+    BEGIN ROLLBACK; SET @Result = 1; RETURN; END
+
+    -- never leave a workspace without an active admin
+    IF @OldRole = N'TenantAdmin' AND @Role <> N'TenantAdmin'
+       AND NOT EXISTS (SELECT 1 FROM dbo.sahyog_Users
+                       WHERE TenantId = @TenantId AND Role = N'TenantAdmin' AND IsActive = 1 AND UserId <> @UserId)
+    BEGIN ROLLBACK; SET @Result = 4; RETURN; END
+
+    DECLARE @SignOut BIT = CASE WHEN @Email <> @OldEmail OR @Role <> @OldRole OR @NewPasswordHash IS NOT NULL THEN 1 ELSE 0 END;
+
+    UPDATE dbo.sahyog_Users
+    SET DisplayName      = @DisplayName,
+        Email            = @Email,
+        Role             = @Role,
+        PasswordHash     = COALESCE(@NewPasswordHash, PasswordHash),
+        FailedLoginCount = CASE WHEN @NewPasswordHash IS NULL THEN FailedLoginCount ELSE 0 END,
+        LockoutEndUtc    = CASE WHEN @NewPasswordHash IS NULL THEN LockoutEndUtc ELSE NULL END,
+        SecurityStamp    = CASE WHEN @SignOut = 1 THEN NEWID() ELSE SecurityStamp END
+    WHERE UserId = @UserId AND TenantId = @TenantId;
+
+    SELECT @NewStamp = SecurityStamp FROM dbo.sahyog_Users WHERE UserId = @UserId;
+    COMMIT;
+
+    SET @Result = 0;
+END
+GO
+
+/* ############################## 11_PasswordLinks.sql ############################## */
+PRINT N'Applying 11_PasswordLinks.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 17 (safe to run more than once; needs 01–04):
+     One-time "set your password" links, used by:
+       - the welcome email when an admin adds a person (Purpose 1, valid 7 days)
+       - "Forgot password?" on the sign-in page and "Email a set-password link" on Team (Purpose 2)
+     Only a SHA-256 hash of each link's secret is stored, so a database copy can't be used to sign in.
+     A new link cancels the person's older unused links. Using a link sets the password, clears any
+     lockout and signs the person out everywhere (new security stamp).
+
+       sahyog_PasswordLink_Create  @Result: 0 created, 5 a link was created less than @MinGapSeconds ago
+       sahyog_PasswordLink_Get     the link's person and state (for showing the page)
+       sahyog_PasswordLink_Use     @Result: 0 password set, 1 link not valid (wrong, used or expired),
+                                            2 account inactive or workspace paused
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_PasswordLinks', N'U') IS NULL
+CREATE TABLE dbo.sahyog_PasswordLinks
+(
+    TokenHash   BINARY(32)       NOT NULL CONSTRAINT PK_sahyog_PasswordLinks PRIMARY KEY,
+    UserId      UNIQUEIDENTIFIER NOT NULL CONSTRAINT FK_sahyog_PasswordLinks_Users REFERENCES dbo.sahyog_Users(UserId) ON DELETE CASCADE,
+    Purpose     TINYINT          NOT NULL,          -- 1 welcome, 2 reset
+    CreatedUtc  DATETIME2(0)     NOT NULL CONSTRAINT DF_sahyog_PasswordLinks_Created DEFAULT (SYSUTCDATETIME()),
+    ExpiresUtc  DATETIME2(0)     NOT NULL,
+    UsedUtc     DATETIME2(0)     NULL
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_PasswordLinks_User')
+    CREATE INDEX IX_sahyog_PasswordLinks_User ON dbo.sahyog_PasswordLinks(UserId, CreatedUtc DESC);
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_PasswordLink_Create
+    @UserId UNIQUEIDENTIFIER, @TokenHash BINARY(32), @Purpose TINYINT, @ExpiresUtc DATETIME2(0),
+    @MinGapSeconds INT = 60,
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRANSACTION;
+
+    -- one link a minute per person is plenty (stops "Forgot password" being used to flood an inbox)
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_PasswordLinks WITH (UPDLOCK, HOLDLOCK)
+               WHERE UserId = @UserId AND CreatedUtc > DATEADD(SECOND, -@MinGapSeconds, SYSUTCDATETIME()))
+    BEGIN ROLLBACK; SET @Result = 5; RETURN; END
+
+    -- a new link replaces any older unused ones
+    UPDATE dbo.sahyog_PasswordLinks SET UsedUtc = SYSUTCDATETIME()
+    WHERE UserId = @UserId AND UsedUtc IS NULL;
+
+    INSERT dbo.sahyog_PasswordLinks (TokenHash, UserId, Purpose, ExpiresUtc)
+    VALUES (@TokenHash, @UserId, @Purpose, @ExpiresUtc);
+
+    -- tidy up links that ended more than 30 days ago
+    DELETE dbo.sahyog_PasswordLinks WHERE ExpiresUtc < DATEADD(DAY, -30, SYSUTCDATETIME());
+
+    COMMIT;
+    SET @Result = 0;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_PasswordLink_Get
+    @TokenHash BINARY(32)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT l.Purpose, l.ExpiresUtc, l.UsedUtc,
+           u.DisplayName, u.Email, u.IsActive,
+           t.Slug AS TenantSlug, t.Name AS TenantName, CAST(ISNULL(t.IsActive, 1) AS BIT) AS TenantActive
+    FROM dbo.sahyog_PasswordLinks l
+    JOIN dbo.sahyog_Users u ON u.UserId = l.UserId
+    LEFT JOIN dbo.sahyog_Tenants t ON t.TenantId = u.TenantId
+    WHERE l.TokenHash = @TokenHash;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_PasswordLink_Use
+    @TokenHash BINARY(32), @NewPasswordHash NVARCHAR(400),
+    @Result INT OUTPUT, @Email NVARCHAR(256) OUTPUT, @TenantSlug NVARCHAR(40) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRANSACTION;
+
+    DECLARE @UserId UNIQUEIDENTIFIER, @Expires DATETIME2(0), @Used DATETIME2(0);
+    SELECT @UserId = UserId, @Expires = ExpiresUtc, @Used = UsedUtc
+    FROM dbo.sahyog_PasswordLinks WITH (UPDLOCK, HOLDLOCK)
+    WHERE TokenHash = @TokenHash;
+
+    IF @UserId IS NULL OR @Used IS NOT NULL OR @Expires < SYSUTCDATETIME()
+    BEGIN ROLLBACK; SET @Result = 1; RETURN; END
+
+    DECLARE @Active BIT, @TenantActive BIT;
+    SELECT @Active = u.IsActive, @TenantActive = CAST(ISNULL(t.IsActive, 1) AS BIT),
+           @Email = u.Email, @TenantSlug = t.Slug
+    FROM dbo.sahyog_Users u
+    LEFT JOIN dbo.sahyog_Tenants t ON t.TenantId = u.TenantId
+    WHERE u.UserId = @UserId;
+
+    IF @Active = 0 OR @TenantActive = 0
+    BEGIN ROLLBACK; SET @Result = 2; RETURN; END
+
+    UPDATE dbo.sahyog_Users
+    SET PasswordHash = @NewPasswordHash, FailedLoginCount = 0, LockoutEndUtc = NULL, SecurityStamp = NEWID()
+    WHERE UserId = @UserId;
+
+    UPDATE dbo.sahyog_PasswordLinks SET UsedUtc = SYSUTCDATETIME()
+    WHERE UserId = @UserId AND UsedUtc IS NULL;
+
+    COMMIT;
+    SET @Result = 0;
+END
+GO
+
+/* ############################## 12_EmailFixCancelsLinks.sql ############################## */
+PRINT N'Applying 12_EmailFixCancelsLinks.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 21 (safe to run more than once; run after 10 and 11):
+     Correcting someone's email on Team → Edit now also cancels every set-password link
+     that was already sent (for example a welcome email that went to a mistyped address),
+     so only the new address can set the password.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_User_Update
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER,
+    @DisplayName NVARCHAR(100), @Email NVARCHAR(256), @Role NVARCHAR(20),
+    @NewPasswordHash NVARCHAR(400) = NULL,
+    @Result INT OUTPUT, @NewStamp UNIQUEIDENTIFIER OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRANSACTION;
+
+    DECLARE @OldEmail NVARCHAR(256), @OldRole NVARCHAR(20);
+    SELECT @OldEmail = Email, @OldRole = Role
+    FROM dbo.sahyog_Users WITH (UPDLOCK, HOLDLOCK)
+    WHERE UserId = @UserId AND TenantId = @TenantId;
+
+    IF @OldEmail IS NULL BEGIN ROLLBACK; SET @Result = 3; RETURN; END
+
+    IF @Email <> @OldEmail
+       AND EXISTS (SELECT 1 FROM dbo.sahyog_Users WITH (UPDLOCK, HOLDLOCK) WHERE Email = @Email AND UserId <> @UserId)
+    BEGIN ROLLBACK; SET @Result = 1; RETURN; END
+
+    -- never leave a workspace without an active admin
+    IF @OldRole = N'TenantAdmin' AND @Role <> N'TenantAdmin'
+       AND NOT EXISTS (SELECT 1 FROM dbo.sahyog_Users
+                       WHERE TenantId = @TenantId AND Role = N'TenantAdmin' AND IsActive = 1 AND UserId <> @UserId)
+    BEGIN ROLLBACK; SET @Result = 4; RETURN; END
+
+    DECLARE @SignOut BIT = CASE WHEN @Email <> @OldEmail OR @Role <> @OldRole OR @NewPasswordHash IS NOT NULL THEN 1 ELSE 0 END;
+
+    UPDATE dbo.sahyog_Users
+    SET DisplayName      = @DisplayName,
+        Email            = @Email,
+        Role             = @Role,
+        PasswordHash     = COALESCE(@NewPasswordHash, PasswordHash),
+        FailedLoginCount = CASE WHEN @NewPasswordHash IS NULL THEN FailedLoginCount ELSE 0 END,
+        LockoutEndUtc    = CASE WHEN @NewPasswordHash IS NULL THEN LockoutEndUtc ELSE NULL END,
+        SecurityStamp    = CASE WHEN @SignOut = 1 THEN NEWID() ELSE SecurityStamp END
+    WHERE UserId = @UserId AND TenantId = @TenantId;
+
+    -- New email: any set-password link still open (for example one sent to a mistyped address) stops working.
+    IF @Email <> @OldEmail
+        UPDATE dbo.sahyog_PasswordLinks SET UsedUtc = SYSUTCDATETIME()
+        WHERE UserId = @UserId AND UsedUtc IS NULL;
+
+    SELECT @NewStamp = SecurityStamp FROM dbo.sahyog_Users WHERE UserId = @UserId;
+    COMMIT;
+
+    SET @Result = 0;
+END
+GO
+
+/* ############################## 13_InvitePending.sql ############################## */
+PRINT N'Applying 13_InvitePending.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 22 (safe to run more than once; needs 01–02):
+     Team list also returns LastLoginUtc, so the Team page can mark people who were
+     invited but have never signed in ("Invited · not joined") and offer "Resend invite".
+     Until this runs, the app simply shows nobody as pending.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_User_ListByTenant
+    @TenantId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT UserId, TenantId, Email, DisplayName, Role, AvatarTone, IsActive, LastLoginUtc
+    FROM dbo.sahyog_Users
+    WHERE TenantId = @TenantId
+    ORDER BY DisplayName;
+END
+GO
+
+/* ############################## 14_ChannelEdit.sql ############################## */
+PRINT N'Applying 14_ChannelEdit.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 23 (safe to run more than once; needs 01–04):
+     Rename / describe / delete group channels from Chat → Details → Edit channel.
+       - Workspace admins can rename and delete any channel of their workspace.
+       - The person who created a channel can rename it (not delete it).
+       - The workspace's first channel (#general, the one everybody is in) can be renamed but never deleted.
+     sahyog_Chat_GetChannel now also returns CreatedBy and IsMain (the app works without them until this runs).
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_GetChannel
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @MainId UNIQUEIDENTIFIER =
+        (SELECT TOP (1) ChannelId FROM dbo.sahyog_Channels
+         WHERE TenantId = @TenantId AND IsDirect = 0 ORDER BY CreatedUtc, ChannelId);
+    SELECT ChannelId, Name, Description, IsDirect, CreatedBy,
+           CAST(CASE WHEN ChannelId = @MainId THEN 1 ELSE 0 END AS BIT) AS IsMain
+    FROM dbo.sahyog_Channels
+    WHERE TenantId = @TenantId AND ChannelId = @ChannelId;
+END
+GO
+
+/* @Result: 0 saved, 1 not found (or a direct chat), 2 not allowed, 3 name already used */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_UpdateChannel
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @IsAdmin BIT,
+    @Name NVARCHAR(80), @Description NVARCHAR(300) = NULL,
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DECLARE @CreatedBy UNIQUEIDENTIFIER, @Found BIT = 0;
+    SELECT @Found = 1, @CreatedBy = CreatedBy
+    FROM dbo.sahyog_Channels WITH (UPDLOCK, HOLDLOCK)
+    WHERE ChannelId = @ChannelId AND TenantId = @TenantId AND IsDirect = 0;
+
+    IF @Found = 0 BEGIN SET @Result = 1; RETURN; END
+    IF @IsAdmin = 0 AND (@CreatedBy IS NULL OR @CreatedBy <> @UserId) BEGIN SET @Result = 2; RETURN; END
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_Channels
+               WHERE TenantId = @TenantId AND IsDirect = 0 AND Name = @Name AND ChannelId <> @ChannelId)
+    BEGIN SET @Result = 3; RETURN; END
+
+    UPDATE dbo.sahyog_Channels
+    SET Name = @Name, Description = NULLIF(LTRIM(RTRIM(@Description)), N'')
+    WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+
+    SET @Result = 0;
+END
+GO
+
+/* Deletes a group channel with its messages and files (admins only; the app checks the role).
+   Meetings that were started from it are kept (they just no longer point at a channel).
+   Returns one row per deleted file (StoragePath) so the app can remove them from disk.
+   @Result: 0 deleted, 1 not found (or a direct chat), 4 it's the workspace's main channel (#general) */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_DeleteChannel
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER,
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.sahyog_Channels WHERE ChannelId = @ChannelId AND TenantId = @TenantId AND IsDirect = 0)
+    BEGIN SET @Result = 1; RETURN; END
+
+    DECLARE @MainId UNIQUEIDENTIFIER =
+        (SELECT TOP (1) ChannelId FROM dbo.sahyog_Channels
+         WHERE TenantId = @TenantId AND IsDirect = 0 ORDER BY CreatedUtc, ChannelId);
+    IF @ChannelId = @MainId BEGIN SET @Result = 4; RETURN; END
+
+    DECLARE @Files TABLE (StoragePath NVARCHAR(400) NOT NULL, SizeBytes BIGINT NOT NULL);
+    INSERT @Files (StoragePath, SizeBytes)
+    SELECT StoragePath, SizeBytes FROM dbo.sahyog_Attachments WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+
+    BEGIN TRANSACTION;
+        UPDATE dbo.sahyog_Meetings SET ChannelId = NULL WHERE ChannelId = @ChannelId;
+        DELETE dbo.sahyog_Messages       WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+        DELETE dbo.sahyog_Attachments    WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+        DELETE dbo.sahyog_ChannelMembers WHERE ChannelId = @ChannelId;
+        DELETE dbo.sahyog_Channels       WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+
+        UPDATE dbo.sahyog_Tenants
+        SET StorageUsedBytes = CASE WHEN StorageUsedBytes - x.Total < 0 THEN 0 ELSE StorageUsedBytes - x.Total END
+        FROM (SELECT COALESCE(SUM(SizeBytes), 0) AS Total FROM @Files) x
+        WHERE TenantId = @TenantId;
+    COMMIT;
+
+    SET @Result = 0;
+    SELECT StoragePath FROM @Files;
+END
+GO
+
+/* ############################## 15_ReadReceipts.sql ############################## */
+PRINT N'Applying 15_ReadReceipts.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 24 (safe to run more than once; needs 01–02):
+     Read ticks on your own messages (✓ sent, ✓✓ read).
+       sahyog_Chat_MarkReadV2   marks a conversation read for someone and says whether anything changed
+                                (so the app tells the senders only when there's something new to show).
+       sahyog_Chat_GetReadState who in a conversation has read up to when.
+     Until this runs, the app works as before without ticks.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_MarkReadV2
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER,
+    @ReadUtc DATETIME2(3) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET @ReadUtc = NULL;
+    DECLARE @Now DATETIME2(3) = SYSUTCDATETIME();
+
+    -- only when there is something new from someone else (keeps writes and notifications rare)
+    UPDATE cm
+    SET UnreadCount = 0, LastReadUtc = @Now, @ReadUtc = @Now
+    FROM dbo.sahyog_ChannelMembers cm
+    WHERE cm.TenantId = @TenantId AND cm.ChannelId = @ChannelId AND cm.UserId = @UserId
+      AND (cm.UnreadCount > 0
+           OR EXISTS (SELECT 1 FROM dbo.sahyog_Messages m
+                      WHERE m.TenantId = @TenantId AND m.ChannelId = @ChannelId
+                        AND m.SenderId <> @UserId AND m.SentUtc > cm.LastReadUtc));
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_GetReadState
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT cm.UserId, u.DisplayName, cm.LastReadUtc
+    FROM dbo.sahyog_ChannelMembers cm
+    JOIN dbo.sahyog_Users u ON u.UserId = cm.UserId AND u.IsActive = 1
+    WHERE cm.TenantId = @TenantId AND cm.ChannelId = @ChannelId;
+END
+GO
+
+/* ############################## 16_Groups.sql ############################## */
+PRINT N'Applying 16_Groups.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 25 (safe to run more than once; needs 01–04, run after 14):
+     Private groups: a group conversation with only the people you pick
+     (channels stay "everyone in the workspace").
+       - sahyog_Channels.IsPrivate (0 = channel for everyone, 1 = group of chosen people)
+       - sahyog_Chat_CreateGroup: creates the group with you + the people picked
+       - sahyog_User_Create: new people join every channel, but not private groups
+       - sahyog_Chat_GetSidebar: also returns IsPrivate (group icon in the list)
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF COL_LENGTH(N'dbo.sahyog_Channels', N'IsPrivate') IS NULL
+    ALTER TABLE dbo.sahyog_Channels ADD IsPrivate BIT NOT NULL CONSTRAINT DF_sahyog_Channels_IsPrivate DEFAULT (0);
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_User_Create
+    @UserId UNIQUEIDENTIFIER, @TenantId UNIQUEIDENTIFIER = NULL, @Email NVARCHAR(256), @DisplayName NVARCHAR(100),
+    @PasswordHash NVARCHAR(400), @Role NVARCHAR(20), @AvatarTone TINYINT, @EnforceLimit BIT = 1,
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRANSACTION;
+
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_Users WITH (UPDLOCK, HOLDLOCK) WHERE Email = @Email)
+    BEGIN
+        ROLLBACK; SET @Result = 1; RETURN;
+    END
+
+    IF @TenantId IS NOT NULL AND @EnforceLimit = 1
+    BEGIN
+        DECLARE @Max INT;
+        SELECT @Max = COALESCE(t.MaxUsersOverride, p.MaxUsers)
+        FROM dbo.sahyog_Tenants t WITH (UPDLOCK, HOLDLOCK)
+        JOIN dbo.sahyog_Plans p ON p.PlanId = t.PlanId
+        WHERE t.TenantId = @TenantId;
+
+        IF (SELECT COUNT(*) FROM dbo.sahyog_Users WHERE TenantId = @TenantId AND IsActive = 1) >= @Max
+        BEGIN
+            ROLLBACK; SET @Result = 2; RETURN;
+        END
+    END
+
+    INSERT dbo.sahyog_Users (UserId, TenantId, Email, DisplayName, PasswordHash, Role, AvatarTone)
+    VALUES (@UserId, @TenantId, @Email, @DisplayName, @PasswordHash, @Role, @AvatarTone);
+
+    IF @TenantId IS NOT NULL
+        INSERT dbo.sahyog_ChannelMembers (ChannelId, UserId, TenantId)
+        SELECT c.ChannelId, @UserId, @TenantId
+        FROM dbo.sahyog_Channels c
+        WHERE c.TenantId = @TenantId AND c.IsDirect = 0 AND c.IsPrivate = 0;   -- not into private groups
+
+    COMMIT;
+    SET @Result = 0;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_GetSidebar
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT c.ChannelId, c.Name, c.Description, c.IsDirect, c.IsPrivate, cm.UnreadCount, c.LastMessageUtc,
+           o.UserId AS OtherUserId, o.DisplayName AS OtherName, o.AvatarTone AS OtherTone
+    FROM dbo.sahyog_ChannelMembers cm
+    JOIN dbo.sahyog_Channels c ON c.ChannelId = cm.ChannelId AND c.TenantId = @TenantId
+    OUTER APPLY (
+        SELECT TOP (1) u.UserId, u.DisplayName, u.AvatarTone
+        FROM dbo.sahyog_ChannelMembers m2
+        JOIN dbo.sahyog_Users u ON u.UserId = m2.UserId
+        WHERE c.IsDirect = 1 AND m2.ChannelId = c.ChannelId AND m2.UserId <> @UserId
+    ) o
+    WHERE cm.TenantId = @TenantId AND cm.UserId = @UserId;
+END
+GO
+
+/* @MemberIds: comma-separated user ids. Only active people of the same workspace are added; the creator always is.
+   @Result: 0 created, 1 name already used, 2 nobody else picked. Returns the members' ids. */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_CreateGroup
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER, @Name NVARCHAR(80), @Description NVARCHAR(300) = NULL,
+    @CreatedBy UNIQUEIDENTIFIER, @MemberIds NVARCHAR(MAX), @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_Channels WHERE TenantId = @TenantId AND IsDirect = 0 AND Name = @Name)
+    BEGIN SET @Result = 1; RETURN; END
+
+    DECLARE @Members TABLE (UserId UNIQUEIDENTIFIER PRIMARY KEY);
+    INSERT @Members (UserId)
+    SELECT DISTINCT u.UserId
+    FROM STRING_SPLIT(ISNULL(@MemberIds, N''), N',') s
+    JOIN dbo.sahyog_Users u ON u.UserId = TRY_CAST(LTRIM(RTRIM(s.value)) AS UNIQUEIDENTIFIER)
+    WHERE u.TenantId = @TenantId AND u.IsActive = 1 AND u.UserId <> @CreatedBy;
+
+    IF NOT EXISTS (SELECT 1 FROM @Members) BEGIN SET @Result = 2; RETURN; END
+    INSERT @Members (UserId) VALUES (@CreatedBy);
+
+    BEGIN TRANSACTION;
+        INSERT dbo.sahyog_Channels (ChannelId, TenantId, Name, Description, CreatedBy, IsPrivate)
+        VALUES (@ChannelId, @TenantId, @Name, @Description, @CreatedBy, 1);
+        INSERT dbo.sahyog_ChannelMembers (ChannelId, UserId, TenantId)
+        SELECT @ChannelId, UserId, @TenantId FROM @Members;
+    COMMIT;
+
+    SET @Result = 0;
+    SELECT UserId FROM @Members;
+END
+GO
+
+/* ############################## 17_DeleteChatWithCalls.sql ############################## */
+PRINT N'Applying 17_DeleteChatWithCalls.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 26 (safe to run more than once; needs 04):
+     Fix: deleting a one-to-one chat failed with "FK_sahyog_Meetings_Channels"
+     when a call had been started from that chat. The call (meeting) is kept and
+     simply no longer points at the deleted chat.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_DeleteDirect
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER,
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    SET @Result = 0;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM dbo.sahyog_Channels c
+        JOIN dbo.sahyog_ChannelMembers m ON m.ChannelId = c.ChannelId AND m.UserId = @UserId
+        WHERE c.ChannelId = @ChannelId AND c.TenantId = @TenantId AND c.IsDirect = 1)
+        RETURN;
+
+    DECLARE @Files TABLE (StoragePath NVARCHAR(400) NOT NULL, SizeBytes BIGINT NOT NULL);
+    INSERT @Files (StoragePath, SizeBytes)
+    SELECT StoragePath, SizeBytes FROM dbo.sahyog_Attachments WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+
+    BEGIN TRANSACTION;
+        -- calls started from this chat stay in Meetings; they just no longer point at the deleted chat
+        UPDATE dbo.sahyog_Meetings SET ChannelId = NULL WHERE ChannelId = @ChannelId;
+        DELETE dbo.sahyog_Messages       WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+        DELETE dbo.sahyog_Attachments    WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+        DELETE dbo.sahyog_ChannelMembers WHERE ChannelId = @ChannelId;
+        DELETE dbo.sahyog_Channels       WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+
+        -- give the storage back to the workspace
+        UPDATE dbo.sahyog_Tenants
+        SET StorageUsedBytes = CASE WHEN StorageUsedBytes - x.Total < 0 THEN 0 ELSE StorageUsedBytes - x.Total END
+        FROM (SELECT COALESCE(SUM(SizeBytes), 0) AS Total FROM @Files) x
+        WHERE TenantId = @TenantId;
+    COMMIT;
+
+    SET @Result = 1;
+    SELECT StoragePath FROM @Files;
+END
+GO
+
+/* ############################## 18_EveryoneAndPins.sql ############################## */
+PRINT N'Applying 18_EveryoneAndPins.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 27 (safe to run more than once; run after 16):
+     - No more "channels": the workspace's main channel (#general) becomes the group "Everyone"
+       (everybody stays in it, new people still join it automatically, messages are kept);
+       any other channel becomes a normal group with the same members.
+     - New workspaces start with "Everyone" instead of "#general".
+     - Pinned chats: each person can pin chats to the top of their own list.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF COL_LENGTH(N'dbo.sahyog_ChannelMembers', N'IsPinned') IS NULL
+    ALTER TABLE dbo.sahyog_ChannelMembers ADD IsPinned BIT NOT NULL CONSTRAINT DF_sahyog_ChannelMembers_IsPinned DEFAULT (0);
+IF COL_LENGTH(N'dbo.sahyog_ChannelMembers', N'PinnedUtc') IS NULL
+    ALTER TABLE dbo.sahyog_ChannelMembers ADD PinnedUtc DATETIME2(3) NULL;
+GO
+
+-- each workspace's first channel → "Everyone" (only if it's still called general and the name is free)
+;WITH main AS (
+    SELECT c.ChannelId, c.TenantId, c.Name,
+           ROW_NUMBER() OVER (PARTITION BY c.TenantId ORDER BY c.CreatedUtc, c.ChannelId) AS rn
+    FROM dbo.sahyog_Channels c WHERE c.IsDirect = 0
+)
+UPDATE c SET Name = N'Everyone', Description = N'Everyone in the workspace', IsPrivate = 0
+FROM dbo.sahyog_Channels c
+JOIN main m ON m.ChannelId = c.ChannelId AND m.rn = 1
+WHERE c.Name = N'general'
+  AND NOT EXISTS (SELECT 1 FROM dbo.sahyog_Channels x WHERE x.TenantId = c.TenantId AND x.IsDirect = 0 AND x.Name = N'Everyone');
+GO
+
+-- every other channel → a group (same members, messages kept)
+;WITH main AS (
+    SELECT c.ChannelId, ROW_NUMBER() OVER (PARTITION BY c.TenantId ORDER BY c.CreatedUtc, c.ChannelId) AS rn
+    FROM dbo.sahyog_Channels c WHERE c.IsDirect = 0
+)
+UPDATE c SET IsPrivate = 1
+FROM dbo.sahyog_Channels c
+JOIN main m ON m.ChannelId = c.ChannelId AND m.rn > 1
+WHERE c.IsPrivate = 0;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Tenant_Create
+    @TenantId UNIQUEIDENTIFIER, @Name NVARCHAR(120), @Slug NVARCHAR(40), @PlanId INT, @TimeZoneId NVARCHAR(64),
+    @AdminUserId UNIQUEIDENTIFIER, @AdminEmail NVARCHAR(256), @AdminName NVARCHAR(100),
+    @AdminPasswordHash NVARCHAR(400), @AdminTone TINYINT,
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_Tenants WHERE Slug = @Slug) BEGIN SET @Result = 1; RETURN; END
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_Users WHERE Email = @AdminEmail) BEGIN SET @Result = 2; RETURN; END
+    IF NOT EXISTS (SELECT 1 FROM dbo.sahyog_Plans WHERE PlanId = @PlanId) BEGIN SET @Result = 3; RETURN; END
+
+    DECLARE @GeneralId UNIQUEIDENTIFIER = NEWID();
+
+    BEGIN TRANSACTION;
+        INSERT dbo.sahyog_Tenants (TenantId, Name, Slug, PlanId, TimeZoneId)
+        VALUES (@TenantId, @Name, @Slug, @PlanId, @TimeZoneId);
+
+        INSERT dbo.sahyog_Users (UserId, TenantId, Email, DisplayName, PasswordHash, Role, AvatarTone)
+        VALUES (@AdminUserId, @TenantId, @AdminEmail, @AdminName, @AdminPasswordHash, N'TenantAdmin', @AdminTone);
+
+        INSERT dbo.sahyog_Channels (ChannelId, TenantId, Name, Description, CreatedBy)
+        VALUES (@GeneralId, @TenantId, N'Everyone', N'Everyone in the workspace', @AdminUserId);
+
+        INSERT dbo.sahyog_ChannelMembers (ChannelId, UserId, TenantId)
+        VALUES (@GeneralId, @AdminUserId, @TenantId);
+    COMMIT;
+
+    SET @Result = 0;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_GetSidebar
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT c.ChannelId, c.Name, c.Description, c.IsDirect, c.IsPrivate, cm.IsPinned, cm.PinnedUtc, cm.UnreadCount, c.LastMessageUtc,
+           o.UserId AS OtherUserId, o.DisplayName AS OtherName, o.AvatarTone AS OtherTone
+    FROM dbo.sahyog_ChannelMembers cm
+    JOIN dbo.sahyog_Channels c ON c.ChannelId = cm.ChannelId AND c.TenantId = @TenantId
+    OUTER APPLY (
+        SELECT TOP (1) u.UserId, u.DisplayName, u.AvatarTone
+        FROM dbo.sahyog_ChannelMembers m2
+        JOIN dbo.sahyog_Users u ON u.UserId = m2.UserId
+        WHERE c.IsDirect = 1 AND m2.ChannelId = c.ChannelId AND m2.UserId <> @UserId
+    ) o
+    WHERE cm.TenantId = @TenantId AND cm.UserId = @UserId;
+END
+GO
+
+/* Pin or unpin a chat for one person (pins are personal). */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_SetPinned
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @Pinned BIT, @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE dbo.sahyog_ChannelMembers
+    SET IsPinned = @Pinned, PinnedUtc = CASE WHEN @Pinned = 1 THEN SYSUTCDATETIME() ELSE NULL END
+    WHERE TenantId = @TenantId AND ChannelId = @ChannelId AND UserId = @UserId;
+    SET @Result = CASE WHEN @@ROWCOUNT = 0 THEN 1 ELSE 0 END;
+END
+GO
+
+/* ############################## 19_PersonTimeline.sql ############################## */
+PRINT N'Applying 19_PersonTimeline.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 28 (safe to run more than once; needs 01–02):
+     Clicking a person shows your private chat with them PLUS what either of you wrote
+     in groups you're both in (e.g. "Everyone"), newest first. Replies still go to the private chat.
+     FromGroup = the group's name for group messages, NULL for private ones.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_GetPersonTimeline
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER,      -- the private (direct) chat
+    @UserId UNIQUEIDENTIFIER, @OtherId UNIQUEIDENTIFIER,
+    @BeforeId BIGINT = NULL, @Take INT = 301
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT TOP (@Take) v.*,
+           CASE WHEN v.ChannelId = @ChannelId THEN NULL ELSE c.Name END AS FromGroup
+    FROM dbo.sahyog_vMessages v
+    JOIN dbo.sahyog_Channels c ON c.ChannelId = v.ChannelId AND c.TenantId = @TenantId
+    WHERE v.TenantId = @TenantId
+      AND (@BeforeId IS NULL OR v.MessageId < @BeforeId)
+      AND (
+            v.ChannelId = @ChannelId
+         OR (c.IsDirect = 0
+             AND v.SenderId IN (@UserId, @OtherId)
+             AND EXISTS (SELECT 1 FROM dbo.sahyog_ChannelMembers a WHERE a.ChannelId = c.ChannelId AND a.UserId = @UserId)
+             AND EXISTS (SELECT 1 FROM dbo.sahyog_ChannelMembers b WHERE b.ChannelId = c.ChannelId AND b.UserId = @OtherId))
+          )
+    ORDER BY v.MessageId DESC;
+END
+GO
+
+/* ############################## 20_UserPhotos.sql ############################## */
+PRINT N'Applying 20_UserPhotos.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 29 (safe to run more than once; needs 01–02):
+     Profile photos, stored in the database. The browser shrinks every photo to a small
+     square (192 × 192 JPEG, usually 10–25 KB) before uploading; the server accepts up to 200 KB.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_UserPhotos', N'U') IS NULL
+CREATE TABLE dbo.sahyog_UserPhotos
+(
+    UserId      UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_sahyog_UserPhotos PRIMARY KEY
+                CONSTRAINT FK_sahyog_UserPhotos_Users REFERENCES dbo.sahyog_Users(UserId) ON DELETE CASCADE,
+    TenantId    UNIQUEIDENTIFIER NOT NULL,
+    Photo       VARBINARY(MAX)  NOT NULL,
+    ContentType NVARCHAR(40)    NOT NULL,
+    UpdatedUtc  DATETIME2(3)    NOT NULL CONSTRAINT DF_sahyog_UserPhotos_Updated DEFAULT (SYSUTCDATETIME())
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_UserPhotos_Tenant')
+    CREATE INDEX IX_sahyog_UserPhotos_Tenant ON dbo.sahyog_UserPhotos(TenantId) INCLUDE (UpdatedUtc);
+GO
+
+/* Saves (or replaces) a person's photo. @Result: 0 saved, 1 that person isn't in this workspace. */
+CREATE OR ALTER PROCEDURE dbo.sahyog_UserPhoto_Set
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @Photo VARBINARY(MAX), @ContentType NVARCHAR(40),
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM dbo.sahyog_Users WHERE UserId = @UserId AND TenantId = @TenantId)
+    BEGIN SET @Result = 1; RETURN; END
+
+    MERGE dbo.sahyog_UserPhotos WITH (HOLDLOCK) AS t
+    USING (SELECT @UserId AS UserId) AS s ON t.UserId = s.UserId
+    WHEN MATCHED THEN UPDATE SET Photo = @Photo, ContentType = @ContentType, UpdatedUtc = SYSUTCDATETIME(), TenantId = @TenantId
+    WHEN NOT MATCHED THEN INSERT (UserId, TenantId, Photo, ContentType) VALUES (@UserId, @TenantId, @Photo, @ContentType);
+    SET @Result = 0;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_UserPhoto_Get
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT Photo, ContentType, UpdatedUtc FROM dbo.sahyog_UserPhotos WHERE UserId = @UserId AND TenantId = @TenantId;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_UserPhoto_Delete
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DELETE dbo.sahyog_UserPhotos WHERE UserId = @UserId AND TenantId = @TenantId;
+END
+GO
+
+/* Who in the workspace has a photo, and when it last changed (the page uses it to show photos on avatars). */
+CREATE OR ALTER PROCEDURE dbo.sahyog_UserPhoto_List
+    @TenantId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT UserId, UpdatedUtc FROM dbo.sahyog_UserPhotos WHERE TenantId = @TenantId;
+END
+GO
+
+/* ############################## 21_DeleteChatClearsAll.sql ############################## */
+PRINT N'Applying 21_DeleteChatClearsAll.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 30 (safe to run more than once; run after 17 and 19):
+     "Delete chat" clears everything shown in a person's chat: the private messages are deleted
+     (as before) and the older group messages between the two of you (e.g. "in Everyone") stop
+     showing there. The group itself is not changed.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_ChatClears', N'U') IS NULL
+CREATE TABLE dbo.sahyog_ChatClears
+(
+    TenantId    UNIQUEIDENTIFIER NOT NULL,
+    UserA       UNIQUEIDENTIFIER NOT NULL,     -- the two people, smaller id first
+    UserB       UNIQUEIDENTIFIER NOT NULL,
+    ClearedUtc  DATETIME2(3)     NOT NULL,
+    CONSTRAINT PK_sahyog_ChatClears PRIMARY KEY (TenantId, UserA, UserB)
+);
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_DeleteDirect
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER,
+    @Result INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    SET @Result = 0;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM dbo.sahyog_Channels c
+        JOIN dbo.sahyog_ChannelMembers m ON m.ChannelId = c.ChannelId AND m.UserId = @UserId
+        WHERE c.ChannelId = @ChannelId AND c.TenantId = @TenantId AND c.IsDirect = 1)
+        RETURN;
+
+    DECLARE @Files TABLE (StoragePath NVARCHAR(400) NOT NULL, SizeBytes BIGINT NOT NULL);
+    INSERT @Files (StoragePath, SizeBytes)
+    SELECT StoragePath, SizeBytes FROM dbo.sahyog_Attachments WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+
+    -- remember when this pair cleared their chat: older group messages between them stop showing in it
+    DECLARE @OtherId UNIQUEIDENTIFIER =
+        (SELECT TOP (1) UserId FROM dbo.sahyog_ChannelMembers WHERE ChannelId = @ChannelId AND UserId <> @UserId);
+
+    BEGIN TRANSACTION;
+        IF @OtherId IS NOT NULL
+        BEGIN
+            DECLARE @A UNIQUEIDENTIFIER = CASE WHEN CAST(@UserId AS NVARCHAR(36)) < CAST(@OtherId AS NVARCHAR(36)) THEN @UserId ELSE @OtherId END;
+            DECLARE @B UNIQUEIDENTIFIER = CASE WHEN CAST(@UserId AS NVARCHAR(36)) < CAST(@OtherId AS NVARCHAR(36)) THEN @OtherId ELSE @UserId END;
+            MERGE dbo.sahyog_ChatClears WITH (HOLDLOCK) AS t
+            USING (SELECT @A AS UserA, @B AS UserB) AS s ON t.TenantId = @TenantId AND t.UserA = s.UserA AND t.UserB = s.UserB
+            WHEN MATCHED THEN UPDATE SET ClearedUtc = SYSUTCDATETIME()
+            WHEN NOT MATCHED THEN INSERT (TenantId, UserA, UserB, ClearedUtc) VALUES (@TenantId, @A, @B, SYSUTCDATETIME());
+        END
+
+        -- calls started from this chat stay in Meetings; they just no longer point at the deleted chat
+        UPDATE dbo.sahyog_Meetings SET ChannelId = NULL WHERE ChannelId = @ChannelId;
+        DELETE dbo.sahyog_Messages       WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+        DELETE dbo.sahyog_Attachments    WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+        DELETE dbo.sahyog_ChannelMembers WHERE ChannelId = @ChannelId;
+        DELETE dbo.sahyog_Channels       WHERE ChannelId = @ChannelId AND TenantId = @TenantId;
+
+        -- give the storage back to the workspace
+        UPDATE dbo.sahyog_Tenants
+        SET StorageUsedBytes = CASE WHEN StorageUsedBytes - x.Total < 0 THEN 0 ELSE StorageUsedBytes - x.Total END
+        FROM (SELECT COALESCE(SUM(SizeBytes), 0) AS Total FROM @Files) x
+        WHERE TenantId = @TenantId;
+    COMMIT;
+
+    SET @Result = 1;
+    SELECT StoragePath FROM @Files;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Chat_GetPersonTimeline
+    @TenantId UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER,      -- the private (direct) chat
+    @UserId UNIQUEIDENTIFIER, @OtherId UNIQUEIDENTIFIER,
+    @BeforeId BIGINT = NULL, @Take INT = 301
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- after "Delete chat", older group messages between these two no longer show here
+    DECLARE @Cleared DATETIME2(3) = (
+        SELECT ClearedUtc FROM dbo.sahyog_ChatClears
+        WHERE TenantId = @TenantId
+          AND ((UserA = @UserId AND UserB = @OtherId) OR (UserA = @OtherId AND UserB = @UserId)));
+
+    SELECT TOP (@Take) v.*,
+           CASE WHEN v.ChannelId = @ChannelId THEN NULL ELSE c.Name END AS FromGroup
+    FROM dbo.sahyog_vMessages v
+    JOIN dbo.sahyog_Channels c ON c.ChannelId = v.ChannelId AND c.TenantId = @TenantId
+    WHERE v.TenantId = @TenantId
+      AND (@BeforeId IS NULL OR v.MessageId < @BeforeId)
+      AND (
+            v.ChannelId = @ChannelId
+         OR (c.IsDirect = 0
+             AND v.SenderId IN (@UserId, @OtherId)
+             AND (@Cleared IS NULL OR v.SentUtc > @Cleared)
+             AND EXISTS (SELECT 1 FROM dbo.sahyog_ChannelMembers a WHERE a.ChannelId = c.ChannelId AND a.UserId = @UserId)
+             AND EXISTS (SELECT 1 FROM dbo.sahyog_ChannelMembers b WHERE b.ChannelId = c.ChannelId AND b.UserId = @OtherId))
+          )
+    ORDER BY v.MessageId DESC;
+END
+GO
+
+PRINT N'ShankhNaad database is up to date.';
+GO

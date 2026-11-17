@@ -10,6 +10,10 @@ public interface IChatService
 {
     Task<List<SidebarItemDto>> GetSidebarAsync(Guid tenantId, Guid userId);
     Task<ChannelDto?> GetChannelAsync(Guid tenantId, Guid channelId);
+    /// <summary>Renames a group channel. 0 saved, 1 not found, 2 not allowed, 3 name already used.</summary>
+    Task<int> UpdateChannelAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, string name, string? description);
+    /// <summary>Deletes a group channel with its messages and files. 0 deleted, 1 not found, 4 main channel. Returns the files to remove.</summary>
+    Task<(int Status, List<string> Files)> DeleteChannelAsync(Guid tenantId, Guid channelId);
     Task<bool> IsMemberAsync(Guid tenantId, Guid channelId, Guid userId);
     Task<List<Guid>> GetUserChannelIdsAsync(Guid tenantId, Guid userId);
     Task<List<MemberDto>> GetMembersAsync(Guid tenantId, Guid channelId);
@@ -17,12 +21,20 @@ public interface IChatService
     Task<List<MessageDto>> GetMessagesAsync(Guid tenantId, Guid channelId, long? beforeId, int take);
     Task<SendResultDto> SendMessageAsync(SendMessageRequest request);
     Task<SendResultDto> SendFileAsync(SendFileRequest request);
-    Task MarkReadAsync(Guid tenantId, Guid channelId, Guid userId);
+    /// <summary>Marks a conversation read. Returns the time it was read when something new was read (tell the senders), else null.</summary>
+    Task<DateTime?> MarkReadAsync(Guid tenantId, Guid channelId, Guid userId);
+    /// <summary>Who has read up to when (empty until 15_ReadReceipts.sql is run).</summary>
+    Task<List<ReadStateDto>> GetReadStateAsync(Guid tenantId, Guid channelId);
     Task<List<AttachmentDto>> GetRecentFilesAsync(Guid tenantId, Guid channelId, int take = 5);
     Task<AttachmentFileDto?> GetAttachmentAsync(Guid tenantId, Guid attachmentId, Guid userId);
     Task<CreateChannelResultDto> CreateChannelAsync(CreateChannelRequest request);
     /// <returns>The conversation id, or null if the other person isn't in this workspace.</returns>
     Task<Guid?> GetOrCreateDirectAsync(Guid tenantId, Guid userId, Guid otherUserId);
+    /// <summary>Deletes a direct conversation (messages and files) for both people.</summary>
+    /// <returns>Deleted = false when it isn't a direct chat this user is in; Files = storage paths to remove.</returns>
+    Task<(bool Deleted, List<string> Files)> DeleteDirectAsync(Guid tenantId, Guid channelId, Guid userId);
+    /// <summary>Deletes one message (sender, or a workspace admin). Status 0 ok, 1 not found, 2 not allowed.</summary>
+    Task<(int Status, Guid? ChannelId, string? FilePath)> DeleteMessageAsync(Guid tenantId, long messageId, Guid userId, bool isAdmin);
 }
 
 public sealed class ChatService : IChatService
@@ -46,11 +58,38 @@ public sealed class ChatService : IChatService
     public Task<List<SidebarItemDto>> GetSidebarAsync(Guid tenantId, Guid userId) =>
         _db.QueryAsync("dbo.sahyog_Chat_GetSidebar", p => p.With("@TenantId", tenantId).With("@UserId", userId), r => new SidebarItemDto(
             r.G("ChannelId"), r.S("Name"), r.SN("Description"), r.B("IsDirect"), r.I("UnreadCount"), r.Utc("LastMessageUtc"),
-            r.GN("OtherUserId"), r.SN("OtherName"), r.IN("OtherTone")));
+            r.GN("OtherUserId"), r.SN("OtherName"), r.IN("OtherTone")) { IsPrivate = r.BOpt("IsPrivate") });
 
     public Task<ChannelDto?> GetChannelAsync(Guid tenantId, Guid channelId) =>
         _db.QueryFirstAsync("dbo.sahyog_Chat_GetChannel", p => p.With("@TenantId", tenantId).With("@ChannelId", channelId),
-            r => new ChannelDto(r.G("ChannelId"), r.S("Name"), r.SN("Description"), r.B("IsDirect")));
+            r => new ChannelDto(r.G("ChannelId"), r.S("Name"), r.SN("Description"), r.B("IsDirect"))
+            {
+                CreatedBy = r.Has("CreatedBy") ? r.GN("CreatedBy") : null,
+                IsMain = r.Has("IsMain") ? r.B("IsMain") : null
+            });
+
+    public async Task<int> UpdateChannelAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, string name, string? description)
+    {
+        SqlParameter? result = null;
+        await _db.ExecAsync("dbo.sahyog_Chat_UpdateChannel", p =>
+        {
+            p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", userId).With("@IsAdmin", isAdmin)
+             .AddText("@Name", name, 80).AddText("@Description", description, 300);
+            result = p.AddOutput("@Result", SqlDbType.Int);
+        });
+        return result!.OutInt();
+    }
+
+    public async Task<(int Status, List<string> Files)> DeleteChannelAsync(Guid tenantId, Guid channelId)
+    {
+        SqlParameter? result = null;
+        var files = await _db.QueryAsync("dbo.sahyog_Chat_DeleteChannel", p =>
+        {
+            p.With("@TenantId", tenantId).With("@ChannelId", channelId);
+            result = p.AddOutput("@Result", SqlDbType.Int);
+        }, r => r.S("StoragePath"));
+        return (result!.OutInt(), files);
+    }
 
     public async Task<bool> IsMemberAsync(Guid tenantId, Guid channelId, Guid userId)
     {
@@ -99,8 +138,43 @@ public sealed class ChatService : IChatService
         return new SendResultDto((SendStatus)result!.OutInt(), rows.FirstOrDefault());
     }
 
-    public Task MarkReadAsync(Guid tenantId, Guid channelId, Guid userId) =>
-        _db.ExecAsync("dbo.sahyog_Chat_MarkRead", p => p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", userId));
+    // null = not checked yet; false = 15_ReadReceipts.sql not run (use the old procedure, no ticks)
+    private static bool? _readReceipts;
+
+    public async Task<DateTime?> MarkReadAsync(Guid tenantId, Guid channelId, Guid userId)
+    {
+        if (_readReceipts != false)
+        {
+            try
+            {
+                SqlParameter? readUtc = null;
+                await _db.ExecAsync("dbo.sahyog_Chat_MarkReadV2", p =>
+                {
+                    p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", userId);
+                    readUtc = p.AddOutput("@ReadUtc", SqlDbType.DateTime2);
+                });
+                _readReceipts = true;
+                return readUtc!.Value is DateTime d ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : null;
+            }
+            catch (SqlException ex) when (ex.Number == 2812) { _readReceipts = false; }
+        }
+        await _db.ExecAsync("dbo.sahyog_Chat_MarkRead", p => p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", userId));
+        return null;
+    }
+
+    public async Task<List<ReadStateDto>> GetReadStateAsync(Guid tenantId, Guid channelId)
+    {
+        if (_readReceipts == false) return new();
+        try
+        {
+            var rows = await _db.QueryAsync("dbo.sahyog_Chat_GetReadState",
+                p => p.With("@TenantId", tenantId).With("@ChannelId", channelId),
+                r => new ReadStateDto(r.G("UserId"), r.S("DisplayName"), r.Utc("LastReadUtc")));
+            _readReceipts = true;
+            return rows;
+        }
+        catch (SqlException ex) when (ex.Number == 2812) { _readReceipts = false; return new(); }
+    }
 
     public Task<List<AttachmentDto>> GetRecentFilesAsync(Guid tenantId, Guid channelId, int take = 5) =>
         _db.QueryAsync("dbo.sahyog_Chat_GetRecentFiles", p => p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@Take", take),
@@ -117,6 +191,22 @@ public sealed class ChatService : IChatService
 
     public async Task<CreateChannelResultDto> CreateChannelAsync(CreateChannelRequest request)
     {
+        if (request.MemberIds is { } picked)
+        {
+            // private group: only the people picked (and you)
+            SqlParameter? groupResult = null;
+            var groupMembers = await _db.QueryAsync("dbo.sahyog_Chat_CreateGroup", p =>
+            {
+                p.With("@TenantId", request.TenantId).With("@ChannelId", request.ChannelId)
+                 .AddText("@Name", request.Name, 80).AddText("@Description", request.Description, 300)
+                 .With("@CreatedBy", request.CreatedBy)
+                 .AddText("@MemberIds", string.Join(",", picked), -1);
+                groupResult = p.AddOutput("@Result", SqlDbType.Int);
+            }, r => r.G("UserId"));
+            var code = groupResult!.OutInt();
+            return new CreateChannelResultDto(code == 1, groupMembers) { NobodyPicked = code == 2 };
+        }
+
         SqlParameter? result = null;
         var members = await _db.QueryAsync("dbo.sahyog_Chat_CreateChannel", p =>
         {
@@ -140,5 +230,29 @@ public sealed class ChatService : IChatService
             channel = p.AddOutput("@ChannelId", SqlDbType.UniqueIdentifier);
         });
         return channel!.Value is Guid g ? g : null;
+    }
+
+    public async Task<(bool Deleted, List<string> Files)> DeleteDirectAsync(Guid tenantId, Guid channelId, Guid userId)
+    {
+        SqlParameter? result = null;
+        var files = await _db.QueryAsync("dbo.sahyog_Chat_DeleteDirect", p =>
+        {
+            p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", userId);
+            result = p.AddOutput("@Result", SqlDbType.Int);
+        }, r => r.S("StoragePath"));
+        return (result!.OutInt() == 1, files);
+    }
+
+    public async Task<(int Status, Guid? ChannelId, string? FilePath)> DeleteMessageAsync(Guid tenantId, long messageId, Guid userId, bool isAdmin)
+    {
+        SqlParameter? result = null;
+        var rows = await _db.QueryAsync("dbo.sahyog_Chat_DeleteMessage", p =>
+        {
+            p.With("@TenantId", tenantId).With("@MessageId", messageId).With("@UserId", userId).With("@IsAdmin", isAdmin);
+            result = p.AddOutput("@Result", SqlDbType.Int);
+        }, r => (r.G("ChannelId"), r.SN("StoragePath")));
+        var status = result!.OutInt();
+        if (status != 0 || rows.Count == 0) return (status == 0 ? 1 : status, null, null);
+        return (0, rows[0].Item1, rows[0].Item2);
     }
 }
