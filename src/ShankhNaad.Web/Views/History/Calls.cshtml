@@ -50,12 +50,14 @@
 
     <section class="sn-hist glass" id="callHist" data-delete-url="/calls/delete" data-noun="call" data-nouns="calls">
         <div class="sn-hist-bar">
-            <div class="sn-hist-tabs" role="tablist" aria-label="Show">
-                <button type="button" class="on" data-show="all" role="tab" aria-selected="true">All</button>
-                <button type="button" data-show="missed" role="tab" aria-selected="false">Missed <span class="sn-hist-n red">@Model.Calls.Count(IsMissed)</span></button>
-                <button type="button" data-show="in" role="tab" aria-selected="false">Incoming</button>
-                <button type="button" data-show="out" role="tab" aria-selected="false">Outgoing</button>
-            </div>
+            <tab-control id="callTabs" height="44px" font-size="13.5px" font-weight="600" active-font-weight="600" transition-duration=".38s"
+                         background="rgba(255,255,255,.55)" active-background-color="#ffffff"
+                         text-color="#475569" active-text-color="#0B1220" border-color="rgba(15,23,42,.08)">
+                <tab id="all" text="@($"All  ·  {Model.Calls.Count}")" active="true"></tab>
+                <tab id="missed" text="@($"Missed  ·  {Model.Calls.Count(IsMissed)}")"></tab>
+                <tab id="in" text="@($"Incoming  ·  {Model.Calls.Count(c => c.CallerId != me)}")"></tab>
+                <tab id="out" text="@($"Outgoing  ·  {Model.Calls.Count(c => c.CallerId == me)}")"></tab>
+            </tab-control>
             <label class="search sn-hist-search">
                 <i class="fa fa-search" aria-hidden="true"></i>
                 <input type="search" placeholder="Search by name" aria-label="Search calls" data-hist-search />

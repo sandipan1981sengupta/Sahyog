@@ -269,7 +269,7 @@
                                             <span class="sn-ev-meta">@(ev.IsHost ? "You host" : "Invited") · @ev.People.Count @(ev.People.Count == 1 ? "person" : "people")</span>
                                             @if (CanDel(ev))
                                             {
-                                                <span class="sn-ev-del" role="button" tabindex="0" data-del="@ev.MeetingId" data-title="@ev.Title" title="Delete this meeting" aria-label="Delete @ev.Title"><i class="fa fa-trash-o" aria-hidden="true"></i></span>
+                                                <span class="sn-ev-del" role="button" tabindex="0" data-del="@ev.MeetingId" data-title="@ev.Title" data-tip="Delete meeting" aria-label="Delete @ev.Title"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7" /></svg></span>
                                             }
                                         </button>
                                     }
@@ -312,7 +312,7 @@
                                         <i></i><span class="t">@(ev.IsAllDay ? "All day" : ev.StartLocal.ToString("HH:mm", inv))</span> <span class="n">@ev.Title</span>
                                         @if (CanDel(ev))
                                         {
-                                            <span class="sn-ev-del" role="button" tabindex="0" data-del="@ev.MeetingId" data-title="@ev.Title" title="Delete this meeting" aria-label="Delete @ev.Title"><i class="fa fa-trash-o" aria-hidden="true"></i></span>
+                                            <span class="sn-ev-del" role="button" tabindex="0" data-del="@ev.MeetingId" data-title="@ev.Title" data-tip="Delete meeting" aria-label="Delete @ev.Title"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7" /></svg></span>
                                         }
                                     </button>
                                 }
@@ -358,28 +358,73 @@
         </div>
 
         <div class="sn-side">
-            <modern-group-box title="@(periodWord + " | by status")" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="24px" content-layout="block">
-                @if (events.Count > 0)
+            @* ---- meetings in this period by status: a segmented gauge like the Team page ---- *@
+            @{
+                var totalEv = live + upcoming + ended;
+                const double ArcLen = 263.89;            // half circle, radius 84
+                const double Gap = 5;                    // space between the coloured parts
+                var parts = new[] { ("live", live, "gLive"), ("up", upcoming, "gUp"), ("ended", ended, "gEnded") }.Where(x => x.Item2 > 0).ToList();
+                var usable = ArcLen - Gap * Math.Max(0, parts.Count - 1);
+                double pos = 0;
+                var segs = new List<(string Key, string Grad, double Start, double Len)>();
+                foreach (var (key, n, grad) in parts)
                 {
-                    <modern-donut-chart id="statusDonut"
-                                        labels="@(new[] { "Live", "Upcoming", "Ended" })"
-                                        data="@(new double[] { live, upcoming, ended })"
-                                        colors="@(new[] { "#16A34A", "#2563EB", "#94A3B8" })"
-                                        chart-height="170px" cutout-percentage="68%"
-                                        show-border="false" legend-position="bottom" legend-font-size="12"></modern-donut-chart>
-                    <ul class="sn-status-key">
-                        <li><i style="background:#16A34A"></i><b>@live</b> Live <span>going on right now</span></li>
-                        <li><i style="background:#2563EB"></i><b>@upcoming</b> Upcoming <span>later, not started yet</span></li>
-                        <li><i style="background:#94A3B8"></i><b>@ended</b> Ended <span>already over</span></li>
-                    </ul>
+                    var len = totalEv == 0 ? 0 : usable * n / totalEv;
+                    segs.Add((key, grad, pos, len));
+                    pos += len + Gap;
                 }
-                else
-                {
-                    <p class="muted small">No meetings this week yet. Press <b>Schedule</b> to add one.</p>
-                }
-            </modern-group-box>
+                var hours = events.Where(e => !e.IsAllDay).Sum(e => Math.Max(0, (e.EndLocal - e.StartLocal).TotalMinutes)) / 60.0;
+                var hoursText = hours < 1 ? $"{Math.Round(hours * 60)} min" : $"{hours:0.#} h";
+                var donePct = totalEv == 0 ? 0 : (int)Math.Round(ended * 100.0 / totalEv);
+                string F(double v) => v.ToString("0.##", inv);
+            }
+            <section class="sn-gauge-card glass sn-mstat" aria-label="@periodWord: @live live, @upcoming upcoming, @ended ended">
+                <header class="sn-gauge-head">
+                    <span class="sn-gauge-ic meet"><i class="fa fa-calendar-check-o" aria-hidden="true"></i></span>
+                    <div class="sn-gauge-title">
+                        <h3>Meetings</h3>
+                        <small>@live live · @upcoming upcoming · @ended ended</small>
+                    </div>
+                    <span class="sn-gauge-pill">@periodWord</span>
+                </header>
+                <div class="sn-gauge">
+                    <svg viewBox="0 0 200 112" aria-hidden="true">
+                        <defs>
+                            <linearGradient id="gLive" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#22C55E" /><stop offset="1" stop-color="#10B981" /></linearGradient>
+                            <linearGradient id="gUp" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2563EB" /><stop offset=".6" stop-color="#7C3AED" /><stop offset="1" stop-color="#DB2777" /></linearGradient>
+                            <linearGradient id="gEnded" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#64748B" /><stop offset="1" stop-color="#94A3B8" /></linearGradient>
+                        </defs>
+                        <path class="sn-gauge-track" d="M16 100 A84 84 0 0 1 184 100" />
+                        @foreach (var g in segs)
+                        {
+                            <path class="sn-gauge-value sn-mseg @g.Key" d="M16 100 A84 84 0 0 1 184 100" stroke="url(#@g.Grad)"
+                                  stroke-dasharray="@F(Math.Max(.01, g.Len)) 1000" stroke-dashoffset="@F(-g.Start)" />
+                        }
+                    </svg>
+                    <div class="sn-gauge-center">
+                        <b>@totalEv</b>
+                        <small>@(totalEv == 1 ? "meeting" : "meetings") · @donePct% done</small>
+                    </div>
+                </div>
+                <div class="sn-gauge-stats">
+                    <div class="@(live > 0 ? "is-live" : "")"><span class="sn-gs-label"><i class="sn-gs-dot live"></i>Live</span><b>@live</b></div>
+                    <div><span class="sn-gs-label"><i class="sn-gs-dot up"></i>Upcoming</span><b>@upcoming</b></div>
+                    <div><span class="sn-gs-label"><i class="sn-gs-dot ended"></i>Ended</span><b>@ended</b></div>
+                </div>
+                <div class="sn-mstat-foot">
+                    <span><i class="fa fa-clock-o" aria-hidden="true"></i> @hoursText in meetings</span>
+                    <span><i class="fa fa-user" aria-hidden="true"></i> @events.Count(e => e.IsHost) set up by you</span>
+                </div>
+            </section>
 
-            <modern-group-box title="Up next | meeting" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="24px" content-layout="block">
+            <section class="sn-gauge-card glass sn-upnext" aria-label="Up next">
+                <header class="sn-gauge-head">
+                    <span class="sn-gauge-ic next"><i class="fa fa-bolt" aria-hidden="true"></i></span>
+                    <div class="sn-gauge-title">
+                        <h3>Up next</h3>
+                        <small>Your next meeting in the coming 24 hours</small>
+                    </div>
+                </header>
                 @if (Model.UpNext is CalendarEventVm next)
                 {
                     <div class="sn-next">
@@ -403,9 +448,12 @@
                 }
                 else
                 {
-                    <p class="muted small">Nothing in the next 24 hours.</p>
+                    <div class="sn-upnext-empty">
+                        <i class="fa fa-coffee" aria-hidden="true"></i>
+                        <span>Nothing in the next 24 hours.<br /><button type="button" class="sn-link" onclick="SN.open('scheduleDialog')">Schedule a meeting</button></span>
+                    </div>
                 }
-            </modern-group-box>
+            </section>
         </div>
     </div>
 </main>

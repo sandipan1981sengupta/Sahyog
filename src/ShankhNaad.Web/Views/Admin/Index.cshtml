@@ -369,7 +369,45 @@
             var $insp = $("#clientInspector");
             // ---- tabs: Clients / Plans (remembered in the address, so saving a plan comes back to Plans) ----
             var hints = { clients: "Select a client to see its details and change its plan.", plans: "Edit a plan and press Save. Every client on that plan gets the new limits." };
+            // header buttons that only work on a client: they fold away while Plans is open (Refresh and Print stay)
+            var CLIENT_ONLY = ["new client", "edit", "delete", "export", "pause / resume"];
+            function clientButtons() {
+                return $("#AdminHeader .hdr-btn").filter(function () {
+                    var label = ($(this).attr("aria-label") || $(this).text() || "").replace(/\s+/g, " ").trim().toLowerCase();
+                    return CLIENT_ONLY.some(function (w) { return label === w || label.indexOf(w) === 0; });
+                });
+            }
+            function foldHeader(plans) {
+                var $b = clientButtons();
+                $b.each(function (i) {
+                    var el = this, delay = (plans ? i : $b.length - 1 - i) * 45;
+                    clearTimeout(el._snFold);
+                    if (plans) {
+                        if (el.hidden) return;
+                        el.style.setProperty("--sn-fold-w", el.offsetWidth + "px");
+                        el.style.transitionDelay = delay + "ms";
+                        el.classList.add("sn-folding");
+                        void el.offsetWidth;
+                        el.classList.add("sn-folded");
+                        el.setAttribute("aria-hidden", "true");
+                        el.tabIndex = -1;
+                        el.blur();
+                        // once it has shrunk away, take it out completely (no leftover gap)
+                        el._snFold = setTimeout(function () { el.hidden = true; }, 420 + delay);
+                    } else {
+                        if (!el.classList.contains("sn-folding")) return;
+                        el.hidden = false;
+                        el.style.transitionDelay = delay + "ms";
+                        void el.offsetWidth;
+                        el.classList.remove("sn-folded");
+                        el.removeAttribute("aria-hidden");
+                        el.tabIndex = 0;
+                        el._snFold = setTimeout(function () { el.classList.remove("sn-folding"); el.style.transitionDelay = ""; }, 460 + delay);
+                    }
+                });
+            }
             function showPane(id) {
+                foldHeader(id === "plans");
                 $("#paneClients").prop("hidden", id !== "clients");
                 $("#panePlans").prop("hidden", id !== "plans");
                 $("#adminHint").text(hints[id] || "");

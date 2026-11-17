@@ -47,11 +47,8 @@
         if (none) none.hidden = shown > 0 || rows.length === 0;
     }
 
-    box.querySelectorAll(".sn-hist-tabs [data-show]").forEach((b) => b.addEventListener("click", () => {
-        box.querySelectorAll(".sn-hist-tabs [data-show]").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", String(x === b)); });
-        show = b.dataset.show;
-        apply();
-    }));
+    // the All / Missed / Incoming / Outgoing (or Shared by you / with you) tabs: the same glass tabs as the Clients page
+    if (window.jQuery) jQuery(box).find("[id$='Tabs']").on("tabcontrol:select", (e, id) => { show = id || "all"; apply(); });
     box.querySelectorAll(".sn-hist-chips [data-type]").forEach((b) => b.addEventListener("click", () => {
         box.querySelectorAll(".sn-hist-chips [data-type]").forEach((x) => x.classList.toggle("on", x === b));
         type = b.dataset.type;

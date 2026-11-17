@@ -383,8 +383,8 @@ public sealed class MeetingsController : Controller
         var rangeToUtc = MeetingCalendar.ToUtc(toLocal > nowLocal.AddDays(1) ? toLocal : nowLocal.AddDays(1), zone);
         var (meetings, invitees) = await _meetings.ListForUserAsync(tenantId, me, rangeFromUtc, rangeToUtc);
         var inviteesByMeeting = invitees.ToLookup(i => i.MeetingId);
-        // calls started from a chat are on the Calls page, not in the calendar
-        meetings = meetings.Where(m => !(m.IsInstant && m.ChannelId is not null)).ToList();
+        // calls and "Meet now" meetings are on the Calls page; the calendar shows them only while someone is in them
+        meetings = meetings.Where(m => !m.IsInstant || _rooms.Count(m.MeetingId) > 0).ToList();
         // a "Meet now" meeting is live only while someone is in it; once everyone has left it has ended
         bool InstantOver(MeetingDto m, DateTime startLocal) => m.IsInstant && startLocal <= nowLocal && _rooms.Count(m.MeetingId) == 0;
 
