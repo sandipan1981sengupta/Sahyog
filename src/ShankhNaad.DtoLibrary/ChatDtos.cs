@@ -83,3 +83,15 @@ public sealed record IncomingCallDto(Guid MeetingId, string Title, string Caller
 
 /// <summary>One call started from Chat. Outcome: 0 ringing, 1 in progress, 2 ended, 3 not answered, 4 declined, 5 cancelled.</summary>
 public sealed record CallLogDto(Guid MeetingId, Guid? ChannelId, Guid CallerId, DateTime StartedUtc, DateTime? AnsweredUtc, DateTime? EndedUtc, int Outcome);
+
+/// <summary>One row on the Calls page. Outcome as in <see cref="CallLogDto"/>.</summary>
+public sealed record CallHistoryDto(
+    Guid MeetingId, Guid ChannelId, Guid CallerId, string CallerName, int CallerTone,
+    DateTime StartedUtc, DateTime? AnsweredUtc, DateTime? EndedUtc, int Outcome,
+    bool IsDirect, string ChannelName, int MemberCount, Guid? OtherId, string? OtherName, int OtherTone);
+
+/// <summary>One row on the Files page.</summary>
+public sealed record SharedFileDto(
+    Guid AttachmentId, string FileName, string ContentType, long SizeBytes, DateTime UploadedUtc,
+    Guid UploaderId, string UploaderName, int UploaderTone,
+    Guid ChannelId, bool IsDirect, string ChannelName, Guid? OtherId, string? OtherName, int OtherTone);

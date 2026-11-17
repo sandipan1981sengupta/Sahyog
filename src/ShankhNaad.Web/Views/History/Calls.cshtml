@@ -1,0 +1,118 @@
+@model CallsViewModel
+@{
+    ViewData["Title"] = "Calls";
+    ViewData["Section"] = "calls";
+    var me = User.UserGuid();
+    var since = DateTime.UtcNow.AddDays(-30);
+    var recent = Model.Calls.Where(c => c.StartedUtc >= since).ToList();
+    bool IsMissed(CallHistoryDto c) => c.CallerId != me && (c.Outcome == 3 || c.Outcome == 5);
+    var missed = recent.Count(IsMissed);
+    var talkSec = recent.Where(c => c.AnsweredUtc is not null && c.EndedUtc is not null)
+                        .Sum(c => Math.Max(0, (c.EndedUtc!.Value - c.AnsweredUtc!.Value).TotalSeconds));
+    string Talk(double sec) { var t = TimeSpan.FromSeconds(sec); return t.TotalHours >= 1 ? $"{(int)t.TotalHours}h {t.Minutes}m" : t.TotalMinutes >= 1 ? $"{t.Minutes}m {t.Seconds}s" : $"{t.Seconds}s"; }
+    var people = recent.Where(c => c.IsDirect && c.OtherId is not null).Select(c => c.OtherId).Distinct().Count();
+}
+
+<main class="sn-page">
+    <div class="sn-head glass">
+        <action-header id="CallsHeader"
+                       heading="Calls"
+                       subtitle="Every call you made or got: who, when, how long, and the ones you missed"
+                       left-icon-css="bi bi-telephone-fill" left-icon-size="24"
+                       left-icon-gradient-start="#16A34A" left-icon-gradient-mid="#0EA5E9" left-icon-gradient-end="#7C3AED"
+                       background-color="transparent" box-shadow="none"
+                       refresh-color="#1D4ED8"
+                       show-refresh="true" refresh-on-click="SN.reload()"
+                       show-add="false" show-edit="false" show-delete="false" show-import="false"
+                       show-export="false" show-save="false" show-submit="false" show-print="false">
+        </action-header>
+    </div>
+
+    @if (Model.NeedsSql)
+    {
+        <div hidden data-toast="Run database/23_CallsAndFiles.sql (or 99_ApplyAllUpdates.sql) to see your call history here." data-toast-kind="warn" data-toast-title="One database step left"></div>
+    }
+
+    <div class="sn-grid-4">
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(22,163,74,.12);color:#15803d"><i class="fa fa-phone"></i></span><div><div class="sn-eyebrow">Calls · 30 days</div><div class="sn-stat-val">@recent.Count</div></div></div>
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(220,38,38,.12);color:#dc2626"><i class="fa fa-phone" style="transform:rotate(135deg)"></i></span><div><div class="sn-eyebrow">Missed</div><div class="sn-stat-val">@missed</div></div></div>
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(14,165,233,.12);color:#0284c7"><i class="fa fa-clock-o"></i></span><div><div class="sn-eyebrow">Talk time</div><div class="sn-stat-val">@Talk(talkSec)</div></div></div>
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(124,58,237,.12);color:#6d28d9"><i class="fa fa-users"></i></span><div><div class="sn-eyebrow">People called</div><div class="sn-stat-val">@people</div></div></div>
+    </div>
+
+    <section class="sn-hist glass" id="callHist">
+        <div class="sn-hist-bar">
+            <div class="sn-hist-tabs" role="tablist" aria-label="Show">
+                <button type="button" class="on" data-show="all" role="tab" aria-selected="true">All</button>
+                <button type="button" data-show="missed" role="tab" aria-selected="false">Missed <span class="sn-hist-n red">@Model.Calls.Count(IsMissed)</span></button>
+                <button type="button" data-show="in" role="tab" aria-selected="false">Incoming</button>
+                <button type="button" data-show="out" role="tab" aria-selected="false">Outgoing</button>
+            </div>
+            <label class="search sn-hist-search">
+                <i class="fa fa-search" aria-hidden="true"></i>
+                <input type="search" placeholder="Search by name" aria-label="Search calls" data-hist-search />
+            </label>
+        </div>
+
+        <div class="sn-hist-list">
+            @foreach (var c in Model.Calls)
+            {
+                var mine = c.CallerId == me;
+                var miss = IsMissed(c);
+                var name = c.IsDirect ? (c.OtherName ?? "Someone") : c.ChannelName;
+                var kind = miss ? "missed in" : mine ? "out" : "in";
+                string status, icon, tone;
+                switch (c.Outcome)
+                {
+                    case 0: status = "Ringing…"; icon = mine ? "fa-arrow-up" : "fa-arrow-down"; tone = "live"; break;
+                    case 1: status = "In progress"; icon = "fa-video-camera"; tone = "live"; break;
+                    case 2: status = Talk((c.EndedUtc!.Value - (c.AnsweredUtc ?? c.StartedUtc)).TotalSeconds); icon = mine ? "fa-arrow-up" : "fa-arrow-down"; tone = "ok"; break;
+                    case 4: status = mine ? "Declined" : "You declined"; icon = mine ? "fa-arrow-up" : "fa-arrow-down"; tone = mine ? "bad" : "dim"; break;
+                    case 5: status = mine ? "Cancelled" : "Missed"; icon = mine ? "fa-arrow-up" : "fa-arrow-down"; tone = mine ? "dim" : "bad"; break;
+                    default: status = mine ? "No answer" : "Missed"; icon = mine ? "fa-arrow-up" : "fa-arrow-down"; tone = mine ? "dim" : "bad"; break;
+                }
+                var who = mine ? "Outgoing" : c.IsDirect ? "Incoming" : $"{c.CallerName} called";
+                <div class="sn-hrow @(miss ? "is-missed" : "")" data-kind="@kind" data-filter="@name @c.CallerName" data-utc="@c.StartedUtc.ToString("o")">
+                    @if (c.IsDirect && c.OtherId is Guid oid)
+                    {
+                        <span class="avatar av-44 tone-@c.OtherTone" data-user="@oid" data-presence="@oid">@Names.Initials(name)<i class="dot @(Model.Online.Contains(oid.ToString()) ? "on" : "")"></i></span>
+                    }
+                    else
+                    {
+                        <span class="avatar av-44 tone-0 hash-avatar group-avatar"><i class="fa fa-users" aria-hidden="true"></i></span>
+                    }
+                    <div class="sn-hmain">
+                        <b class="ellipsis">@name</b>
+                        <small class="sn-hstat @tone"><i class="fa @icon" aria-hidden="true"></i> @who · @(status + (c.IsDirect ? "" : $" · {c.MemberCount} people"))</small>
+                    </div>
+                    <time class="sn-htime" datetime="@c.StartedUtc.ToString("o")" data-utc="@c.StartedUtc.ToString("o")"></time>
+                    <div class="sn-hact">
+                        @if (c.Outcome is 0 or 1)
+                        {
+                            <a class="sn-hbtn join" href="/meetings/room/@c.MeetingId" title="Join the call"><i class="fa fa-video-camera" aria-hidden="true"></i><span>Join</span></a>
+                        }
+                        else
+                        {
+                            <form method="post" asp-antiforgery="true" action="/meetings/instant">
+                                <input type="hidden" name="channelId" value="@c.ChannelId" />
+                                <button type="submit" class="sn-hbtn call" title="Call @name again"><i class="fa fa-phone" aria-hidden="true"></i><span>Call</span></button>
+                            </form>
+                        }
+                        <a class="sn-hbtn chat" href="/chat/@c.ChannelId" title="Open your chat with @name"><i class="fa fa-comment" aria-hidden="true"></i><span>Chat</span></a>
+                    </div>
+                </div>
+            }
+            <div class="sn-hist-empty" @(Model.Calls.Count > 0 ? "hidden" : "")>
+                <span class="sn-hist-empty-ic"><i class="fa fa-phone" aria-hidden="true"></i></span>
+                <b>No calls yet</b>
+                <p>Calls you make or get from Chat show up here.</p>
+                <a class="sn-hbtn call" href="/chat"><i class="fa fa-comments-o" aria-hidden="true"></i><span>Go to Chat</span></a>
+            </div>
+            <div class="sn-hist-none" hidden>Nothing matches. Try another tab or name.</div>
+        </div>
+    </section>
+</main>
+
+@section Scripts {
+    <script src="~/js/history.js" asp-append-version="true"></script>
+}

@@ -186,6 +186,22 @@ public sealed class ChatHub : Hub
         await LeaveRoomAsync(tenantId, meetingId, note);
     }
 
+    /// <summary>Calls ringing for me right now (a page that was asleep or reconnecting asks on wake-up).</summary>
+    public async Task<List<IncomingCallDto>> PendingCalls()
+    {
+        var (tenantId, userId) = Caller();
+        var list = new List<IncomingCallDto>();
+        foreach (var c in await _calls.PendingForUserAsync(tenantId, userId))
+        {
+            var title = c.IsDirect ? $"Call with {Context.User!.DisplayName()}" : $"{c.ChannelName} meeting";
+            list.Add(new IncomingCallDto(c.MeetingId, title, c.CallerName, Names.Initials(c.CallerName), c.CallerTone, $"/meetings/room/{c.MeetingId}")
+            {
+                CallerId = c.CallerId.ToString()
+            });
+        }
+        return list;
+    }
+
     /// <summary>The ringing card timed out on this person's screen.</summary>
     public async Task CallNotAnswered(Guid meetingId)
     {

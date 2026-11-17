@@ -65,7 +65,8 @@
     @* Fetch a page as soon as the pointer rests on its link, so a click has nothing to wait for. *@
     <script type="speculationrules">
         { "prefetch": [ { "where": { "or": [ { "href_matches": "/chat" }, { "href_matches": "/team" }, { "href_matches": "/admin" },
-                                              { "href_matches": "/meetings" } ] },
+                                              { "href_matches": "/meetings" },
+                                              { "href_matches": "/calls" }, { "href_matches": "/files" } ] },
                           "eagerness": "moderate" } ] }
     </script>
     @* Edge/Chrome: show the new page only once the whole page (and its scripts) is in, so the tab highlight
@@ -142,7 +143,9 @@
                 @if (!isSuperAdmin)
                 {
                     <rail-item key="chat" label="Chat" icon="comments-o" href="/chat" active="@(section == "chat")"></rail-item>
+                    <rail-item key="calls" label="Calls" icon="phone" href="/calls" active="@(section == "calls")"></rail-item>
                     <rail-item key="meetings" label="Meetings" icon="calendar" href="/meetings" active="@(section == "meetings")"></rail-item>
+                    <rail-item key="files" label="Files" icon="folder-open" href="/files" active="@(section == "files")"></rail-item>
                     @* everyone in the workspace can see the team; only admins can change it (see TeamController) *@
                     <rail-item key="team" label="Team" icon="users" href="/team" active="@(section == "team")"></rail-item>
                 }

@@ -1,0 +1,123 @@
+@model FilesViewModel
+@{
+    ViewData["Title"] = "Files";
+    ViewData["Section"] = "files";
+    var me = User.UserGuid();
+    var byMe = Model.Files.Count(f => f.UploaderId == me);
+    var total = Model.Files.Sum(f => f.SizeBytes);
+    var chats = Model.Files.Select(f => f.ChannelId).Distinct().Count();
+
+    // file kind from its name and type: icon, colour, label, filter key
+    (string Key, string Icon, string Label) Kind(SharedFileDto f)
+    {
+        var ext = System.IO.Path.GetExtension(f.FileName).TrimStart('.').ToLowerInvariant();
+        var ct = f.ContentType.ToLowerInvariant();
+        if (ct.StartsWith("image/")) return ("image", "fa-file-image-o", "Image");
+        if (ct.StartsWith("video/")) return ("video", "fa-file-video-o", "Video");
+        if (ct.StartsWith("audio/")) return ("audio", "fa-file-audio-o", "Audio");
+        if (ext == "pdf") return ("pdf", "fa-file-pdf-o", "PDF");
+        if (ext is "doc" or "docx" or "rtf" or "odt" or "txt" or "md") return ("doc", "fa-file-word-o", "Document");
+        if (ext is "xls" or "xlsx" or "csv" or "ods") return ("sheet", "fa-file-excel-o", "Spreadsheet");
+        if (ext is "ppt" or "pptx" or "odp") return ("slide", "fa-file-powerpoint-o", "Presentation");
+        if (ext is "zip" or "rar" or "7z" or "gz" or "tar") return ("zip", "fa-file-archive-o", "Archive");
+        if (ext is "cs" or "js" or "ts" or "json" or "xml" or "sql" or "html" or "css" or "py") return ("code", "fa-file-code-o", "Code");
+        return ("other", "fa-file-o", ext.Length > 0 ? ext.ToUpperInvariant() : "File");
+    }
+    var kinds = Model.Files.Select(Kind).GroupBy(k => k.Key).Select(g => (Key: g.Key, Label: g.First().Label, Count: g.Count())).OrderByDescending(g => g.Count).ToList();
+}
+
+<main class="sn-page">
+    <div class="sn-head glass">
+        <action-header id="FilesHeader"
+                       heading="Files"
+                       subtitle="Every file shared with you or by you, and the chat it's in"
+                       left-icon-css="bi bi-folder-fill" left-icon-size="24"
+                       left-icon-gradient-start="#F59E0B" left-icon-gradient-mid="#EA580C" left-icon-gradient-end="#DB2777"
+                       background-color="transparent" box-shadow="none"
+                       refresh-color="#1D4ED8"
+                       show-refresh="true" refresh-on-click="SN.reload()"
+                       show-add="false" show-edit="false" show-delete="false" show-import="false"
+                       show-export="false" show-save="false" show-submit="false" show-print="false">
+        </action-header>
+    </div>
+
+    @if (Model.NeedsSql)
+    {
+        <div hidden data-toast="Run database/23_CallsAndFiles.sql (or 99_ApplyAllUpdates.sql) to see your shared files here." data-toast-kind="warn" data-toast-title="One database step left"></div>
+    }
+
+    <div class="sn-grid-4">
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(245,158,11,.14);color:#d97706"><i class="fa fa-files-o"></i></span><div><div class="sn-eyebrow">Files</div><div class="sn-stat-val">@Model.Files.Count</div></div></div>
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(124,58,237,.12);color:#6d28d9"><i class="fa fa-upload"></i></span><div><div class="sn-eyebrow">Shared by you</div><div class="sn-stat-val">@byMe</div></div></div>
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(22,163,74,.12);color:#15803d"><i class="fa fa-download"></i></span><div><div class="sn-eyebrow">Shared with you</div><div class="sn-stat-val">@(Model.Files.Count - byMe)</div></div></div>
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(14,165,233,.12);color:#0284c7"><i class="fa fa-hdd-o"></i></span><div><div class="sn-eyebrow">Total size · @chats chats</div><div class="sn-stat-val">@UserExtensions.FormatBytes(total)</div></div></div>
+    </div>
+
+    <section class="sn-hist glass" id="fileHist">
+        <div class="sn-hist-bar">
+            <div class="sn-hist-tabs" role="tablist" aria-label="Show">
+                <button type="button" class="on" data-show="all" role="tab" aria-selected="true">All</button>
+                <button type="button" data-show="mine" role="tab" aria-selected="false">Shared by you</button>
+                <button type="button" data-show="theirs" role="tab" aria-selected="false">Shared with you</button>
+            </div>
+            <label class="search sn-hist-search">
+                <i class="fa fa-search" aria-hidden="true"></i>
+                <input type="search" placeholder="Search file, person or group" aria-label="Search files" data-hist-search />
+            </label>
+        </div>
+        @if (kinds.Count > 1)
+        {
+            <div class="sn-hist-chips" aria-label="File type">
+                <button type="button" class="on" data-type="">All types</button>
+                @foreach (var k in kinds)
+                {
+                    <button type="button" data-type="@k.Key" class="t-@k.Key">@k.Label <span>@k.Count</span></button>
+                }
+            </div>
+        }
+
+        <div class="sn-hist-list">
+            @foreach (var f in Model.Files)
+            {
+                var k = Kind(f);
+                var mine = f.UploaderId == me;
+                var where = f.IsDirect ? (f.OtherName ?? "Someone") : f.ChannelName;
+                <div class="sn-hrow sn-frow" data-kind="@(mine ? "mine" : "theirs")" data-type="@k.Key"
+                     data-filter="@f.FileName @where @f.UploaderName" data-utc="@f.UploadedUtc.ToString("o")">
+                    <span class="sn-ftile t-@k.Key"><i class="fa @k.Icon" aria-hidden="true"></i></span>
+                    <div class="sn-hmain">
+                        <a class="ellipsis sn-fname" href="/chat/file/@f.AttachmentId" title="Download @f.FileName">@f.FileName</a>
+                        <small class="sn-hstat dim">@k.Label · @UserExtensions.FormatBytes(f.SizeBytes) · @(mine ? "shared by you" : $"shared by {f.UploaderName}")</small>
+                    </div>
+                    <span class="sn-fwhere" title="@(f.IsDirect ? $"Your chat with {where}" : $"The group {where}")">
+                        @if (f.IsDirect && f.OtherId is Guid oid)
+                        {
+                            <span class="avatar av-28 tone-@f.OtherTone" data-user="@oid" data-presence="@oid">@Names.Initials(where)<i class="dot @(Model.Online.Contains(oid.ToString()) ? "on" : "")"></i></span>
+                        }
+                        else
+                        {
+                            <span class="avatar av-28 tone-0 hash-avatar group-avatar"><i class="fa fa-users" aria-hidden="true"></i></span>
+                        }
+                        <span class="ellipsis">@(f.IsDirect ? "with " : "in ")@where</span>
+                    </span>
+                    <time class="sn-htime" datetime="@f.UploadedUtc.ToString("o")" data-utc="@f.UploadedUtc.ToString("o")"></time>
+                    <div class="sn-hact">
+                        <a class="sn-hbtn call" href="/chat/file/@f.AttachmentId" title="Download"><i class="fa fa-download" aria-hidden="true"></i><span>Download</span></a>
+                        <a class="sn-hbtn chat" href="/chat/@f.ChannelId" title="Open the chat it was shared in"><i class="fa fa-comment" aria-hidden="true"></i><span>Chat</span></a>
+                    </div>
+                </div>
+            }
+            <div class="sn-hist-empty" @(Model.Files.Count > 0 ? "hidden" : "")>
+                <span class="sn-hist-empty-ic files"><i class="fa fa-folder-open-o" aria-hidden="true"></i></span>
+                <b>No files yet</b>
+                <p>Files you send or get in Chat (the paper-clip button) show up here.</p>
+                <a class="sn-hbtn call" href="/chat"><i class="fa fa-comments-o" aria-hidden="true"></i><span>Go to Chat</span></a>
+            </div>
+            <div class="sn-hist-none" hidden>Nothing matches. Try another tab, type or name.</div>
+        </div>
+    </section>
+</main>
+
+@section Scripts {
+    <script src="~/js/history.js" asp-append-version="true"></script>
+}

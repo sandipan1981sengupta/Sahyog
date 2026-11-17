@@ -196,6 +196,8 @@
     };
     const othersInCall = () => { try { return Math.max(0, (api.getNumberOfParticipants?.() || 1) - 1); } catch { return 0; } };
 
+    if (cfg.offlineNote) setTimeout(() => notice("Not online", cfg.offlineNote, "declined"), 1200);
+
     if (hub) {
         // the person you called said no
         hub.on("CallDeclined", (meetingId, name, _userId, note) => {

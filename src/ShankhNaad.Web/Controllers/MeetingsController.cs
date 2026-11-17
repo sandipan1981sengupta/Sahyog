@@ -184,6 +184,12 @@ public sealed class MeetingsController : Controller
             var members = await _chat.GetMembersAsync(tenantId, cid);
             if (channel is null || members.All(m => m.UserId != Me)) return Forbid();
             others = members.Where(m => m.UserId != Me).Select(m => m.UserId).ToList();
+            // nobody to ring: tell the caller in the call ("Sandy isn't online right now…")
+            var online = _presence.OnlineUsers(tenantId);
+            var away = members.Where(m => m.UserId != Me && !online.Contains(m.UserId.ToString())).Select(m => m.DisplayName).ToList();
+            if (away.Count > 0 && away.Count == others.Count)
+                TempData["CallOffline"] = away.Count == 1 ? $"{away[0]} isn't online right now, so it won't ring. They'll see a missed call."
+                                                          : "Nobody else is online right now, so it won't ring. They'll see a missed call.";
             title = channel.IsDirect
                 ? $"Call with {members.FirstOrDefault(m => m.UserId != Me)?.DisplayName ?? "teammate"}"
                 : $"{channel.Name} meeting";
@@ -289,6 +295,7 @@ public sealed class MeetingsController : Controller
             MaxVideoHeight = limits.MaxVideoHeight,
             MaxParticipants = limits.MaxMeetingParticipants,
             OneToOne = oneToOne,
+            OfflineNote = TempData["CallOffline"] as string,
             LeaveUrl = meeting.ChannelId is Guid ch ? Url.Action("Index", "Chat", new { id = ch })! : Url.Action(nameof(Index))!,
             GuestUrl = meeting.GuestLinkEnabled ? _meetings.GuestUrl(meeting.GuestCode) : null,
             ChannelName = meeting.ChannelId is not null && !meeting.ChannelIsDirect ? meeting.ChannelName : null

@@ -209,6 +209,8 @@ public sealed class RoomViewModel
     public required string LeaveUrl { get; init; }
     /// <summary>A call between two people from Chat: it ends for both when one hangs up or declines.</summary>
     public bool OneToOne { get; init; }
+    /// <summary>"Sandy isn't online right now…" when nobody could be rung.</summary>
+    public string? OfflineNote { get; init; }
     public string? GuestUrl { get; init; }
     public string? ChannelName { get; init; }
 }
@@ -330,4 +332,20 @@ public sealed class SetupInput
     public string? ClientAdminPassword { get; set; }
 
     public int PlanId { get; set; }
+}
+
+public sealed class CallsViewModel
+{
+    public required List<CallHistoryDto> Calls { get; init; }
+    /// <summary>23_CallsAndFiles.sql hasn't been run yet.</summary>
+    public bool NeedsSql { get; init; }
+    public required HashSet<string> Online { get; init; }
+}
+
+public sealed class FilesViewModel
+{
+    public required List<SharedFileDto> Files { get; init; }
+    /// <summary>23_CallsAndFiles.sql hasn't been run yet.</summary>
+    public bool NeedsSql { get; init; }
+    public required HashSet<string> Online { get; init; }
 }

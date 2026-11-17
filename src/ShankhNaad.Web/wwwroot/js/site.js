@@ -151,9 +151,12 @@
         }, 280);
     };
 
-    hub.on("IncomingCall", (call) => {
+    // calls already answered, declined or timed out on this screen (so they don't ring a second time)
+    const handledCalls = new Set();
+    const showIncoming = (call) => {
         const box = callBox();
-        if (!box) return;
+        if (!box || !call) return;
+        if (handledCalls.has(String(call.meetingId).toLowerCase())) return;
         // the same call ringing again (the caller pressed Call again): just keep the card, don't stack a second one
         if (ringingId === call.meetingId && !box.hidden) return;
         clearInterval(ringTimer); clearTimeout(dismissTimer); clearInterval(titleTimer);
@@ -165,8 +168,10 @@
         document.getElementById("callWho").textContent = call.callerName;
         document.getElementById("callTitle").textContent = "is calling you…";
         document.getElementById("callAccept").href = call.roomUrl;
-        document.getElementById("callAccept").onclick = stopRinging;
+        const done = () => handledCalls.add(String(call.meetingId).toLowerCase());
+        document.getElementById("callAccept").onclick = () => { done(); stopRinging(); };
         const decline = (note) => {
+            done();
             stopRinging();
             hub.invoke("DeclineCall", call.meetingId, note || null).catch(() => { });
             if (note) Sahyog.toast(`Declined. ${call.callerName} sees your message: “${note}”`, { kind: "info", title: "Call declined" });
@@ -202,8 +207,10 @@
         titleTimer = setInterval(() => { flip = !flip; document.title = flip ? `📞 ${call.callerName} is calling…` : pageTitle; }, 1000);
         ringingId = call.meetingId;
         dismissTimer = setTimeout(() => {
+            done();
             stopRinging();
             hub.invoke("CallNotAnswered", call.meetingId).catch(() => { });
+            Sahyog.addMissed?.();
             Sahyog.toast(`You missed a call from ${call.callerName}.`, { kind: "warn", title: "Missed call", ms: 10000,
                 action: { text: "Call back", onClick: () => { location.href = "/chat"; } } });
         }, 30000);
@@ -212,7 +219,16 @@
             const n = new Notification(`${call.callerName} is calling you`, { body: "Click to answer.", tag: `call-${call.meetingId}`, requireInteraction: true });
             n.onclick = () => { window.focus(); location.href = call.roomUrl; };
         }
-    });
+    };
+    hub.on("IncomingCall", showIncoming);
+
+    // A call that started while this page was asleep, offline or reconnecting still rings when it wakes up
+    // (the server keeps a call "ringing" for 45 s).
+    const checkPending = async () => {
+        if (hub.state !== "Connected") return;
+        try { (await hub.invoke("PendingCalls") || []).forEach(showIncoming); } catch { /* older server */ }
+    };
+    Sahyog.checkPendingCalls = checkPending;
 
     // ---------- new messages: a pop-up with the sender's photo, a soft sound, counts on the Chat icon ----------
     const UNREAD_KEY = "sn-unread";
@@ -236,6 +252,22 @@
         if (!ringingId) document.title = total ? `(${total}) ${pageTitle}` : pageTitle;
     };
     Sahyog.paintUnread();
+
+    // missed calls: a red count on the Calls icon until you open the Calls page
+    const MISSED_KEY = "sn-missed";
+    const missedCount = () => { try { return Number(localStorage.getItem(MISSED_KEY) || 0); } catch { return 0; } };
+    if (location.pathname.toLowerCase().startsWith("/calls")) { try { localStorage.removeItem(MISSED_KEY); } catch { } }
+    Sahyog.paintMissed = () => {
+        const link = document.querySelector('.rail [href="/calls"]');
+        if (!link) return;
+        let b = link.querySelector(".sn-rail-badge");
+        if (!b) { b = document.createElement("span"); b.className = "sn-rail-badge"; link.style.position = "relative"; link.appendChild(b); }
+        const n = missedCount();
+        b.textContent = n > 99 ? "99+" : String(n);
+        b.hidden = n === 0;
+    };
+    Sahyog.addMissed = () => { try { localStorage.setItem(MISSED_KEY, String(missedCount() + 1)); } catch { } Sahyog.paintMissed(); };
+    Sahyog.paintMissed();
 
     // a soft two-note "ding" (quieter than the call ring)
     const ding = () => {
@@ -284,9 +316,11 @@
 
     // answered on another device, or the caller hung up: stop ringing here
     hub.on("CallUpdated", (c) => {
+        if (c && c.outcome !== 0) handledCalls.add(String(c.meetingId).toLowerCase());
         if (!ringingId || c.meetingId.toLowerCase() !== String(ringingId).toLowerCase() || c.outcome === 0) return;
         const caller = document.getElementById("callWho")?.textContent || "Someone";
         stopRinging();   // (answering on this screen already cleared ringingId, so we only get here for other cases)
+        if (c.outcome === 5 || c.outcome === 3) Sahyog.addMissed?.();
         if (c.outcome === 5 || c.outcome === 3)
             Sahyog.toast(`You missed a call from ${caller}.`, { kind: "warn", title: "Missed call", ms: 10000 });
         else if (c.outcome === 1)
@@ -365,15 +399,25 @@
             try { Sahyog.busy = new Set(await hub.invoke("BusyUsers")); } catch { /* older server */ }
             paintPresence();
             document.dispatchEvent(new CustomEvent("sahyog:connected"));
+            checkPending();
         } catch {
             setTimeout(start, 5000);
         }
     };
+    // The automatic reconnect gives up after about a minute (e.g. the PC slept or the tab was frozen).
+    // Keep trying, so calls and messages never silently stop arriving.
+    hub.onclose(() => setTimeout(() => { if (hub.state === "Disconnected") start(); }, 3000));
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible") return;
+        if (hub.state === "Disconnected") start(); else checkPending();
+    });
+    window.addEventListener("online", () => { if (hub.state === "Disconnected") start(); });
     hub.onreconnected(async () => {
         Sahyog.online = new Set(await hub.invoke("OnlineUsers"));
         try { Sahyog.busy = new Set(await hub.invoke("BusyUsers")); } catch { /* older server */ }
         paintPresence();
         document.dispatchEvent(new CustomEvent("sahyog:connected"));
+        checkPending();
     });
     start();
 })();

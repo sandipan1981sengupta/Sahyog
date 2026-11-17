@@ -14,6 +14,12 @@ public interface ICallLogService
     /// <summary>Event: 1 answered, 2 room empty, 3 not answered, 4 declined. Returns the call when its state changed.</summary>
     Task<CallLogDto?> EventAsync(Guid tenantId, Guid meetingId, Guid userId, int evt);
     Task<List<CallLogDto>> GetAsync(Guid tenantId, IEnumerable<Guid> meetingIds);
+    /// <summary>The Calls page: every call in this person's chats (needs 23_CallsAndFiles.sql). Null until it is run.</summary>
+    Task<List<CallHistoryDto>?> ListForUserAsync(Guid tenantId, Guid userId, int take = 200);
+    /// <summary>The Files page: every file shared in this person's chats (needs 23_CallsAndFiles.sql). Null until it is run.</summary>
+    Task<List<SharedFileDto>?> ListFilesForUserAsync(Guid tenantId, Guid userId, int take = 500);
+    /// <summary>Calls ringing for this person right now: (meeting, caller id, caller name, caller tone, one-to-one, chat name).</summary>
+    Task<List<(Guid MeetingId, Guid CallerId, string CallerName, int CallerTone, bool IsDirect, string ChannelName)>> PendingForUserAsync(Guid tenantId, Guid userId);
 }
 
 public sealed class CallLogService : ICallLogService
@@ -77,5 +83,43 @@ public sealed class CallLogService : ICallLogService
             return await _db.QueryAsync("dbo.sahyog_CallLog_Get", p => p.With("@TenantId", tenantId).With("@Ids", ids), Map);
         }
         catch (SqlException ex) when (Missing(ex)) { _ready = false; return new(); }
+    }
+
+    public async Task<List<CallHistoryDto>?> ListForUserAsync(Guid tenantId, Guid userId, int take = 200)
+    {
+        try
+        {
+            return await _db.QueryAsync("dbo.sahyog_Calls_ListForUser",
+                p => p.With("@TenantId", tenantId).With("@UserId", userId).With("@Take", take),
+                r => new CallHistoryDto(r.G("MeetingId"), r.G("ChannelId"), r.G("CallerId"), r.S("CallerName"), r.I("CallerTone"),
+                    r.Utc("StartedUtc"), r.UtcN("AnsweredUtc"), r.UtcN("EndedUtc"), r.I("Outcome"),
+                    Convert.ToBoolean(r["IsDirect"]), r.S("ChannelName"), r.I("MemberCount"),
+                    r.GN("OtherId"), r.SN("OtherName"), r["OtherTone"] is DBNull ? 0 : Convert.ToInt32(r["OtherTone"])));
+        }
+        catch (SqlException ex) when (Missing(ex)) { return null; }
+    }
+
+    public async Task<List<SharedFileDto>?> ListFilesForUserAsync(Guid tenantId, Guid userId, int take = 500)
+    {
+        try
+        {
+            return await _db.QueryAsync("dbo.sahyog_Files_ListForUser",
+                p => p.With("@TenantId", tenantId).With("@UserId", userId).With("@Take", take),
+                r => new SharedFileDto(r.G("AttachmentId"), r.S("FileName"), r.S("ContentType"), Convert.ToInt64(r["SizeBytes"]), r.Utc("UploadedUtc"),
+                    r.G("UploaderId"), r.S("UploaderName"), r.I("UploaderTone"),
+                    r.G("ChannelId"), Convert.ToBoolean(r["IsDirect"]), r.S("ChannelName"),
+                    r.GN("OtherId"), r.SN("OtherName"), r["OtherTone"] is DBNull ? 0 : Convert.ToInt32(r["OtherTone"])));
+        }
+        catch (SqlException ex) when (Missing(ex)) { return null; }
+    }
+
+    public async Task<List<(Guid MeetingId, Guid CallerId, string CallerName, int CallerTone, bool IsDirect, string ChannelName)>> PendingForUserAsync(Guid tenantId, Guid userId)
+    {
+        try
+        {
+            return await _db.QueryAsync("dbo.sahyog_CallLog_Pending", p => p.With("@TenantId", tenantId).With("@UserId", userId),
+                r => (r.G("MeetingId"), r.G("CallerId"), r.S("CallerName"), r.I("CallerTone"), Convert.ToBoolean(r["IsDirect"]), r.S("ChannelName")));
+        }
+        catch (SqlException ex) when (Missing(ex)) { return new(); }
     }
 }
