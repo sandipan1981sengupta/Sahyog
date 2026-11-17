@@ -377,22 +377,31 @@
                     return CLIENT_ONLY.some(function (w) { return label === w || label.indexOf(w) === 0; });
                 });
             }
-            // Smooth fold: the client buttons fade and shrink in place (GPU-only: opacity + transform),
-            // then the buttons that stay glide to their new place (FLIP), so nothing jumps.
-            var folded = false, foldBusy = null;
-            var EASE = "cubic-bezier(.22, 1, .36, 1)";
-            function siblingsOf($b) {
-                var row = $b.length ? $b[0].parentElement : null;
+            // Header fold: the client buttons are gathered into the Refresh button one after another
+            // (they glide to it, shrink and soften away), then Print slides over to close the gap.
+            // Coming back, they fan out of Refresh to their places. Only transform/opacity/blur are
+            // animated (smooth on the graphics card); layout changes once, hidden behind the motion.
+            var folded = false, running = [];
+            var OUT = "cubic-bezier(.65, 0, .35, 1)", IN = "cubic-bezier(.16, 1, .3, 1)";
+            // the buttons' page-load pop-in starts at opacity 0: switch it off and pin them visible,
+            // so hiding/showing never makes them flash or vanish
+            function settle(el) { el.style.animation = "none"; el.style.opacity = "1"; }
+            function rowOf($b) { return $b.length ? $b[0].parentElement : null; }
+            function others($b) {
+                var row = rowOf($b);
                 return row ? Array.prototype.filter.call(row.children, function (el) { return $b.index(el) < 0 && !el.hidden; }) : [];
             }
-            function rects(list) { return list.map(function (el) { return el.getBoundingClientRect(); }); }
+            function anchorBtn($b) {   // Refresh: the first header button that stays
+                return others($b).filter(function (el) { return el.classList.contains("hdr-btn"); })[0] || null;
+            }
+            function centerX(el) { var r = el.getBoundingClientRect(); return r.left + r.width / 2; }
+            function stopAll() { running.forEach(function (a) { try { a.cancel(); } catch (e) { } }); running = []; }
             function glide(list, before) {
-                var after = rects(list);
                 list.forEach(function (el, i) {
-                    var dx = before[i].left - after[i].left;
+                    var dx = before[i] - el.getBoundingClientRect().left;
                     if (Math.abs(dx) < 1) return;
-                    el.animate([{ transform: "translateX(" + dx + "px)" }, { transform: "translateX(0)" }],
-                               { duration: 460, easing: EASE });
+                    running.push(el.animate([{ transform: "translateX(" + dx + "px)" }, { transform: "none" }],
+                                            { duration: 520, easing: IN }));
                 });
             }
             function foldHeader(plans, instant) {
@@ -400,52 +409,57 @@
                 folded = plans;
                 var $b = clientButtons();
                 if (!$b.length) return;
-                $b.each(function () { this.style.animation = "none"; });   // no replay of the page-load pop-in
+                stopAll();
+                var stay = others($b);
+                $b.each(function () { settle(this); });
+                stay.forEach(settle);
+                $b.each(function () {
+                    this.tabIndex = plans ? -1 : 0;
+                    if (plans) { this.setAttribute("aria-hidden", "true"); this.blur(); } else this.removeAttribute("aria-hidden");
+                });
                 var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-                if (foldBusy) { foldBusy.forEach(function (a) { try { a.finish(); } catch (e) { } }); foldBusy = null; }
+                if (instant || reduce || !Element.prototype.animate) { $b.each(function () { this.hidden = plans; }); return; }
 
-                if (instant || reduce || !Element.prototype.animate) {
-                    $b.each(function () { this.hidden = plans; this.tabIndex = plans ? -1 : 0; });
-                    return;
-                }
-                var stay = siblingsOf($b);
-                stay.forEach(function (el) { el.style.animation = "none"; });
+                var anchor = anchorBtn($b);
+                var ax = anchor ? centerX(anchor) : null;
                 if (plans) {
-                    // 1) fade and shrink where they are, one after another (right to left)
-                    var n = $b.length, anims = [];
+                    // 1) gathered into Refresh, the nearest first
+                    var n = $b.length, done = [];
                     $b.each(function (i) {
-                        this.blur(); this.tabIndex = -1; this.setAttribute("aria-hidden", "true");
-                        anims.push(this.animate(
-                            [{ opacity: 1, transform: "none", filter: "blur(0)" },
-                             { opacity: 0, transform: "translateY(-6px) scale(.82)", filter: "blur(2px)" }],
-                            { duration: 260, delay: (n - 1 - i) * 40, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" }));
+                        var dx = ax === null ? -20 : ax - centerX(this);
+                        var a = this.animate([
+                            { transform: "none", opacity: 1, filter: "blur(0)" },
+                            { transform: "translateX(" + (dx * .55) + "px) scale(.86)", opacity: .55, filter: "blur(.5px)", offset: .55 },
+                            { transform: "translateX(" + dx + "px) scale(.5)", opacity: 0, filter: "blur(3px)" }
+                        ], { duration: 460, delay: i * 45, easing: OUT, fill: "forwards" });
+                        running.push(a); done.push(a.finished);
                     });
-                    foldBusy = anims;
-                    Promise.all(anims.map(function (a) { return a.finished; })).then(function () {
+                    Promise.all(done).then(function () {
                         if (!folded) return;
-                        // 2) take them out, and let the rest glide into place
-                        var before = rects(stay);
+                        // 2) out of the layout; Print (and the divider) slide over to close the gap
+                        var before = stay.map(function (el) { return el.getBoundingClientRect().left; });
                         $b.each(function () { this.hidden = true; });
-                        anims.forEach(function (a) { a.cancel(); });
+                        stopAll();
                         glide(stay, before);
-                        foldBusy = null;
+                        // Refresh gives a small "caught them" pulse
+                        if (anchor) running.push(anchor.animate([{ transform: "scale(1)" }, { transform: "scale(1.07)" }, { transform: "scale(1)" }],
+                                                                { duration: 380, easing: "ease-out" }));
                     }).catch(function () { });
                 } else {
-                    // 1) make room: the staying buttons glide aside while the client buttons come back in
-                    var before = rects(stay);
-                    $b.each(function () { this.hidden = false; this.style.opacity = "0"; this.tabIndex = 0; this.removeAttribute("aria-hidden"); });
+                    // 1) make room: the staying buttons slide to their places
+                    var before = stay.map(function (el) { return el.getBoundingClientRect().left; });
+                    $b.each(function () { this.hidden = false; });
                     glide(stay, before);
-                    var anims2 = [];
+                    // 2) the client buttons fan out of Refresh, one after another
+                    ax = anchor ? centerX(anchor) : null;
                     $b.each(function (i) {
-                        var el = this;
-                        var a = el.animate(
-                            [{ opacity: 0, transform: "translateY(-6px) scale(.82)", filter: "blur(2px)" },
-                             { opacity: 1, transform: "none", filter: "blur(0)" }],
-                            { duration: 380, delay: 120 + i * 45, easing: EASE, fill: "backwards" });
-                        el.style.opacity = "";
-                        anims2.push(a);
+                        var dx = ax === null ? -20 : ax - centerX(this);
+                        running.push(this.animate([
+                            { transform: "translateX(" + dx + "px) scale(.5)", opacity: 0, filter: "blur(3px)" },
+                            { transform: "translateX(" + (dx * .25) + "px) scale(.92)", opacity: .8, filter: "blur(.3px)", offset: .6 },
+                            { transform: "none", opacity: 1, filter: "blur(0)" }
+                        ], { duration: 620, delay: 90 + i * 55, easing: IN, fill: "backwards" }));
                     });
-                    foldBusy = anims2;
                 }
             }
             function showPane(id) {
