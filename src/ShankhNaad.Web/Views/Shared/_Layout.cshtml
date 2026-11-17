@@ -287,8 +287,19 @@
             </span>
         </div>
         <div class="sn-call-actions">
-            <button type="button" class="sn-call-btn decline" id="callDecline" title="Decline"><i class="fa fa-phone" aria-hidden="true"></i><span>Decline</span></button>
+            <span class="sn-call-decline-wrap">
+                <button type="button" class="sn-call-btn decline" id="callDecline" title="Decline"><i class="fa fa-phone" aria-hidden="true"></i><span>Decline</span></button>
+                <button type="button" class="sn-call-more" id="callDeclineMore" title="Decline with a message" aria-label="Decline with a message" aria-expanded="false"><i class="fa fa-comment" aria-hidden="true"></i></button>
+            </span>
             <a class="sn-call-btn accept" id="callAccept" href="#" title="Accept with video"><i class="fa fa-video-camera" aria-hidden="true"></i><span>Accept</span></a>
+        </div>
+        @* decline with a quick message; it's also posted in your chat with the caller *@
+        <div class="sn-call-replies" id="callReplies" hidden>
+            <button type="button" class="sn-call-reply">Can't talk now. I'll call you back.</button>
+            <button type="button" class="sn-call-reply">In a meeting, will call you later.</button>
+            <button type="button" class="sn-call-reply">Call me in 10 minutes.</button>
+            <button type="button" class="sn-call-reply">Please message me instead.</button>
+            <span class="sn-call-own"><input type="text" id="callReplyText" maxlength="300" placeholder="Write a message…" aria-label="Your message" /><button type="button" id="callReplySend" aria-label="Decline and send"><i class="fa fa-paper-plane" aria-hidden="true"></i></button></span>
         </div>
         <span class="sn-call-timer" id="callTimer" aria-hidden="true"></span>
     </div>

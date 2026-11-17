@@ -12,6 +12,15 @@
         $("toasts").appendChild(el);
         setTimeout(() => el.remove(), 4500);
     };
+    // a richer notice: "Sandy left the call" + their note, with a coloured icon
+    const notice = (title, note, kind) => {
+        const el = document.createElement("div");
+        el.className = `toast room-notice ${kind || "left"}`;
+        el.innerHTML = `<span class="rn-ic">${kind === "declined" ? "&#128222;" : "&#128075;"}</span>`
+            + `<span class="rn-txt"><b>${esc(title)}</b>${note ? `<q>${esc(note)}</q>` : ""}</span>`;
+        $("toasts").appendChild(el);
+        setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 350); }, note ? 9000 : 5000);
+    };
 
     if (typeof JitsiMeetExternalAPI === "undefined") {
         $("stageLoading").querySelector("p").textContent = "Video could not load. Check your internet connection and refresh.";
@@ -128,15 +137,84 @@
     };
 
     let leaving = false;
-    const leave = () => {
+    const leave = (note) => {
         if (leaving) return;
         leaving = true;
-        report("MeetingLeft");
+        if (typeof note === "string" && note.trim() && hub && hub.state === "Connected")
+            hub.invoke("LeaveCall", cfg.meetingId, note.trim()).catch(() => { });
+        else report("MeetingLeft");
         try { api.executeCommand("hangup"); } catch { }
         setTimeout(() => (location.href = cfg.leaveUrl), 900);
     };
-    $("leaveBtn").onclick = leave;
-    $("backBtn").onclick = leave;
+
+    // ---------- Leave: straight away, or with a short note for the others ----------
+    const NOTES = ["Sorry, I have to drop. Will catch up later.", "Network issue, I'll rejoin soon.", "Another meeting is starting.", "Thanks all, bye!"];
+    const sheet = document.createElement("div");
+    sheet.className = "leave-sheet";
+    sheet.hidden = true;
+    sheet.setAttribute("role", "dialog");
+    sheet.setAttribute("aria-label", "Leave the call");
+    sheet.innerHTML = `
+        <p class="ls-title">Leave the call?</p>
+        <button type="button" class="ls-now">Leave now</button>
+        ${hub ? `<p class="ls-sub">or leave with a message</p>
+        <div class="ls-chips">${NOTES.map((n) => `<button type="button" class="ls-chip">${esc(n)}</button>`).join("")}</div>
+        <div class="ls-own"><input type="text" maxlength="300" placeholder="Write your own message…" aria-label="Your message" /><button type="button" class="ls-send">Send &amp; leave</button></div>
+        <p class="ls-hint">The others see it in the call and in the chat.</p>` : ""}
+        <button type="button" class="ls-cancel">Stay in the call</button>`;
+    document.body.appendChild(sheet);
+    const openSheet = () => { sheet.hidden = false; requestAnimationFrame(() => sheet.classList.add("open")); };
+    const closeSheet = () => { sheet.classList.remove("open"); setTimeout(() => (sheet.hidden = true), 220); };
+    sheet.querySelector(".ls-now").onclick = () => leave();
+    sheet.querySelector(".ls-cancel").onclick = closeSheet;
+    sheet.querySelectorAll(".ls-chip").forEach((b) => (b.onclick = () => leave(b.textContent)));
+    const own = sheet.querySelector(".ls-own input");
+    if (own) {
+        const send = () => { if (own.value.trim()) leave(own.value); else own.focus(); };
+        sheet.querySelector(".ls-send").onclick = send;
+        own.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+    }
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !sheet.hidden) closeSheet(); });
+    $("leaveBtn").onclick = () => (sheet.hidden ? openSheet() : closeSheet());
+    $("backBtn").onclick = openSheet;
+
+    // ---------- the call ends for me: a short "call ended" screen, then back to the chat ----------
+    let ended = false;
+    const endScreen = (title, note) => {
+        if (ended || leaving) return;
+        ended = true;
+        closeSheet();
+        const el = document.createElement("div");
+        el.className = "call-ended";
+        el.innerHTML = `<div class="ce-card"><span class="ce-ic">&#128222;</span><h2>${esc(title)}</h2>`
+            + (note ? `<q>${esc(note)}</q>` : "")
+            + `<p>Closing the call…</p><button type="button">Back to chat</button></div>`;
+        document.body.appendChild(el);
+        el.querySelector("button").onclick = () => leave();
+        try { api.executeCommand("hangup"); } catch { }   // camera and microphone switch off now
+        setTimeout(() => leave(), 4000);
+    };
+    const othersInCall = () => { try { return Math.max(0, (api.getNumberOfParticipants?.() || 1) - 1); } catch { return 0; } };
+
+    if (hub) {
+        // the person you called said no
+        hub.on("CallDeclined", (meetingId, name, _userId, note) => {
+            if (String(meetingId).toLowerCase() !== String(cfg.meetingId).toLowerCase()) return;
+            if (cfg.oneToOne && othersInCall() === 0) endScreen(`${name} declined the call`, note);
+            else notice(`${name} declined the call`, note, "declined");
+        });
+        // someone hung up: on a one-to-one call it ends for both; in a group, everyone sees who dropped
+        hub.on("ParticipantLeft", (meetingId, _userId, name, note) => {
+            if (String(meetingId).toLowerCase() !== String(cfg.meetingId).toLowerCase()) return;
+            if (cfg.oneToOne) endScreen(`${name} ended the call`, note);
+            else notice(`${name} left the call`, note, "left");
+        });
+        // nobody picked up in time
+        hub.on("CallUpdated", (c) => {
+            if (String(c.meetingId).toLowerCase() !== String(cfg.meetingId).toLowerCase()) return;
+            if (cfg.oneToOne && c.outcome === 3 && othersInCall() === 0) endScreen("No answer", null);
+        });
+    }
 
     // ---------- JaaS events keep the dock in sync ----------
     api.addListener("videoConferenceJoined", () => {
@@ -162,8 +240,8 @@
     api.addListener("participantJoined", ({ displayName }) => displayName && toast(`${displayName} joined`));
     api.addListener("knockingParticipant", ({ participant }) =>
         toast(`${participant?.name || "A guest"} is waiting in the lobby`));
-    api.addListener("readyToClose", leave);
-    api.addListener("videoConferenceLeft", () => { if (!leaving) leave(); });
+    api.addListener("readyToClose", () => { if (!ended) leave(); });
+    api.addListener("videoConferenceLeft", () => { if (!leaving && !ended) leave(); });
 
     window.addEventListener("beforeunload", () => report("MeetingLeft"));
 })();

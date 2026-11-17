@@ -68,6 +68,12 @@
             el.classList.toggle("is-on", on && !busy);
             el.setAttribute("data-status", busy ? "On a call" : on ? "Available" : "Offline");
         });
+        // "N online" on the Chat page
+        const count = document.getElementById("teamOnline");
+        if (count) {
+            const me = document.body.dataset.me;
+            count.textContent = new Set([...Sahyog.online, ...Sahyog.busy].filter((id) => id !== me)).size;
+        }
     };
     Sahyog.paintPresence = paintPresence;
     hub.on("BusyChanged", (userId, busy) => {
@@ -134,6 +140,7 @@
         ringingId = null;
         silenced = false;
         document.title = pageTitle;
+        Sahyog.paintUnread?.();
         const box = callBox();
         if (!box || box.hidden) return;
         box.classList.add("leaving");
@@ -159,10 +166,27 @@
         document.getElementById("callTitle").textContent = "is calling you…";
         document.getElementById("callAccept").href = call.roomUrl;
         document.getElementById("callAccept").onclick = stopRinging;
-        document.getElementById("callDecline").onclick = () => {
+        const decline = (note) => {
             stopRinging();
-            hub.invoke("DeclineCall", call.meetingId).catch(() => { });
+            hub.invoke("DeclineCall", call.meetingId, note || null).catch(() => { });
+            if (note) Sahyog.toast(`Declined. ${call.callerName} sees your message: “${note}”`, { kind: "info", title: "Call declined" });
         };
+        const replies = document.getElementById("callReplies"), more = document.getElementById("callDeclineMore");
+        replies.hidden = true; more.setAttribute("aria-expanded", "false");
+        document.getElementById("callDecline").onclick = () => decline(null);
+        more.onclick = () => {
+            replies.hidden = !replies.hidden;
+            more.setAttribute("aria-expanded", String(!replies.hidden));
+            silenced = true; box.classList.add("silenced");   // quiet while you type
+            clearTimeout(dismissTimer); box.classList.remove("counting");   // no time-out while you type
+            if (!replies.hidden) setTimeout(() => document.getElementById("callReplyText").focus(), 50);
+        };
+        replies.querySelectorAll(".sn-call-reply").forEach((b) => (b.onclick = () => decline(b.textContent.trim())));
+        const own = document.getElementById("callReplyText");
+        own.value = "";
+        const sendOwn = () => { if (own.value.trim()) decline(own.value.trim()); else own.focus(); };
+        document.getElementById("callReplySend").onclick = sendOwn;
+        own.onkeydown = (e) => { if (e.key === "Enter") sendOwn(); };
         document.getElementById("callSilence").onclick = () => { silenced = true; box.classList.add("silenced"); };
         box.classList.remove("silenced", "leaving");
         box.hidden = false;
@@ -190,6 +214,74 @@
         }
     });
 
+    // ---------- new messages: a pop-up with the sender's photo, a soft sound, counts on the Chat icon ----------
+    const UNREAD_KEY = "sn-unread";
+    const readUnread = () => { try { return JSON.parse(sessionStorage.getItem(UNREAD_KEY) || "{}"); } catch { return {}; } };
+    const saveUnread = (u) => { try { sessionStorage.setItem(UNREAD_KEY, JSON.stringify(u)); } catch { } };
+    const chatMain = document.getElementById("chat");
+    const openChannel = chatMain?.dataset.channel || null;
+    if (openChannel) { const u = readUnread(); delete u[openChannel]; saveUnread(u); }   // opening a chat reads it
+
+    const railChat = () => document.querySelector('.rail a[href="/chat"], .rail [data-key="chat"] a, .rail [href="/chat"]');
+    Sahyog.paintUnread = () => {
+        const total = Object.values(readUnread()).reduce((a, b) => a + b, 0);
+        const link = railChat();
+        if (link) {
+            let b = link.querySelector(".sn-rail-badge");
+            if (!b) { b = document.createElement("span"); b.className = "sn-rail-badge"; link.style.position = "relative"; link.appendChild(b); }
+            b.textContent = total > 99 ? "99+" : String(total);
+            b.hidden = total === 0;
+            b.classList.remove("pop"); void b.offsetWidth; if (total) b.classList.add("pop");
+        }
+        if (!ringingId) document.title = total ? `(${total}) ${pageTitle}` : pageTitle;
+    };
+    Sahyog.paintUnread();
+
+    // a soft two-note "ding" (quieter than the call ring)
+    const ding = () => {
+        try {
+            unlockAudio();
+            if (!audioCtx || audioCtx.state !== "running") return;
+            const t = audioCtx.currentTime + 0.02;
+            tone(880, t, 0.35, 0.09, "sine");
+            tone(1318.51, t + 0.11, 0.55, 0.08, "sine");
+        } catch { }
+    };
+    Sahyog.ding = ding;
+
+    hub.on("MessageReceived", (m) => {
+        const me = document.body.dataset.me;
+        if (!m || m.senderId === me || /^\[\[call:/.test(m.body || "")) return;   // calls ring instead
+        const looking = openChannel === m.channelId && document.visibilityState === "visible" && document.hasFocus();
+        if (looking) return;   // you're reading this chat right now
+
+        if (openChannel !== m.channelId) {
+            const u = readUnread(); u[m.channelId] = (u[m.channelId] || 0) + 1; saveUnread(u);
+            Sahyog.paintUnread();
+        }
+        ding();
+
+        const preview = m.body ? (m.body.length > 90 ? m.body.slice(0, 90) + "…" : m.body) : "Sent a file";
+        const av = document.createElement("span");
+        av.className = `avatar av-38 tone-${m.senderTone}`;
+        av.dataset.user = m.senderId;
+        av.textContent = m.senderInitials;
+        Sahyog.paintPhotos?.(av.parentElement || document);
+        const go = () => { location.href = `/chat/${m.channelId}`; };
+        Sahyog.toast(preview, {
+            kind: "message",
+            title: m.fromGroup ? `${m.senderName} · ${m.fromGroup}` : m.senderName,
+            avatar: av, ms: 7000, onClick: go,
+            action: { text: "Reply", onClick: go }
+        });
+        Sahyog.paintPhotos?.(document.getElementById("toasts") || document);
+
+        if ("Notification" in window && Notification.permission === "granted" && (document.hidden || !document.hasFocus())) {
+            const n = new Notification(m.senderName, { body: preview, tag: `msg-${m.channelId}` });
+            n.onclick = () => { window.focus(); go(); };
+        }
+    });
+
     // answered on another device, or the caller hung up: stop ringing here
     hub.on("CallUpdated", (c) => {
         if (!ringingId || c.meetingId.toLowerCase() !== String(ringingId).toLowerCase() || c.outcome === 0) return;
@@ -201,7 +293,8 @@
             Sahyog.toast("The call was answered on another device.", { kind: "info" });
     });
 
-    hub.on("CallDeclined", (_meetingId, name) => Sahyog.toast(`${name} declined the call.`, { kind: "warn", title: "Call declined" }));
+    hub.on("CallDeclined", (_meetingId, name, _userId, note) =>
+        Sahyog.toast(note ? `“${note}”` : `${name} declined the call.`, { kind: "warn", title: note ? `${name} declined the call` : "Call declined", ms: note ? 9000 : 6000 }));
 
     // ---------- someone added you to a group ----------
     hub.on("AddedToGroup", (byName, groupName, url) => {

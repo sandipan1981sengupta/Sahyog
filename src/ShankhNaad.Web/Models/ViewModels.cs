@@ -207,6 +207,8 @@ public sealed class RoomViewModel
     public required int MaxVideoHeight { get; init; }
     public required int MaxParticipants { get; init; }
     public required string LeaveUrl { get; init; }
+    /// <summary>A call between two people from Chat: it ends for both when one hangs up or declines.</summary>
+    public bool OneToOne { get; init; }
     public string? GuestUrl { get; init; }
     public string? ChannelName { get; init; }
 }

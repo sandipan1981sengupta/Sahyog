@@ -152,7 +152,7 @@
     <div class="side-section">
         <div class="side-label-row">
             <span class="side-label">Team <span class="sn-accent">| @newPeople.Count</span></span>
-            <span class="muted tiny">@Model.Team.Count(t => t.Online) online</span>
+            <span class="muted tiny"><span id="teamOnline">@Model.Team.Count(t => t.Online)</span> online</span>
         </div>
         @foreach (var t in newPeople)
         {

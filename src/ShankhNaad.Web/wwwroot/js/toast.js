@@ -7,8 +7,8 @@
     "use strict";
 
     const Sahyog = (window.Sahyog = window.Sahyog || {});
-    const ICONS = { success: "fa-check", error: "fa-exclamation", warn: "fa-exclamation-triangle", info: "fa-info" };
-    const TITLES = { success: "Done", error: "Couldn't do that", warn: "Heads up", info: "" };
+    const ICONS = { success: "fa-check", error: "fa-exclamation", warn: "fa-exclamation-triangle", info: "fa-info", message: "fa-comment" };
+    const TITLES = { success: "Done", error: "Couldn't do that", warn: "Heads up", info: "", message: "" };
     const supportsPopover = typeof HTMLElement !== "undefined" && "showPopover" in HTMLElement.prototype;
 
     const host = () => {
@@ -56,6 +56,9 @@
         const ic = document.createElement("span");
         ic.className = "sn-toast-ic";
         ic.innerHTML = `<i class="fa ${ICONS[kind]}" aria-hidden="true"></i>`;
+        // a message toast shows the sender's photo (or initials) instead of an icon
+        if (opts.avatar) { ic.className = "sn-toast-ic sn-toast-av"; ic.appendChild(opts.avatar); }
+        if (opts.onClick) { el.classList.add("clickable"); el.addEventListener("click", (e) => { if (!e.target.closest("button")) opts.onClick(); }); }
 
         const body = document.createElement("div");
         body.className = "sn-toast-body";

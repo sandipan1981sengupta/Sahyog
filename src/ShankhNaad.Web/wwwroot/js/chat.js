@@ -261,6 +261,29 @@
         loadOlderBtn.disabled = false;
     });
 
+    // ---------- the list on the left, reloaded without reloading the page ----------
+    let refreshing = null;
+    function refreshSide(highlight) {
+        if (refreshing) return refreshing;
+        refreshing = fetch(location.pathname, { headers: { Accept: "text/html" } })
+            .then((r) => r.ok ? r.text() : null)
+            .then((html) => {
+                if (!html) return;
+                const fresh = new DOMParser().parseFromString(html, "text/html").querySelector(".chat-side .side-scroll");
+                const now = document.querySelector(".chat-side .side-scroll");
+                if (!fresh || !now) return;
+                now.innerHTML = fresh.innerHTML;
+                document.getElementById("sideFilter")?.dispatchEvent(new Event("input"));
+                S.paintPhotos?.(now);
+                S.paintPresence?.();
+                const row = highlight && now.querySelector(`.sn-person-row[data-channel="${highlight}"]`);
+                if (row) { row.classList.add("sn-new-msg"); setTimeout(() => row.classList.remove("sn-new-msg"), 1600); }
+            })
+            .catch(() => { })
+            .finally(() => { refreshing = null; });
+        return refreshing;
+    }
+
     // ---------- real-time ----------
     const hub = S.hub;
     if (hub) {
@@ -289,11 +312,12 @@
                     const badge = item.querySelector(".badge");
                     badge.textContent = String(Number(badge.textContent || 0) + 1);
                     badge.hidden = false;
-                    item.classList.add("unread");
+                    item.classList.add("unread", "sn-new-msg");
+                    setTimeout(() => item.classList.remove("sn-new-msg"), 1600);
                     if (item.parentElement) item.parentElement.insertBefore(item, item.parentElement.querySelector(".side-item"));
-                }
-                if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-                    new Notification(m.senderName, { body: /^\[\[call:/.test(m.body || "") ? "Started a video call" : (m.body || "Sent a file"), tag: `msg-${m.channelId}` });
+                } else if (m.senderId !== me) {
+                    // someone started a new chat with you: reload just the list so it appears under Chats
+                    refreshSide(m.channelId);
                 }
             }
         });

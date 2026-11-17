@@ -31,6 +31,25 @@ public sealed class ChatHub : Hub
 
     public static string ChannelGroup(Guid channelId) => $"ch:{channelId}";
     public static string TenantGroup(Guid tenantId) => $"t:{tenantId}";
+    /// <summary>Everyone's meeting page in one call (for "Sandy left the call" notices).</summary>
+    public static string MeetingGroup(Guid meetingId) => $"m:{meetingId}";
+
+    private static string? CleanNote(string? note)
+    {
+        note = (note ?? "").Trim();
+        return note.Length == 0 ? null : note.Length > 300 ? note[..300] : note;
+    }
+
+    /// <summary>A short note ("Can't talk now, I'll call you back") goes into the call's chat as a normal message.</summary>
+    private async Task PostNoteAsync(Guid tenantId, Guid? channelId, Guid userId, string? note)
+    {
+        if (note is null || channelId is not Guid ch) return;
+        var (status, message) = await _chat.SendMessageAsync(new SendMessageRequest(tenantId, ch, userId, note));
+        if (status != SendStatus.Ok || message is null) return;
+        if (await _chat.GetChannelAsync(tenantId, ch) is { IsDirect: false } group)
+            message = message with { FromGroup = group.Name };
+        await Clients.Group(ChannelGroup(ch)).SendAsync("MessageReceived", message);
+    }
 
     private (Guid TenantId, Guid UserId) Caller()
     {
@@ -61,7 +80,12 @@ public sealed class ChatHub : Hub
     {
         var userId = Context.UserIdentifier;
         var wasBusy = userId is not null && _rooms.IsBusy(userId);
+        var inMeetings = _rooms.MeetingsOf(Context.ConnectionId);
         var emptied = _rooms.LeaveAll(Context.ConnectionId);
+        // closed the meeting tab: tell the others in the call
+        if (userId is not null)
+            foreach (var meetingId in inMeetings.Where(m => !_rooms.Contains(m, userId)))
+                await Clients.Group(MeetingGroup(meetingId)).SendAsync("ParticipantLeft", meetingId, userId, Context.User?.DisplayName() ?? "Someone", null);
         // closing the call tab: a call whose room is now empty is over
         if (Context.User?.TenantId() is Guid callTenant && userId is not null)
             foreach (var meetingId in emptied)
@@ -86,8 +110,17 @@ public sealed class ChatHub : Hub
         if (status != SendStatus.Ok || message is null) throw new HubException("You are not a member of this chat.");
 
         // group messages carry the group's name, so a person's chat can show "in Everyone" when it lists them
-        if (await _chat.GetChannelAsync(tenantId, channelId) is { IsDirect: false } group)
+        var channel = await _chat.GetChannelAsync(tenantId, channelId);
+        if (channel is { IsDirect: false } group)
             message = message with { FromGroup = group.Name };
+        else
+        {
+            // a one-to-one chat that was just started: the other person's open tabs join it now,
+            // so the first "Hi" reaches them straight away (not only after a page refresh)
+            foreach (var member in await _chat.GetMembersAsync(tenantId, channelId))
+                foreach (var conn in _presence.Connections(member.UserId.ToString()))
+                    await Groups.AddToGroupAsync(conn, ChannelGroup(channelId));
+        }
         await Clients.Group(ChannelGroup(channelId)).SendAsync("MessageReceived", message);
         return message;
     }
@@ -128,13 +161,29 @@ public sealed class ChatHub : Hub
         return _rooms.BusyUsers().Where(online.Contains).ToHashSet();
     }
 
-    public async Task DeclineCall(Guid meetingId)
+    /// <param name="note">Optional: "Can't talk now, I'll call you back". Also posted in the chat.</param>
+    public async Task DeclineCall(Guid meetingId, string? note)
     {
-        var (tenantId, _) = Caller();
+        var (tenantId, userId) = Caller();
         var meeting = await _meetings.GetAsync(tenantId, meetingId);
-        if (meeting is not null)
-            await Clients.User(meeting.HostId.ToString()).SendAsync("CallDeclined", meetingId, Context.User!.DisplayName(), Context.UserIdentifier);
-        await CallEvent(tenantId, meetingId, Context.User!.UserGuid(), 4);
+        if (meeting is null) return;
+        note = CleanNote(note);
+        var name = Context.User!.DisplayName();
+        await PostNoteAsync(tenantId, meeting.ChannelId, userId, note);
+        // the caller's other pages, and everyone already in the call (the caller's meeting page closes on a one-to-one call)
+        await Clients.User(meeting.HostId.ToString()).SendAsync("CallDeclined", meetingId, name, Context.UserIdentifier, note);
+        await Clients.Group(MeetingGroup(meetingId)).SendAsync("CallDeclined", meetingId, name, Context.UserIdentifier, note);
+        await CallEvent(tenantId, meetingId, userId, 4);
+    }
+
+    /// <summary>Leave a call, optionally with a note for the others ("Have to drop, will catch up later").</summary>
+    public async Task LeaveCall(Guid meetingId, string? note)
+    {
+        var (tenantId, userId) = Caller();
+        note = CleanNote(note);
+        if (note is not null && await _meetings.GetAsync(tenantId, meetingId) is { } meeting)
+            await PostNoteAsync(tenantId, meeting.ChannelId, userId, note);
+        await LeaveRoomAsync(tenantId, meetingId, note);
     }
 
     /// <summary>The ringing card timed out on this person's screen.</summary>
@@ -168,6 +217,7 @@ public sealed class ChatHub : Hub
         var me = Context.UserIdentifier!;
         var wasBusy = _rooms.IsBusy(me);
         _rooms.Join(meetingId, me, Context.ConnectionId);
+        await Groups.AddToGroupAsync(Context.ConnectionId, MeetingGroup(meetingId));
         if (!wasBusy) await Clients.Group(TenantGroup(tenantId)).SendAsync("BusyChanged", me, true);   // red "on a call" dot
         await CallEvent(tenantId, meetingId, Context.User!.UserGuid(), 1);   // the person called has picked up
     }
@@ -175,8 +225,19 @@ public sealed class ChatHub : Hub
     public async Task MeetingLeft(Guid meetingId)
     {
         var (tenantId, _) = Caller();
+        await LeaveRoomAsync(tenantId, meetingId, null);
+    }
+
+    private async Task LeaveRoomAsync(Guid tenantId, Guid meetingId, string? note)
+    {
         var me = Context.UserIdentifier!;
-        if (_rooms.Leave(meetingId, Context.ConnectionId))
+        var wasIn = _rooms.Contains(meetingId, me);
+        var emptied = _rooms.Leave(meetingId, Context.ConnectionId);
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, MeetingGroup(meetingId));
+        // "Sandy left the call" for the others (only once, when this person has no other tab in the call)
+        if (wasIn && !_rooms.Contains(meetingId, me))
+            await Clients.Group(MeetingGroup(meetingId)).SendAsync("ParticipantLeft", meetingId, me, Context.User!.DisplayName(), note);
+        if (emptied)
             await CallEvent(tenantId, meetingId, Context.User!.UserGuid(), 2);   // last one out: the call has ended
         if (!_rooms.IsBusy(me)) await Clients.Group(TenantGroup(tenantId)).SendAsync("BusyChanged", me, false);
     }

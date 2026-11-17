@@ -2376,3 +2376,49 @@ html[data-theme="dark"] { --sn-dot-ring: #151B2E; }
 .msg-call-back:hover { background: rgba(255, 255, 255, .24); }
 .sn-body:not(.dark) .msg:not(.mine) .msg-call-back, [data-theme="light"] .msg:not(.mine) .msg-call-back { background: rgba(15, 23, 42, .08); }
 @media (prefers-reduced-motion: reduce) { .msg-call-ic { animation: none !important; } }
+
+/* =====================================================================
+   New messages: count on the Chat icon, message pop-up with photo, new row flash
+   ===================================================================== */
+.sn-rail-badge {
+    position: absolute; top: 4px; right: 8px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px;
+    display: grid; place-items: center; font: 800 11px/1 Roboto, sans-serif; color: #fff; pointer-events: none;
+    background: linear-gradient(135deg, #EF4444, #DB2777); box-shadow: 0 0 0 2px #0F172A, 0 6px 14px -4px rgba(239, 68, 68, .9); z-index: 3;
+}
+.sn-rail-badge[hidden] { display: none; }
+.sn-rail-badge.pop { animation: snBadgePop .5s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes snBadgePop { 0% { transform: scale(.3); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+
+.sn-toast.message { border-left: 4px solid #8B5CF6 !important; }
+.sn-toast.message .sn-toast-ic.sn-toast-av { background: none !important; box-shadow: none !important; width: auto; height: auto; padding: 0; }
+.sn-toast.message .sn-toast-ic.sn-toast-av > i { display: none; }
+.sn-toast.message .sn-toast-ic .avatar { box-shadow: 0 0 0 2px rgba(255, 255, 255, .85); }
+.sn-toast.clickable { cursor: pointer; }
+.sn-toast.clickable:hover { filter: brightness(1.06); }
+
+.sn-person-row.sn-new-msg { animation: snRowFlash 1.6s ease-out; }
+@keyframes snRowFlash {
+    0% { background: rgba(139, 92, 246, .55); transform: translateX(-6px); }
+    25% { transform: none; }
+    100% { background: transparent; }
+}
+.sn-person-row.unread .grow { font-weight: 800; }
+@media (prefers-reduced-motion: reduce) { .sn-rail-badge.pop, .sn-person-row.sn-new-msg { animation: none; } }
+
+/* ringing card: decline with a message */
+.sn-call-decline-wrap { display: flex; gap: 6px; }
+.sn-call-decline-wrap .sn-call-btn { flex: 1; }
+.sn-call-more { width: 46px; height: 46px; flex: none; border-radius: 50%; border: 0; cursor: pointer; color: #fff;
+    background: rgba(255, 255, 255, .12); transition: background .2s ease, transform .2s ease; }
+.sn-call-more:hover, .sn-call-more[aria-expanded="true"] { background: rgba(239, 68, 68, .45); transform: scale(1.05); }
+.sn-call-replies { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; animation: snRepliesIn .25s ease-out; }
+.sn-call-replies[hidden] { display: none; }
+@keyframes snRepliesIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.sn-call-reply { text-align: left; padding: 9px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .12); cursor: pointer;
+    background: rgba(255, 255, 255, .07); color: #F1F5F9; font: 500 13px Roboto, sans-serif; transition: background .15s ease; }
+.sn-call-reply:hover { background: rgba(255, 255, 255, .16); }
+.sn-call-own { display: flex; gap: 6px; }
+.sn-call-own input { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .18);
+    background: rgba(15, 23, 42, .6); color: #fff; font: 14px Roboto, sans-serif; outline: none; }
+.sn-call-own input:focus { border-color: #A78BFA; }
+.sn-call-own button { width: 38px; height: 38px; border-radius: 12px; border: 0; cursor: pointer; color: #fff; background: linear-gradient(135deg, #EF4444, #B91C1C); }

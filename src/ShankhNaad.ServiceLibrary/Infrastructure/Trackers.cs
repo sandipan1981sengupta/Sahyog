@@ -89,6 +89,13 @@ public sealed class MeetingRoomTracker
         }
     }
 
+    /// <summary>The meetings this browser tab is in.</summary>
+    public List<Guid> MeetingsOf(string connectionId)
+    {
+        lock (_gate)
+            return _rooms.Where(r => r.Value.ContainsKey(connectionId)).Select(r => r.Key).ToList();
+    }
+
     public int Count(Guid meetingId)
     {
         lock (_gate)

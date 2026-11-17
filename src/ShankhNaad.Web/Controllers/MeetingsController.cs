@@ -271,6 +271,8 @@ public sealed class MeetingsController : Controller
         var isModerator = meeting.HostId == Me || User.IsInRole(AppRoles.TenantAdmin);
         var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
         var join = provider.CreateJoin(new VideoJoinRequest(meeting.RoomName, Me.ToString(), User.DisplayName(), email, isModerator, limits.RecordingEnabled));
+        var oneToOne = meeting.IsInstant && meeting.ChannelId is Guid callChat
+            && await _chat.GetChannelAsync(tenantId, callChat) is { IsDirect: true };
 
         return View(new RoomViewModel
         {
@@ -286,6 +288,7 @@ public sealed class MeetingsController : Controller
             CaptionsOn = meeting.CaptionsOn,
             MaxVideoHeight = limits.MaxVideoHeight,
             MaxParticipants = limits.MaxMeetingParticipants,
+            OneToOne = oneToOne,
             LeaveUrl = meeting.ChannelId is Guid ch ? Url.Action("Index", "Chat", new { id = ch })! : Url.Action(nameof(Index))!,
             GuestUrl = meeting.GuestLinkEnabled ? _meetings.GuestUrl(meeting.GuestCode) : null,
             ChannelName = meeting.ChannelId is not null && !meeting.ChannelIsDirect ? meeting.ChannelName : null
