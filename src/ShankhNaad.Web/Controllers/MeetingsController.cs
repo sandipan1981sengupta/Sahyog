@@ -22,10 +22,12 @@ public sealed class MeetingsController : Controller
     private readonly IVideoProviderFactory _video;
     private readonly IHubContext<ChatHub> _hub;
     private readonly PresenceTracker _presence;
+    private readonly ICallLogService _calls;
 
     public MeetingsController(IMeetingService meetings, IChatService chat, ITenantService tenants, IUserService users,
-        MeetingRoomTracker rooms, IVideoProviderFactory video, IHubContext<ChatHub> hub, PresenceTracker presence)
+        MeetingRoomTracker rooms, IVideoProviderFactory video, IHubContext<ChatHub> hub, PresenceTracker presence, ICallLogService calls)
     {
+        _calls = calls;
         _meetings = meetings;
         _chat = chat;
         _tenants = tenants;
@@ -187,6 +189,15 @@ public sealed class MeetingsController : Controller
                 : $"{channel.Name} meeting";
         }
 
+        // Call pressed again while this chat's call is still ringing or going on: ring the same call
+        // again (no second card in the chat) and go back into it.
+        if (channelId is Guid openIn && await _calls.GetOpenAsync(tenantId, openIn) is { } open
+            && (open.Outcome == 0 || _rooms.Count(open.MeetingId) > 0))
+        {
+            if (open.Outcome == 0) await RingAsync(open.MeetingId, title, others);
+            return RedirectToAction(nameof(Room), new { id = open.MeetingId });
+        }
+
         var meeting = new CreateMeetingRequest
         {
             TenantId = tenantId,
@@ -198,25 +209,49 @@ public sealed class MeetingsController : Controller
             HostId = Me,
             ChannelId = channelId,
             IsInstant = true,
+            // a call between workspace members: no lobby, the person you call joins straight in
+            LobbyEnabled = false,
             InviteeIds = others
         };
         await _meetings.CreateAsync(meeting);
 
+        await _calls.StartAsync(tenantId, meeting.MeetingId, channelId, Me);
+
         if (channelId is Guid chan)
         {
-            var (status, posted) = await _chat.SendMessageAsync(new SendMessageRequest(tenantId, chan, Me, $"Started a video meeting. Join: {_meetings.RoomUrl(meeting.MeetingId)}"));
+            // shown in the chat as ONE call card that changes: Calling… → In progress · Join → Call ended · 4m 12s / Missed call
+            var (status, posted) = await _chat.SendMessageAsync(new SendMessageRequest(tenantId, chan, Me, $"[[call:{meeting.MeetingId}]]"));
             if (status == SendStatus.Ok && posted is not null)
                 await _hub.Clients.Group(ChatHub.ChannelGroup(chan)).SendAsync("MessageReceived", posted);
         }
 
-        if (others.Count > 0)
-        {
-            var call = new IncomingCallDto(meeting.MeetingId, title, User.DisplayName(), User.Initials(), User.AvatarTone(),
-                Url.Action(nameof(Room), new { id = meeting.MeetingId })!);
-            await _hub.Clients.Users(others.Select(o => o.ToString()).ToList()).SendAsync("IncomingCall", call);
-        }
-
+        await RingAsync(meeting.MeetingId, title, others);
         return RedirectToAction(nameof(Room), new { id = meeting.MeetingId });
+    }
+
+    /// <summary>Shows the ringing card (with the ringtone) on every device of the people being called.</summary>
+    private async Task RingAsync(Guid meetingId, string title, List<Guid> others)
+    {
+        if (others.Count == 0) return;
+        var call = new IncomingCallDto(meetingId, title, User.DisplayName(), User.Initials(), User.AvatarTone(),
+            Url.Action(nameof(Room), new { id = meetingId })!)
+        {
+            CallerId = Me.ToString()
+        };
+        await _hub.Clients.Users(others.Select(o => o.ToString()).ToList()).SendAsync("IncomingCall", call);
+    }
+
+    /// <summary>The state of the calls behind call cards in a chat: /meetings/calls?ids=a,b,c</summary>
+    [HttpGet("calls")]
+    public async Task<IActionResult> Calls(string? ids)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var list = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList();
+        var calls = await _calls.GetAsync(tenantId, list);
+        // only calls in chats this person is in
+        var mine = (await _chat.GetUserChannelIdsAsync(tenantId, Me)).ToHashSet();
+        return Json(calls.Where(c => c.ChannelId is Guid ch && mine.Contains(ch)));
     }
 
     [HttpGet("room/{id:guid}")]
@@ -247,7 +282,7 @@ public sealed class MeetingsController : Controller
             Tone = User.AvatarTone(),
             IsModerator = isModerator,
             IsGuest = false,
-            LobbyEnabled = meeting.LobbyEnabled,
+            LobbyEnabled = meeting.LobbyEnabled && !meeting.IsInstant,   // calls from Chat never use the lobby
             CaptionsOn = meeting.CaptionsOn,
             MaxVideoHeight = limits.MaxVideoHeight,
             MaxParticipants = limits.MaxMeetingParticipants,

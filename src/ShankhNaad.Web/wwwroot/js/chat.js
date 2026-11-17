@@ -90,6 +90,62 @@
         });
     }
 
+    // ---------- call cards ----------
+    // Outcome: 0 ringing, 1 in progress, 2 ended, 3 not answered, 4 declined, 5 cancelled
+    const callStates = new Map();
+    const dur = (a, b) => {
+        const sec = Math.max(0, Math.round((new Date(b) - new Date(a)) / 1000));
+        const h = Math.floor(sec / 3600), mnt = Math.floor((sec % 3600) / 60), sc = sec % 60;
+        return h ? `${h}h ${mnt}m` : mnt ? `${mnt}m ${sc}s` : `${sc}s`;
+    };
+    function callCardHtml(id, mine, who, at) {
+        const c = callStates.get(id);
+        const o = c ? c.outcome : -1;
+        const name = S.escape(who);
+        let kind = "", icon = "fa-video-camera", title, sub = time(at), btn = "";
+        const join = `<a class="msg-call-join" href="/meetings/room/${id}"><i class="fa fa-video-camera" aria-hidden="true"></i> Join</a>`;
+        const back = `<button type="button" class="msg-call-back" data-callback="1"><i class="fa fa-phone" aria-hidden="true"></i> Call back</button>`;
+        switch (o) {
+            case 0: kind = "ringing"; title = mine ? "Calling…" : `${name} is calling you`; btn = mine ? "" : join; break;
+            case 1: kind = "live"; title = "Call in progress"; sub = `Started ${time(c.answeredUtc || at)}`; btn = join; break;
+            case 2: kind = "ended"; icon = "fa-phone"; title = "Call ended"; sub = `${time(at)} · ${dur(c.answeredUtc || at, c.endedUtc || at)}`; break;
+            case 3: case 5: kind = mine ? "ended" : "missed"; icon = "fa-phone"; title = mine ? (o === 5 ? "Call cancelled" : "No answer") : `Missed call from ${name}`; btn = mine && o === 5 ? "" : back; break;
+            case 4: kind = mine ? "missed" : "ended"; icon = "fa-phone"; title = mine ? "Call declined" : "You declined the call"; btn = back; break;
+            default: title = mine ? "You started a video call" : `${name} started a video call`;
+        }
+        return `<span class="msg-call-ic ${kind}"><i class="fa ${icon}" aria-hidden="true"></i></span>`
+            + `<span class="msg-call-txt"><b>${title}</b><small>${sub}</small></span>${btn}`;
+    }
+    function paintCall(id) {
+        document.querySelectorAll(`.msg-call[data-call="${id}"]`).forEach((b) => {
+            b.innerHTML = callCardHtml(id, b.dataset.mine === "1", b.dataset.who, b.dataset.at);
+            b.dataset.state = callStates.get(id)?.outcome ?? "";
+        });
+    }
+    let callQueue = new Set(), callTimer = null;
+    function queueCallState(id) {
+        callQueue.add(id);
+        clearTimeout(callTimer);
+        callTimer = setTimeout(async () => {
+            const ids = [...callQueue]; callQueue = new Set();
+            try {
+                const res = await fetch(`/meetings/calls?ids=${ids.join(",")}`, { headers: { Accept: "application/json" } });
+                if (!res.ok) return;
+                (await res.json()).forEach((c) => { callStates.set(c.meetingId.toLowerCase(), c); paintCall(c.meetingId.toLowerCase()); });
+            } catch { /* cards keep their plain look */ }
+        }, 120);
+    }
+    // "Call back" on a missed call: start a new call in that chat
+    document.addEventListener("click", (e) => {
+        const b = e.target.closest(".msg-call [data-callback]");
+        if (!b) return;
+        const f = document.createElement("form");
+        f.method = "post"; f.action = "/meetings/instant"; f.hidden = true;
+        f.innerHTML = `<input name="channelId" value="${S.escape(b.closest(".msg-call").dataset.ch)}"><input name="__RequestVerificationToken" value="${S.escape(S.antiforgery())}">`;
+        document.body.appendChild(f);
+        f.submit();
+    });
+
     function messageEl(m, previous) {
         const mine = m.senderId === me;
         const grouped = previous && previous.senderId === m.senderId && previous.day === dayKey(m.sentUtc)
@@ -98,7 +154,13 @@
         el.className = `msg${mine ? " mine" : ""}${grouped ? " grouped" : ""}`;
         el.dataset.id = m.id;
         if (mine && m.channelId === channelId) el.dataset.sent = m.sentUtc;
-        const body = m.body ? `<p class="bubble">${linkify(S.escape(m.body))}</p>` : "";
+        // a call started from this chat: ONE card per call that changes as the call goes on
+        const call = /^\[\[call:([0-9a-f-]{36})\]\]$/i.exec(m.body || "");
+        if (call) { el.classList.add("msg-is-call"); el.dataset.call = call[1].toLowerCase(); }
+        const body = call
+            ? `<div class="bubble msg-call" data-call="${call[1].toLowerCase()}" data-mine="${mine ? 1 : 0}" data-ch="${S.escape(m.channelId)}" data-who="${S.escape(m.senderName)}" data-at="${S.escape(m.sentUtc)}">${callCardHtml(call[1].toLowerCase(), mine, m.senderName, m.sentUtc)}</div>`
+            : m.body ? `<p class="bubble">${linkify(S.escape(m.body))}</p>` : "";
+        if (call) queueCallState(call[1].toLowerCase());
         const file = m.attachment ? attachmentHtml(m.attachment) : "";
         const canDelete = mine || isAdmin;
         // a group message shown in a person's chat
@@ -231,7 +293,7 @@
                     if (item.parentElement) item.parentElement.insertBefore(item, item.parentElement.querySelector(".side-item"));
                 }
                 if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-                    new Notification(m.senderName, { body: m.body || "Sent a file", tag: `msg-${m.channelId}` });
+                    new Notification(m.senderName, { body: /^\[\[call:/.test(m.body || "") ? "Started a video call" : (m.body || "Sent a file"), tag: `msg-${m.channelId}` });
                 }
             }
         });
@@ -266,6 +328,13 @@
             const box = document.getElementById("messageBox");
             if (box) box.placeholder = "Message " + name;
             document.title = `${name} · ShankhNaad`;
+        });
+
+        // a call changed (answered, ended, missed, declined): its card in the chat changes with it
+        hub.on("CallUpdated", (c) => {
+            const id = c.meetingId.toLowerCase();
+            callStates.set(id, c);
+            paintCall(id);
         });
 
         hub.on("MessageDeleted", (cid, mid) => { if (cid === channelId) removeMessage(mid); });

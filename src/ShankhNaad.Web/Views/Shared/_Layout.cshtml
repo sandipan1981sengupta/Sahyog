@@ -273,17 +273,24 @@
         </div>
     </dialog>
 
-    <div class="call-overlay" id="callOverlay" hidden>
-        <div class="call-card glass" role="alertdialog" aria-labelledby="callTitle" aria-describedby="callWho">
-            <div class="call-rings"><span></span><span></span><span></span><span class="avatar av-96" id="callAvatar">?</span></div>
-            <p class="call-label">Incoming call</p>
-            <h2 id="callWho">Someone</h2>
-            <p id="callTitle" class="muted">Meeting</p>
-            <div class="call-actions">
-                <button type="button" class="btn btn-danger" id="callDecline">Decline</button>
-                <a class="btn btn-success" id="callAccept" href="#">Join</a>
-            </div>
+    @* ---- incoming call: a ringing card at the bottom right, like Microsoft Teams ---- *@
+    <div class="sn-call" id="callOverlay" role="alertdialog" aria-labelledby="callWho" aria-describedby="callTitle" hidden>
+        <div class="sn-call-top">
+            <span class="sn-call-app"><i class="fa fa-video-camera" aria-hidden="true"></i> Incoming video call</span>
+            <button type="button" class="sn-call-mute" id="callSilence" title="Silence the ring" aria-label="Silence the ring"><i class="fa fa-bell-slash" aria-hidden="true"></i></button>
         </div>
+        <div class="sn-call-who">
+            <span class="sn-call-rings"><i></i><i></i><i></i><span class="avatar av-56" id="callAvatar">?</span></span>
+            <span class="sn-call-text">
+                <b id="callWho">Someone</b>
+                <small id="callTitle">is calling you</small>
+            </span>
+        </div>
+        <div class="sn-call-actions">
+            <button type="button" class="sn-call-btn decline" id="callDecline" title="Decline"><i class="fa fa-phone" aria-hidden="true"></i><span>Decline</span></button>
+            <a class="sn-call-btn accept" id="callAccept" href="#" title="Accept with video"><i class="fa fa-video-camera" aria-hidden="true"></i><span>Accept</span></a>
+        </div>
+        <span class="sn-call-timer" id="callTimer" aria-hidden="true"></span>
     </div>
     <div class="toasts" id="toasts" aria-live="polite"></div>
 

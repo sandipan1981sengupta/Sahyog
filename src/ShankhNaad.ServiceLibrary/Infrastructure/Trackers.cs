@@ -65,21 +65,27 @@ public sealed class MeetingRoomTracker
         }
     }
 
-    public void Leave(Guid meetingId, string connectionId)
+    /// <returns>True when the room is now empty (the call is over).</returns>
+    public bool Leave(Guid meetingId, string connectionId)
     {
         lock (_gate)
         {
-            if (!_rooms.TryGetValue(meetingId, out var room)) return;
-            room.Remove(connectionId);
-            if (room.Count == 0) _rooms.Remove(meetingId);
+            if (!_rooms.TryGetValue(meetingId, out var room) || !room.Remove(connectionId)) return false;
+            if (room.Count > 0) return false;
+            _rooms.Remove(meetingId);
+            return true;
         }
     }
 
-    public void LeaveAll(string connectionId)
+    /// <returns>The meetings that are now empty.</returns>
+    public List<Guid> LeaveAll(string connectionId)
     {
         lock (_gate)
         {
-            foreach (var id in _rooms.Keys.ToList()) Leave(id, connectionId);
+            var emptied = new List<Guid>();
+            foreach (var id in _rooms.Keys.ToList())
+                if (Leave(id, connectionId)) emptied.Add(id);
+            return emptied;
         }
     }
 

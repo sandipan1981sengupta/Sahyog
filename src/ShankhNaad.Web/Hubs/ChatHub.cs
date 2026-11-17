@@ -18,9 +18,11 @@ public sealed class ChatHub : Hub
     private readonly IMeetingService _meetings;
     private readonly PresenceTracker _presence;
     private readonly MeetingRoomTracker _rooms;
+    private readonly ICallLogService _calls;
 
-    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms)
+    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls)
     {
+        _calls = calls;
         _chat = chat;
         _meetings = meetings;
         _presence = presence;
@@ -59,7 +61,11 @@ public sealed class ChatHub : Hub
     {
         var userId = Context.UserIdentifier;
         var wasBusy = userId is not null && _rooms.IsBusy(userId);
-        _rooms.LeaveAll(Context.ConnectionId);
+        var emptied = _rooms.LeaveAll(Context.ConnectionId);
+        // closing the call tab: a call whose room is now empty is over
+        if (Context.User?.TenantId() is Guid callTenant && userId is not null)
+            foreach (var meetingId in emptied)
+                await CallEvent(callTenant, meetingId, Context.User.UserGuid(), 2);
         // closing the meeting tab ends "on a call"
         if (wasBusy && !_rooms.IsBusy(userId!) && Context.User?.TenantId() is Guid tid)
             await Clients.Group(TenantGroup(tid)).SendAsync("BusyChanged", userId, false);
@@ -128,6 +134,30 @@ public sealed class ChatHub : Hub
         var meeting = await _meetings.GetAsync(tenantId, meetingId);
         if (meeting is not null)
             await Clients.User(meeting.HostId.ToString()).SendAsync("CallDeclined", meetingId, Context.User!.DisplayName(), Context.UserIdentifier);
+        await CallEvent(tenantId, meetingId, Context.User!.UserGuid(), 4);
+    }
+
+    /// <summary>The ringing card timed out on this person's screen.</summary>
+    public async Task CallNotAnswered(Guid meetingId)
+    {
+        var (tenantId, userId) = Caller();
+        await CallEvent(tenantId, meetingId, userId, 3);
+    }
+
+    /// <summary>Updates the call's history and tells everyone in that chat (the call card changes; ringing stops).</summary>
+    private async Task CallEvent(Guid tenantId, Guid meetingId, Guid userId, int evt)
+    {
+        try
+        {
+            var call = await _calls.EventAsync(tenantId, meetingId, userId, evt);
+            // to every member of that chat (by user, so it also reaches a chat that was created just for this call)
+            if (call?.ChannelId is Guid channelId)
+            {
+                var members = await _chat.GetMembersAsync(tenantId, channelId);
+                await Clients.Users(members.Select(m => m.UserId.ToString()).ToList()).SendAsync("CallUpdated", call);
+            }
+        }
+        catch { /* call history is best-effort */ }
     }
 
     /// <summary>The meeting page reports join/leave so the plan's per-meeting limit can be enforced.</summary>
@@ -139,13 +169,15 @@ public sealed class ChatHub : Hub
         var wasBusy = _rooms.IsBusy(me);
         _rooms.Join(meetingId, me, Context.ConnectionId);
         if (!wasBusy) await Clients.Group(TenantGroup(tenantId)).SendAsync("BusyChanged", me, true);   // red "on a call" dot
+        await CallEvent(tenantId, meetingId, Context.User!.UserGuid(), 1);   // the person called has picked up
     }
 
     public async Task MeetingLeft(Guid meetingId)
     {
         var (tenantId, _) = Caller();
         var me = Context.UserIdentifier!;
-        _rooms.Leave(meetingId, Context.ConnectionId);
+        if (_rooms.Leave(meetingId, Context.ConnectionId))
+            await CallEvent(tenantId, meetingId, Context.User!.UserGuid(), 2);   // last one out: the call has ended
         if (!_rooms.IsBusy(me)) await Clients.Group(TenantGroup(tenantId)).SendAsync("BusyChanged", me, false);
     }
 }

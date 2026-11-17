@@ -612,6 +612,8 @@
                 snPhotoBlob = blob;
                 var prev = document.getElementById("phPreview");
                 prev.style.setProperty("background-image", "url(" + URL.createObjectURL(blob) + ")", "important");
+                prev.style.setProperty("background-size", "cover", "important");
+                prev.style.setProperty("background-position", "center", "important");
                 prev.classList.add("has-photo", "sn-photo-new");
                 setTimeout(function () { prev.classList.remove("sn-photo-new"); }, 500);
                 document.getElementById("phSave").disabled = false;

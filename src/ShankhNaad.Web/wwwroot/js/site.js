@@ -80,66 +80,128 @@
         paintPresence();
     });
 
-    // ---------- incoming call: ring until answered ----------
+    // ---------- incoming call: ring (Teams-like tune) until answered, declined or 30 s ----------
     let ringTimer = null;
     let audioCtx = null;
     let dismissTimer = null;
+    let titleTimer = null;
+    let silenced = false;
+    let ringingId = null;   // the call that is ringing on this screen
+    const pageTitle = document.title;
 
-    const ringOnce = () => {
+    // Browsers only allow sound after the person has clicked or typed on the page once.
+    // So we "unlock" sound on the first click / key press, and later calls can ring.
+    const unlockAudio = () => {
         try {
             audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-            const now = audioCtx.currentTime;
-            [0, 0.35].forEach((offset) => {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = "sine";
-                osc.frequency.setValueAtTime(offset === 0 ? 880 : 1175, now + offset);
-                gain.gain.setValueAtTime(0.0001, now + offset);
-                gain.gain.exponentialRampToValueAtTime(0.18, now + offset + 0.03);
-                gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.3);
-                osc.connect(gain).connect(audioCtx.destination);
-                osc.start(now + offset);
-                osc.stop(now + offset + 0.32);
-            });
-        } catch { /* browser blocked audio until the user clicks once; the pop-up still shows */ }
+            if (audioCtx.state === "suspended") audioCtx.resume();
+        } catch { /* no audio */ }
     };
+    ["pointerdown", "keydown", "touchstart"].forEach((t) => document.addEventListener(t, unlockAudio, { once: true, capture: true }));
 
+    const tone = (freq, at, len, vol, type) => {
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, at);
+        gain.gain.setValueAtTime(0.0001, at);
+        gain.gain.exponentialRampToValueAtTime(vol, at + 0.004);
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + len);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(at);
+        osc.stop(at + len + 0.05);
+    };
+    // ringtone "Harp rise": a soft harp sweeping upward (G B D F# G B D)
+    const RING_EVERY_MS = 2800;
+    const ringOnce = () => {
+        if (silenced) return;
+        try {
+            unlockAudio();
+            if (!audioCtx || audioCtx.state !== "running") return;
+            const now = audioCtx.currentTime + 0.03;
+            [392, 493.88, 587.33, 739.99, 783.99, 987.77, 1174.66].forEach((f, i) => {
+                const at = now + i * 0.09;
+                tone(f, at, 1.1, 0.18, "triangle");     // the string
+                tone(f * 2, at, 0.6, 0.045, "sine");    // its shimmer
+            });
+        } catch { /* the card still shows */ }
+    };
+    Sahyog.chime = ringOnce;
+
+    const callBox = () => document.getElementById("callOverlay");
     const stopRinging = () => {
-        clearInterval(ringTimer);
-        clearTimeout(dismissTimer);
+        clearInterval(ringTimer); clearTimeout(dismissTimer); clearInterval(titleTimer);
         ringTimer = null;
-        document.getElementById("callOverlay").hidden = true;
+        ringingId = null;
+        silenced = false;
+        document.title = pageTitle;
+        const box = callBox();
+        if (!box || box.hidden) return;
+        box.classList.add("leaving");
+        setTimeout(() => {
+            box.classList.remove("leaving");
+            box.hidden = true;
+            try { if (box.matches(":popover-open")) box.hidePopover(); } catch { }
+        }, 280);
     };
 
     hub.on("IncomingCall", (call) => {
-        const overlay = document.getElementById("callOverlay");
+        const box = callBox();
+        if (!box) return;
+        // the same call ringing again (the caller pressed Call again): just keep the card, don't stack a second one
+        if (ringingId === call.meetingId && !box.hidden) return;
+        clearInterval(ringTimer); clearTimeout(dismissTimer); clearInterval(titleTimer);
+        silenced = false;
         const avatar = document.getElementById("callAvatar");
         avatar.textContent = call.callerInitials;
-        avatar.className = `avatar av-96 tone-${call.callerTone}`;
+        avatar.className = `avatar av-56 tone-${call.callerTone}`;
+        if (call.callerId) { avatar.setAttribute("data-user", call.callerId); Sahyog.paintPhotos?.(box); }
         document.getElementById("callWho").textContent = call.callerName;
-        document.getElementById("callTitle").textContent = call.title;
+        document.getElementById("callTitle").textContent = "is calling you…";
         document.getElementById("callAccept").href = call.roomUrl;
+        document.getElementById("callAccept").onclick = stopRinging;
         document.getElementById("callDecline").onclick = () => {
             stopRinging();
             hub.invoke("DeclineCall", call.meetingId).catch(() => { });
         };
-        document.getElementById("callAccept").onclick = stopRinging;
-        overlay.hidden = false;
+        document.getElementById("callSilence").onclick = () => { silenced = true; box.classList.add("silenced"); };
+        box.classList.remove("silenced", "leaving");
+        box.hidden = false;
+        // top layer: above every window, dialog and page animation
+        try { if (!box.hasAttribute("popover")) box.setAttribute("popover", "manual"); if (box.matches(":popover-open")) box.hidePopover(); box.showPopover(); } catch { }
+        box.style.setProperty("--sn-call-ms", "30000ms");
+        box.classList.remove("counting"); void box.offsetWidth; box.classList.add("counting");
 
         ringOnce();
-        ringTimer = setInterval(ringOnce, 2200);
+        ringTimer = setInterval(ringOnce, RING_EVERY_MS);
+        // the tab title blinks while ringing
+        let flip = false;
+        titleTimer = setInterval(() => { flip = !flip; document.title = flip ? `📞 ${call.callerName} is calling…` : pageTitle; }, 1000);
+        ringingId = call.meetingId;
         dismissTimer = setTimeout(() => {
             stopRinging();
-            Sahyog.toast(`Missed call from ${call.callerName}`, 8000);
+            hub.invoke("CallNotAnswered", call.meetingId).catch(() => { });
+            Sahyog.toast(`You missed a call from ${call.callerName}.`, { kind: "warn", title: "Missed call", ms: 10000,
+                action: { text: "Call back", onClick: () => { location.href = "/chat"; } } });
         }, 30000);
 
-        if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-            const n = new Notification(`${call.callerName} is calling you`, { body: call.title, tag: `call-${call.meetingId}`, requireInteraction: true });
+        if ("Notification" in window && Notification.permission === "granted" && (document.hidden || !document.hasFocus())) {
+            const n = new Notification(`${call.callerName} is calling you`, { body: "Click to answer.", tag: `call-${call.meetingId}`, requireInteraction: true });
             n.onclick = () => { window.focus(); location.href = call.roomUrl; };
         }
     });
 
-    hub.on("CallDeclined", (_meetingId, name) => Sahyog.toast(`${name} declined the call`));
+    // answered on another device, or the caller hung up: stop ringing here
+    hub.on("CallUpdated", (c) => {
+        if (!ringingId || c.meetingId.toLowerCase() !== String(ringingId).toLowerCase() || c.outcome === 0) return;
+        const caller = document.getElementById("callWho")?.textContent || "Someone";
+        stopRinging();   // (answering on this screen already cleared ringingId, so we only get here for other cases)
+        if (c.outcome === 5 || c.outcome === 3)
+            Sahyog.toast(`You missed a call from ${caller}.`, { kind: "warn", title: "Missed call", ms: 10000 });
+        else if (c.outcome === 1)
+            Sahyog.toast("The call was answered on another device.", { kind: "info" });
+    });
+
+    hub.on("CallDeclined", (_meetingId, name) => Sahyog.toast(`${name} declined the call.`, { kind: "warn", title: "Call declined" }));
 
     // ---------- someone added you to a group ----------
     hub.on("AddedToGroup", (byName, groupName, url) => {
@@ -173,9 +235,9 @@
             ? `In Safari: Safari menu → Settings → Websites → Notifications → find ${location.host} → Allow. Then reload the page.`
             : isEdge
                 ? `In Edge: click the padlock at the left of the address bar → "Permissions for this site" → Notifications → Allow, then reload the page. `
-                + `Or paste edge://settings/content/notifications into the address bar, find ${site} under "Block", click ⋯ → Allow.`
+                  + `Or paste edge://settings/content/notifications into the address bar, find ${site} under "Block", click ⋯ → Allow.`
                 : `In Chrome: click the padlock (or tune icon) at the left of the address bar → "Site settings" → Notifications → Allow, then reload the page. `
-                + `Or paste chrome://settings/content/notifications into the address bar, find ${site} under "Not allowed", click ⋮ → Allow.`;
+                  + `Or paste chrome://settings/content/notifications into the address bar, find ${site} under "Not allowed", click ⋮ → Allow.`;
         const paint = () => {
             const p = Notification.permission;          // "default", "granted" or "denied"
             alertsBtn.hidden = false;

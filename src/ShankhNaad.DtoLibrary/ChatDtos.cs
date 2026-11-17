@@ -73,4 +73,13 @@ public sealed record CreateChannelResultDto(bool NameTaken, List<Guid> MemberIds
 public sealed record ReadStateDto(Guid UserId, string DisplayName, DateTime LastReadUtc);
 
 /// <summary>Sent over SignalR to ring someone's screen.</summary>
-public sealed record IncomingCallDto(Guid MeetingId, string Title, string CallerName, string CallerInitials, int CallerTone, string RoomUrl);
+public sealed record IncomingCallDto(Guid MeetingId, string Title, string CallerName, string CallerInitials, int CallerTone, string RoomUrl)
+{
+    /// <summary>The caller's id, so the ringing card can show their photo.</summary>
+    public string? CallerId { get; init; }
+    /// <summary>"video" for a call from Chat.</summary>
+    public string Kind { get; init; } = "video";
+}
+
+/// <summary>One call started from Chat. Outcome: 0 ringing, 1 in progress, 2 ended, 3 not answered, 4 declined, 5 cancelled.</summary>
+public sealed record CallLogDto(Guid MeetingId, Guid? ChannelId, Guid CallerId, DateTime StartedUtc, DateTime? AnsweredUtc, DateTime? EndedUtc, int Outcome);
