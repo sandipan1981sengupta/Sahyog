@@ -28,6 +28,14 @@
         </action-header>
     </div>
 
+    @if (TempData["HistoryMsg"] is string hm)
+    {
+        <div hidden data-toast="@hm" data-toast-kind="success"></div>
+    }
+    @if (TempData["HistoryError"] is string he)
+    {
+        <div hidden data-toast="@he" data-toast-kind="warn"></div>
+    }
     @if (Model.NeedsSql)
     {
         <div hidden data-toast="Run database/23_CallsAndFiles.sql (or 99_ApplyAllUpdates.sql) to see your call history here." data-toast-kind="warn" data-toast-title="One database step left"></div>
@@ -40,7 +48,7 @@
         <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(124,58,237,.12);color:#6d28d9"><i class="fa fa-users"></i></span><div><div class="sn-eyebrow">People called</div><div class="sn-stat-val">@people</div></div></div>
     </div>
 
-    <section class="sn-hist glass" id="callHist">
+    <section class="sn-hist glass" id="callHist" data-delete-url="/calls/delete" data-noun="call" data-nouns="calls">
         <div class="sn-hist-bar">
             <div class="sn-hist-tabs" role="tablist" aria-label="Show">
                 <button type="button" class="on" data-show="all" role="tab" aria-selected="true">All</button>
@@ -52,6 +60,11 @@
                 <i class="fa fa-search" aria-hidden="true"></i>
                 <input type="search" placeholder="Search by name" aria-label="Search calls" data-hist-search />
             </label>
+            <div class="sn-hist-tools">
+                <button type="button" class="sn-tool" data-select-toggle title="Pick the ones to delete"><i class="fa fa-check-square-o" aria-hidden="true"></i> <span>Select</span></button>
+                <button type="button" class="sn-tool danger" data-delete-selected hidden><i class="fa fa-trash-o" aria-hidden="true"></i> Delete selected (<span data-pick-count>0</span>)</button>
+                <button type="button" class="sn-tool danger" data-delete-all><i class="fa fa-trash" aria-hidden="true"></i> Delete all</button>
+            </div>
         </div>
 
         <div class="sn-hist-list">
@@ -72,7 +85,8 @@
                     default: status = mine ? "No answer" : "Missed"; icon = mine ? "fa-arrow-up" : "fa-arrow-down"; tone = mine ? "dim" : "bad"; break;
                 }
                 var who = mine ? "Outgoing" : c.IsDirect ? "Incoming" : $"{c.CallerName} called";
-                <div class="sn-hrow @(miss ? "is-missed" : "")" data-kind="@kind" data-filter="@name @c.CallerName" data-utc="@c.StartedUtc.ToString("o")">
+                <div class="sn-hrow @(miss ? "is-missed" : "")" data-id="@c.MeetingId" data-label="your call with @name" data-kind="@kind" data-filter="@name @c.CallerName" data-utc="@c.StartedUtc.ToString("o")">
+                    <label class="sn-hpick" title="Pick"><input type="checkbox" data-pick aria-label="Pick" /></label>
                     @if (c.IsDirect && c.OtherId is Guid oid)
                     {
                         <span class="avatar av-44 tone-@c.OtherTone" data-user="@oid" data-presence="@oid">@Names.Initials(name)<i class="dot @(Model.Online.Contains(oid.ToString()) ? "on" : "")"></i></span>
@@ -99,6 +113,7 @@
                             </form>
                         }
                         <a class="sn-hbtn chat" href="/chat/@c.ChannelId" title="Open your chat with @name"><i class="fa fa-comment" aria-hidden="true"></i><span>Chat</span></a>
+                        <button type="button" class="sn-hbtn del" data-del-one title="Delete from your call history" aria-label="Delete from your call history"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
                     </div>
                 </div>
             }

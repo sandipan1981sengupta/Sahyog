@@ -2501,3 +2501,54 @@ html[data-theme="dark"] { --sn-dot-ring: #151B2E; }
     .sn-hbtn span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .sn-hrow, .sn-hbtn.join { animation: none; } }
+
+/* Calls / Files: select and delete */
+.sn-hist-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.sn-tool { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 999px; cursor: pointer;
+    border: 1px solid rgba(148, 163, 184, .35); background: transparent; color: inherit; font: 600 13px Roboto, sans-serif; transition: background .18s ease, border-color .18s ease; }
+.sn-tool:hover { background: rgba(148, 163, 184, .14); }
+.sn-tool.on { background: #7C3AED; border-color: #7C3AED; color: #fff; }
+.sn-tool.danger { color: #DC2626; border-color: rgba(220, 38, 38, .45); }
+.sn-tool.danger:hover { background: #DC2626; color: #fff; }
+.sn-tool[hidden] { display: none; }
+.sn-hpick { display: none; align-items: center; justify-content: center; }
+.sn-hpick input { width: 19px; height: 19px; accent-color: #7C3AED; cursor: pointer; }
+.sn-hist.picking .sn-hpick { display: flex; }
+.sn-hist.picking .sn-hrow { grid-template-columns: auto auto minmax(0, 1fr) auto auto; cursor: pointer; }
+.sn-hist.picking .sn-frow { grid-template-columns: auto auto minmax(0, 1fr) minmax(0, 200px) auto auto; }
+.sn-hrow.picked { background: rgba(124, 58, 237, .14); box-shadow: inset 0 0 0 1px rgba(124, 58, 237, .45); }
+.sn-hbtn.del { width: 34px; padding: 0; justify-content: center; background: rgba(220, 38, 38, .12); color: #DC2626 !important; }
+.sn-hbtn.del:hover { background: #DC2626; color: #fff !important; }
+@media (max-width: 900px) {
+    .sn-hist.picking .sn-hrow, .sn-hist.picking .sn-frow { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+}
+
+.sn-del-choose { border: 0; border-radius: 22px; padding: 20px; width: min(380px, calc(100vw - 32px)); color: #fff;
+    background: linear-gradient(160deg, #141A33, #1B1440); box-shadow: 0 30px 70px -20px rgba(0, 0, 0, .8); }
+.sn-del-choose::backdrop { background: rgba(2, 6, 23, .55); backdrop-filter: blur(4px); }
+.sn-del-choose h3 { margin: 0 0 14px; font-size: 16px; word-break: break-word; }
+.sn-del-choose button { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px 14px; margin-bottom: 8px; border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .06); color: #fff; cursor: pointer; }
+.sn-del-choose button:hover { background: rgba(255, 255, 255, .14); }
+.sn-del-choose button i { font-size: 18px; width: 22px; text-align: center; }
+.sn-del-choose button span { display: flex; flex-direction: column; gap: 2px; }
+.sn-del-choose button small { color: #CBD5E1; font-size: 12px; }
+.sn-del-choose button.danger { border-color: rgba(239, 68, 68, .5); }
+.sn-del-choose button.danger i, .sn-del-choose button.danger b { color: #FCA5A5; }
+.sn-del-choose button.plain { justify-content: center; background: transparent; margin-bottom: 0; }
+
+/* Meetings: 🗑 on a meeting (shows on hover) and the status key */
+.sn-ev, .sn-mev { position: relative; }
+.sn-ev-del { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center;
+    background: rgba(220, 38, 38, .92); color: #fff; font-size: 12px; cursor: pointer; opacity: 0; transform: scale(.8);
+    transition: opacity .15s ease, transform .15s ease; z-index: 3; }
+.sn-mev .sn-ev-del { top: 50%; margin-top: -10px; width: 20px; height: 20px; font-size: 11px; border-radius: 6px; }
+.sn-ev:hover .sn-ev-del, .sn-mev:hover .sn-ev-del, .sn-ev.selected .sn-ev-del, .sn-mev.selected .sn-ev-del, .sn-ev-del:focus { opacity: 1; transform: none; }
+.sn-ev-del:hover { background: #B91C1C; transform: scale(1.1) !important; }
+@media (hover: none) { .sn-ev-del { opacity: .9; transform: none; } }
+
+.sn-status-key { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.sn-status-key li { display: flex; align-items: center; gap: 8px; }
+.sn-status-key i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.sn-status-key b { min-width: 18px; text-align: right; }
+.sn-status-key span { color: var(--sn-text-2, #64748B); font-size: 12px; }

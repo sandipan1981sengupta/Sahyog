@@ -20,6 +20,12 @@ public interface ICallLogService
     Task<List<SharedFileDto>?> ListFilesForUserAsync(Guid tenantId, Guid userId, int take = 500);
     /// <summary>Calls ringing for this person right now: (meeting, caller id, caller name, caller tone, one-to-one, chat name).</summary>
     Task<List<(Guid MeetingId, Guid CallerId, string CallerName, int CallerTone, bool IsDirect, string ChannelName)>> PendingForUserAsync(Guid tenantId, Guid userId);
+    /// <summary>Removes calls from this person's history (null = 24_HistoryDelete.sql not run yet).</summary>
+    Task<int?> HideCallsAsync(Guid tenantId, Guid userId, IEnumerable<Guid> ids, bool all);
+    /// <summary>Removes files from this person's Files list; they stay in the chat (null = 24 not run yet).</summary>
+    Task<int?> HideFilesAsync(Guid tenantId, Guid userId, IEnumerable<Guid> ids, bool all);
+    /// <summary>The messages that carry this file.</summary>
+    Task<List<long>> FileMessageIdsAsync(Guid tenantId, Guid attachmentId);
 }
 
 public sealed class CallLogService : ICallLogService
@@ -119,6 +125,38 @@ public sealed class CallLogService : ICallLogService
         {
             return await _db.QueryAsync("dbo.sahyog_CallLog_Pending", p => p.With("@TenantId", tenantId).With("@UserId", userId),
                 r => (r.G("MeetingId"), r.G("CallerId"), r.S("CallerName"), r.I("CallerTone"), Convert.ToBoolean(r["IsDirect"]), r.S("ChannelName")));
+        }
+        catch (SqlException ex) when (Missing(ex)) { return new(); }
+    }
+
+    private async Task<int?> HideAsync(string proc, Guid tenantId, Guid userId, IEnumerable<Guid> ids, bool all)
+    {
+        try
+        {
+            SqlParameter? count = null;
+            await _db.ExecAsync(proc, p =>
+            {
+                p.With("@TenantId", tenantId).With("@UserId", userId)
+                 .With("@Ids", string.Join(",", ids.Distinct().Take(2000))).With("@All", all);
+                count = p.AddOutput("@Count", SqlDbType.Int);
+            });
+            return count!.OutInt();
+        }
+        catch (SqlException ex) when (Missing(ex)) { return null; }
+    }
+
+    public Task<int?> HideCallsAsync(Guid tenantId, Guid userId, IEnumerable<Guid> ids, bool all) =>
+        HideAsync("dbo.sahyog_Calls_Hide", tenantId, userId, ids, all);
+
+    public Task<int?> HideFilesAsync(Guid tenantId, Guid userId, IEnumerable<Guid> ids, bool all) =>
+        HideAsync("dbo.sahyog_Files_Hide", tenantId, userId, ids, all);
+
+    public async Task<List<long>> FileMessageIdsAsync(Guid tenantId, Guid attachmentId)
+    {
+        try
+        {
+            return await _db.QueryAsync("dbo.sahyog_Files_MessageIds", p => p.With("@TenantId", tenantId).With("@AttachmentId", attachmentId),
+                r => Convert.ToInt64(r["MessageId"]));
         }
         catch (SqlException ex) when (Missing(ex)) { return new(); }
     }

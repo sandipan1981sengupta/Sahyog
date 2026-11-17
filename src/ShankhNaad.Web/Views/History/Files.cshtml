@@ -41,6 +41,14 @@
         </action-header>
     </div>
 
+    @if (TempData["HistoryMsg"] is string hm)
+    {
+        <div hidden data-toast="@hm" data-toast-kind="success"></div>
+    }
+    @if (TempData["HistoryError"] is string he)
+    {
+        <div hidden data-toast="@he" data-toast-kind="warn"></div>
+    }
     @if (Model.NeedsSql)
     {
         <div hidden data-toast="Run database/23_CallsAndFiles.sql (or 99_ApplyAllUpdates.sql) to see your shared files here." data-toast-kind="warn" data-toast-title="One database step left"></div>
@@ -53,7 +61,7 @@
         <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(14,165,233,.12);color:#0284c7"><i class="fa fa-hdd-o"></i></span><div><div class="sn-eyebrow">Total size · @chats chats</div><div class="sn-stat-val">@UserExtensions.FormatBytes(total)</div></div></div>
     </div>
 
-    <section class="sn-hist glass" id="fileHist">
+    <section class="sn-hist glass" id="fileHist" data-delete-url="/files/delete" data-noun="file" data-nouns="files">
         <div class="sn-hist-bar">
             <div class="sn-hist-tabs" role="tablist" aria-label="Show">
                 <button type="button" class="on" data-show="all" role="tab" aria-selected="true">All</button>
@@ -64,6 +72,11 @@
                 <i class="fa fa-search" aria-hidden="true"></i>
                 <input type="search" placeholder="Search file, person or group" aria-label="Search files" data-hist-search />
             </label>
+            <div class="sn-hist-tools">
+                <button type="button" class="sn-tool" data-select-toggle title="Pick the ones to delete"><i class="fa fa-check-square-o" aria-hidden="true"></i> <span>Select</span></button>
+                <button type="button" class="sn-tool danger" data-delete-selected hidden><i class="fa fa-trash-o" aria-hidden="true"></i> Delete selected (<span data-pick-count>0</span>)</button>
+                <button type="button" class="sn-tool danger" data-delete-all><i class="fa fa-trash" aria-hidden="true"></i> Delete all</button>
+            </div>
         </div>
         @if (kinds.Count > 1)
         {
@@ -82,8 +95,9 @@
                 var k = Kind(f);
                 var mine = f.UploaderId == me;
                 var where = f.IsDirect ? (f.OtherName ?? "Someone") : f.ChannelName;
-                <div class="sn-hrow sn-frow" data-kind="@(mine ? "mine" : "theirs")" data-type="@k.Key"
+                <div class="sn-hrow sn-frow" data-id="@f.AttachmentId" data-label="@f.FileName" data-mine="@(mine ? "1" : "0")" data-kind="@(mine ? "mine" : "theirs")" data-type="@k.Key"
                      data-filter="@f.FileName @where @f.UploaderName" data-utc="@f.UploadedUtc.ToString("o")">
+                    <label class="sn-hpick" title="Pick"><input type="checkbox" data-pick aria-label="Pick" /></label>
                     <span class="sn-ftile t-@k.Key"><i class="fa @k.Icon" aria-hidden="true"></i></span>
                     <div class="sn-hmain">
                         <a class="ellipsis sn-fname" href="/chat/file/@f.AttachmentId" title="Download @f.FileName">@f.FileName</a>
@@ -104,6 +118,7 @@
                     <div class="sn-hact">
                         <a class="sn-hbtn call" href="/chat/file/@f.AttachmentId" title="Download"><i class="fa fa-download" aria-hidden="true"></i><span>Download</span></a>
                         <a class="sn-hbtn chat" href="/chat/@f.ChannelId" title="Open the chat it was shared in"><i class="fa fa-comment" aria-hidden="true"></i><span>Chat</span></a>
+                        <button type="button" class="sn-hbtn del" data-del-one title="@(mine ? "Delete" : "Remove from your list")" aria-label="@(mine ? "Delete" : "Remove from your list")"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
                     </div>
                 </div>
             }

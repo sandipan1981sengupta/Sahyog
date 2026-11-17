@@ -12,6 +12,9 @@
     var inv = CultureInfo.InvariantCulture;
 
     string Status(CalendarEventVm e) => e.EndLocal <= now ? "Ended" : e.StartLocal <= now ? "Live" : "Upcoming";
+    var isAdmin = User.IsInRole(AppRoles.TenantAdmin);
+    bool CanDel(CalendarEventVm e) => e.IsHost || isAdmin;
+    var periodWord = Model.View switch { "day" => "Today", "month" => "This month", "list" => "This week", _ => "This week" };
     string DurText(int m) => m < 60 ? $"{m} min" : m % 60 == 0 ? $"{m / 60} hr" : $"{m / 60} hr {m % 60} min";
 
     // Rows for <modern-table>: one row per meeting this week.
@@ -131,12 +134,13 @@
                        show-refresh="true" refresh-on-click="SN.reload()"
                        show-add="true" add-text="Schedule" add-on-click="SN.open('scheduleDialog')"
                        show-edit="false"
-                       show-delete="true" delete-text="Cancel" delete-on-click="snCancelMeeting()"
+                       show-delete="true" delete-text="Delete" delete-on-click="snCancelMeeting()"
                        show-import="false"
                        show-export="true" export-on-click="SN.exportTable('MeetingsTable','meetings')"
                        show-save="false" show-submit="false"
                        show-print="true" print-on-click="SN.print()">
             <action-btn text="Join" icon-css="bi bi-box-arrow-in-right" icon-color="#16A34A" tooltip="Join the selected meeting" on-click="snJoinMeeting()"></action-btn>
+            <action-btn text="Delete ended" icon-css="bi bi-calendar-x-fill" icon-color="#DC2626" tooltip="Delete every ended meeting you set up in this period" on-click="snDeleteEnded()"></action-btn>
             <action-btn text="Meet now" icon-css="bi bi-camera-video-fill" icon-color="#DB2777" tooltip="Start a meeting right now" on-click="document.getElementById('meetNowForm').submit()"></action-btn>
         </action-header>
         <form method="post" asp-antiforgery="true" action="/meetings/instant" id="meetNowForm" hidden></form>
@@ -189,6 +193,14 @@
         </tab-control>
     </div>
 
+    @if (TempData["MeetingMsg"] is string mmsg)
+    {
+        <div hidden data-toast="@mmsg" data-toast-kind="success"></div>
+    }
+    @if (TempData["MeetingError"] is string merr)
+    {
+        <div hidden data-toast="@merr" data-toast-kind="warn"></div>
+    }
     @if (Model.JustScheduled is not null)
     {
         <div hidden data-toast="@($"{Model.JustScheduled.Title} is scheduled and the invites are on their way.")"
@@ -255,6 +267,10 @@
                                             <b>@ev.Title</b>
                                             <span>@ev.StartLocal.ToString("HH:mm", inv) – @ev.EndLocal.ToString("HH:mm", inv)</span>
                                             <span class="sn-ev-meta">@(ev.IsHost ? "You host" : "Invited") · @ev.People.Count @(ev.People.Count == 1 ? "person" : "people")</span>
+                                            @if (CanDel(ev))
+                                            {
+                                                <span class="sn-ev-del" role="button" tabindex="0" data-del="@ev.MeetingId" data-title="@ev.Title" title="Delete this meeting" aria-label="Delete @ev.Title"><i class="fa fa-trash-o" aria-hidden="true"></i></span>
+                                            }
                                         </button>
                                     }
                                     @if (d.IsToday && nowTop >= 0)
@@ -294,6 +310,10 @@
                                     <button type="button" class="sn-mev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsAllDay ? (ev.ShowAsFree ? "allday free" : "allday busy") : "")" data-id="@ev.MeetingId"
                                             title="@ev.Title · @(ev.IsAllDay ? "all day" : ev.StartLocal.ToString("HH:mm", inv) + "–" + ev.EndLocal.ToString("HH:mm", inv)) · @st">
                                         <i></i><span class="t">@(ev.IsAllDay ? "All day" : ev.StartLocal.ToString("HH:mm", inv))</span> <span class="n">@ev.Title</span>
+                                        @if (CanDel(ev))
+                                        {
+                                            <span class="sn-ev-del" role="button" tabindex="0" data-del="@ev.MeetingId" data-title="@ev.Title" title="Delete this meeting" aria-label="Delete @ev.Title"><i class="fa fa-trash-o" aria-hidden="true"></i></span>
+                                        }
                                     </button>
                                 }
                                 @if (d.Events.Count > shown.Count)
@@ -338,7 +358,7 @@
         </div>
 
         <div class="sn-side">
-            <modern-group-box title="This week | by status" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="24px" content-layout="block">
+            <modern-group-box title="@(periodWord + " | by status")" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="24px" content-layout="block">
                 @if (events.Count > 0)
                 {
                     <modern-donut-chart id="statusDonut"
@@ -347,6 +367,11 @@
                                         colors="@(new[] { "#16A34A", "#2563EB", "#94A3B8" })"
                                         chart-height="170px" cutout-percentage="68%"
                                         show-border="false" legend-position="bottom" legend-font-size="12"></modern-donut-chart>
+                    <ul class="sn-status-key">
+                        <li><i style="background:#16A34A"></i><b>@live</b> Live <span>going on right now</span></li>
+                        <li><i style="background:#2563EB"></i><b>@upcoming</b> Upcoming <span>later, not started yet</span></li>
+                        <li><i style="background:#94A3B8"></i><b>@ended</b> Ended <span>already over</span></li>
+                    </ul>
                 }
                 else
                 {
@@ -578,16 +603,45 @@
             var row = SN.need("MeetingsTable", "a meeting");
             if (row) SN.go("/meetings/room/" + row.MeetingId);
         }
-        function snCancelMeeting() {
-            var row = SN.need("MeetingsTable", "a meeting");
-            if (!row) return;
-            SN.confirmPost("/meetings/" + row.MeetingId + "/delete", {
-                title: "Cancel meeting",
-                text: "Cancel “" + row.Title + "” for everyone? Only the host or a workspace admin can do this.",
-                confirmText: "Cancel meeting",
-                danger: true
+        var SN_HERE = location.pathname + location.search;
+        function snDeleteOne(id, title) {
+            SN.confirmPost("/meetings/" + id + "/delete", {
+                title: "Delete meeting",
+                text: "Delete “" + title + "” for everyone? It's removed from everyone's calendar. Only the person who set it up (or a workspace admin) can do this.",
+                confirmText: "Delete meeting",
+                danger: true,
+                fields: { returnUrl: SN_HERE }
             });
         }
+        function snCancelMeeting() {
+            var row = SN.need("MeetingsTable", "a meeting (click it in the calendar)");
+            if (row) snDeleteOne(row.MeetingId, row.Title);
+        }
+        // every ended meeting in this period that you may delete
+        var SN_ENDED = @Html.Raw(JsonSerializer.Serialize(events.Where(e => Status(e) == "Ended" && CanDel(e)).Select(e => e.MeetingId).Distinct()));
+        function snDeleteEnded() {
+            if (!SN_ENDED.length) { Sahyog.toast("There are no ended meetings you set up in this period.", { kind: "info", title: "Nothing to delete" }); return; }
+            SN.confirmPost("/meetings/delete-many", {
+                title: "Delete ended meetings",
+                text: "Delete " + (SN_ENDED.length === 1 ? "the 1 ended meeting" : "all " + SN_ENDED.length + " ended meetings") + " you set up in this period? Upcoming and live meetings stay.",
+                confirmText: "Delete " + SN_ENDED.length,
+                danger: true,
+                fields: { ids: SN_ENDED.join(","), returnUrl: SN_HERE }
+            });
+        }
+        // the 🗑 on a meeting in the calendar
+        // (caught first, so the click doesn't also select the meeting or open "Schedule")
+        ["click", "keydown"].forEach(function (type) {
+            document.addEventListener(type, function (e) {
+                var b = e.target.closest && e.target.closest(".sn-ev-del");
+                if (!b) return;
+                if (type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault(); e.stopPropagation();
+                snDeleteOne(b.getAttribute("data-del"), b.getAttribute("data-title"));
+            }, true);
+        });
+        document.addEventListener("pointerdown", function (e) { if (e.target.closest && e.target.closest(".sn-ev-del")) e.stopPropagation(); }, true);
+        document.addEventListener("dblclick", function (e) { if (e.target.closest && e.target.closest(".sn-ev-del")) { e.preventDefault(); e.stopPropagation(); } }, true);
         // ---- moving between periods and views: the content leaves, the page slides, the calendar rises in ----
         function snNav(url, dir, evt) {
             if (evt) evt.preventDefault();

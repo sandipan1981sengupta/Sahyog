@@ -303,16 +303,44 @@ public sealed class MeetingsController : Controller
     }
 
     [HttpPost("{id:guid}/delete")]
-    public async Task<IActionResult> Delete(Guid id)
+    public async Task<IActionResult> Delete(Guid id, string? returnUrl)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var (status, startUtc) = await _meetings.DeleteAsync(tenantId, id, Me, User.IsInRole(AppRoles.TenantAdmin));
-        if (status == DeleteMeetingStatus.NotFound) return NotFound();
-        if (status == DeleteMeetingStatus.NotAllowed) return Forbid();
+        if (status == DeleteMeetingStatus.NotFound) { TempData["MeetingMsg"] = "That meeting was already deleted."; return Redirect(SafeReturn(returnUrl)); }
+        if (status == DeleteMeetingStatus.NotAllowed)
+        {
+            TempData["MeetingError"] = "Only the person who set up the meeting (or a workspace admin) can delete it.";
+            return Redirect(SafeReturn(returnUrl));
+        }
+        TempData["MeetingMsg"] = "Meeting deleted.";
+        if (!string.IsNullOrEmpty(returnUrl)) return Redirect(SafeReturn(returnUrl));
 
         var limits = (await _tenants.GetLimitsAsync(tenantId))!;
         var local = MeetingCalendar.ToLocal(startUtc ?? DateTime.UtcNow, MeetingCalendar.FindZone(limits.TimeZoneId));
         return RedirectToAction(nameof(Index), new { week = WeekOf(DateOnly.FromDateTime(local)).ToString("yyyy-MM-dd") });
+    }
+
+    private string SafeReturn(string? url) => !string.IsNullOrEmpty(url) && Url.IsLocalUrl(url) && url.StartsWith("/meetings") ? url : "/meetings";
+
+    /// <summary>Deletes several meetings at once (e.g. "Delete ended"). Only yours, unless you're a workspace admin.</summary>
+    [HttpPost("delete-many")]
+    public async Task<IActionResult> DeleteMany(string? ids, string? returnUrl)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var list = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).Distinct().Take(500).ToList();
+        int done = 0, refused = 0;
+        foreach (var id in list)
+        {
+            var (status, _) = await _meetings.DeleteAsync(tenantId, id, Me, User.IsInRole(AppRoles.TenantAdmin));
+            if (status == DeleteMeetingStatus.Ok) done++;
+            else if (status == DeleteMeetingStatus.NotAllowed) refused++;
+        }
+        TempData[done > 0 ? "MeetingMsg" : "MeetingError"] = done > 0
+            ? $"{(done == 1 ? "1 meeting" : $"{done} meetings")} deleted." + (refused > 0 ? $" {refused} set up by someone else stayed." : "")
+            : refused > 0 ? "Only the person who set up a meeting (or a workspace admin) can delete it." : "Nothing to delete.";
+        return Redirect(SafeReturn(returnUrl));
     }
 
     private static DateOnly WeekOf(DateOnly date) => MeetingCalendar.WeekOf(date);
@@ -355,6 +383,10 @@ public sealed class MeetingsController : Controller
         var rangeToUtc = MeetingCalendar.ToUtc(toLocal > nowLocal.AddDays(1) ? toLocal : nowLocal.AddDays(1), zone);
         var (meetings, invitees) = await _meetings.ListForUserAsync(tenantId, me, rangeFromUtc, rangeToUtc);
         var inviteesByMeeting = invitees.ToLookup(i => i.MeetingId);
+        // calls started from a chat are on the Calls page, not in the calendar
+        meetings = meetings.Where(m => !(m.IsInstant && m.ChannelId is not null)).ToList();
+        // a "Meet now" meeting is live only while someone is in it; once everyone has left it has ended
+        bool InstantOver(MeetingDto m, DateTime startLocal) => m.IsInstant && startLocal <= nowLocal && _rooms.Count(m.MeetingId) == 0;
 
         CalendarEventVm ToVm(MeetingOccurrenceDto o)
         {
@@ -367,7 +399,8 @@ public sealed class MeetingsController : Controller
                     : new PersonVm("guest", "Guest", "G", 3, false));
             }
             var tone = m.IsInstant ? "slate" : m.HostId == me ? "blue" : "pink";
-            return new CalendarEventVm(m.MeetingId, m.Title, o.StartLocal, o.EndLocal, tone, m.HostId == me, people, m.MeetingId == justId)
+            var endLocal = InstantOver(m, o.StartLocal) && o.EndLocal > nowLocal ? nowLocal : o.EndLocal;
+            return new CalendarEventVm(m.MeetingId, m.Title, o.StartLocal, endLocal, tone, m.HostId == me, people, m.MeetingId == justId)
             {
                 IsAllDay = m.IsAllDay,
                 ShowAsFree = m.ShowAsFree
@@ -382,7 +415,7 @@ public sealed class MeetingsController : Controller
             .ToList();
 
         var next = MeetingCalendar.Expand(meetings, nowLocal.AddHours(-2), nowLocal.AddDays(1), zone)
-            .Where(o => o.EndLocal > nowLocal && !o.Meeting.IsAllDay)
+            .Where(o => o.EndLocal > nowLocal && !o.Meeting.IsAllDay && !InstantOver(o.Meeting, o.StartLocal))
             .OrderBy(o => o.StartLocal)
             .FirstOrDefault();
 
