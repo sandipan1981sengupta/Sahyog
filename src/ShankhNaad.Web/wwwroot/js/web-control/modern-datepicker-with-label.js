@@ -53,6 +53,7 @@ window.ModernDatePickerWithLabel.init = function (context) {
         checkRequired();   // show immediately on load if empty — don't wait for blur
 
         datePickers[input.id] = flatpickr(input, {
+            disableMobile: true,   // always our own calendar (phones would otherwise get the browser's built-in date picker)
             dateFormat: "d-m-Y",
             // ShankhNaad: inside a pop-up <dialog> the calendar must open in place,
             // otherwise it is drawn behind the dialog.
@@ -279,6 +280,7 @@ window.setModernDatePickerWithLabelDisabledDates = function (inputSelector, disa
     });
 
     datePickers[input.id] = flatpickr(input, {
+            disableMobile: true,   // always our own calendar (phones would otherwise get the browser's built-in date picker)
         dateFormat: "d-m-Y",
         allowInput: !typingDisabled,   // CHANGED — was hardcoded true
         disable: normalizedDisable,
@@ -368,6 +370,7 @@ window.setModernDatePickerWithLabelDateRange = function (inputSelector, minDateS
     var maxDate = maxDateString ? new Date(maxDateString + "T00:00:00") : undefined;
 
     datePickers[input.id] = flatpickr(input, {
+            disableMobile: true,   // always our own calendar (phones would otherwise get the browser's built-in date picker)
         dateFormat: "d-m-Y",
         allowInput: !typingDisabled,   // CHANGED — was hardcoded true
         disable: currentDisable,

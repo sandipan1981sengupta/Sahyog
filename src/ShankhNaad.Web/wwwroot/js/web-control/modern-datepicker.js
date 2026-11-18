@@ -50,6 +50,7 @@ window.ModernDatePicker.init = function (context) {
         }
 
         datePickers[input.id] = flatpickr(input, {
+            disableMobile: true,   // always our own calendar (phones would otherwise get the browser's built-in date picker)
             dateFormat: "d-m-Y",
             allowInput: true,
             disable: disabled,
@@ -166,6 +167,7 @@ window.setModernDatepickerDisabledDates = function (inputSelector, disabledDates
     });
 
     datePickers[input.id] = flatpickr(input, {
+            disableMobile: true,   // always our own calendar (phones would otherwise get the browser's built-in date picker)
         dateFormat: "d-m-Y",
         allowInput: true,
         disable: normalizedDisable,
@@ -236,6 +238,7 @@ window.setModernDatepickerDateRange = function (inputSelector, minDateString, ma
     var maxDate = maxDateString ? new Date(maxDateString + "T00:00:00") : undefined;
 
     datePickers[input.id] = flatpickr(input, {
+            disableMobile: true,   // always our own calendar (phones would otherwise get the browser's built-in date picker)
         dateFormat: "d-m-Y",
         allowInput: true,
         disable: currentDisable,

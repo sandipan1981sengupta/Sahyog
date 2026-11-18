@@ -52,6 +52,7 @@ window.ModernMonthYearPicker.init = function (context) {
         }
 
         pickers[input.id] = flatpickr(input, {
+            disableMobile: true,   // always our own calendar (phones would otherwise get the browser's built-in date picker)
             plugins: [new monthSelectPlugin({
                 shorthand: true,       // "Aug" instead of "August"
                 dateFormat: dateFormat,
