@@ -59,6 +59,12 @@
         if (msg && e.target.closest(".bubble, .msg-body")) msg.classList.toggle("show-acts");
     });
 
+    // ---- never let the page slide sideways (something wider can push it; this puts it back) ----
+    const unslide = (el) => { if (el && el.scrollLeft) el.scrollLeft = 0; };
+    const boxes = () => [document.documentElement, body, document.querySelector(".sn-shell"), document.querySelector(".sn-col"), document.querySelector(".sn-page")];
+    document.addEventListener("scroll", (e) => { const t = e.target === document ? document.documentElement : e.target; if (t && t.scrollLeft && boxes().includes(t)) unslide(t); }, true);
+    window.addEventListener("load", () => boxes().forEach(unslide));
+
     // ---- the on-screen keyboard: keep the message box in view ----
     if (window.visualViewport) {
         const fit = () => document.documentElement.style.setProperty("--sn-vvh", `${window.visualViewport.height}px`);

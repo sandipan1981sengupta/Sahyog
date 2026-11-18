@@ -368,3 +368,85 @@ html[data-theme="dark"] .sn-info-close { background: rgba(255, 255, 255, .1); }
 .sn-body .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sn-body .composer textarea { scrollbar-width: none; overflow-wrap: anywhere; }
 .sn-body .composer textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* Meetings → "Go to a month" picker on a phone: opens inside the screen (it ran off the right edge) */
+@media (max-width: 760px) {
+    .sn-toolbar .sn-jump { min-width: 0; }
+    .sn-jump-pop { left: auto !important; right: 0 !important; width: min(280px, calc(100vw - 28px)) !important; padding: 12px !important; transform-origin: top right; }
+    .sn-jump-months button { height: 36px; font-size: 12.5px; }
+    .sn-jump-foot { flex-wrap: wrap; gap: 4px 10px; }
+}
+
+/* =====================================================================
+   Phones: everything a size smaller (text, icons, buttons), so more fits on the screen.
+   Typing boxes stay at 16 px — anything smaller makes iPhone zoom in when you tap them.
+   ===================================================================== */
+@media (max-width: 760px) {
+    body.sn-body { font-size: 13px; }
+    /* top bar and page headers */
+    .sn-topbar .strip-heading { font-size: 14px !important; }
+    .sn-topbar .strip-subheading { font-size: 10.5px !important; }
+    .sn-body .sn-head .hdr-title { font-size: 17px !important; }
+    .sn-body .sn-head .hdr-subtitle { font-size: 11px !important; }
+    .sn-body .sn-head .hdr-icon-wrap, .sn-body .sn-head .hdr-main-icon { width: 38px !important; height: 38px !important; font-size: 17px !important; }
+    .sn-body .sn-head .hdr-menu-toggle { width: 38px !important; height: 38px !important; }
+    /* stat cards */
+    .sn-stat { padding: 9px 10px !important; gap: 9px !important; border-radius: 18px !important; }
+    .sn-stat-ic { width: 30px !important; height: 30px !important; font-size: 14px !important; border-radius: 10px !important; }
+    .sn-stat-val { font-size: 17px !important; }
+    .sn-eyebrow { font-size: 9.5px !important; letter-spacing: .08em !important; }
+    /* tabs, tool buttons, search */
+    .sn-body .tc-tab { font-size: 12.5px !important; padding: 0 10px !important; }
+    .sn-hist-tools .sn-tool, .sn-tool { height: 32px !important; padding: 0 11px !important; font-size: 12px !important; }
+    .sn-body .search { height: 40px; }
+    /* Calls / Files lists */
+    .sn-hist-day { font-size: 10.5px; margin-top: 10px; }
+    .sn-hmain b, .sn-fname { font-size: 13.5px !important; }
+    .sn-hstat { font-size: 11.5px !important; }
+    .sn-body .av-44 { width: 42px !important; height: 42px !important; font-size: 13px !important; }
+    .sn-body .av-44 .dot { width: 13px !important; height: 13px !important; }
+    .sn-hbtn { height: 30px !important; padding: 0 10px !important; font-size: 12px !important; }
+    .sn-hbtn.del, .sn-hbtn.call { width: 30px; padding: 0 !important; justify-content: center; }
+    .sn-hrow, .sn-frow { padding: 8px 4px !important; gap: 9px !important; }
+    /* chat */
+    .sn-body .bubble { font-size: 13.5px; padding: 8px 12px; }
+    .sn-body .msg-meta { font-size: 11px; }
+    .sn-body .side-item { font-size: 13.5px; }
+    .msg-call-txt b { font-size: 12.5px; }
+    .msg-call-txt small { font-size: 10.5px; }
+    .msg-call-ic { width: 34px; height: 34px; font-size: 14px; border-radius: 12px; }
+    /* meetings */
+    .sn-toolbar .sn-week-label { font-size: 14px !important; }
+    .sn-body .sn-today-btn, .sn-body .sn-nav-btn { font-size: 12.5px; }
+    /* the bottom tab bar icons */
+    .sn-rail .rr-item-icon { font-size: 17px !important; }
+}
+
+/* Phones and tablets: the whole app could slide a little to the left (cut off on the left, a gap on the right).
+   A box with overflow "hidden" can still be scrolled sideways by the browser; "clip" can't. */
+@media (max-width: 1100px) {
+    html, body.sn-body { overflow-x: clip !important; }
+    .sn-shell, .sn-col { overflow: clip !important; }
+    .sn-page > *, .sn-views, .sn-sched, .sn-toolbar { max-width: 100%; min-width: 0; }
+}
+
+/* Meetings → Day / Week / Month / List: on a phone the four tabs share the whole bar, centred */
+@media (max-width: 760px) {
+    .sn-toolbar .tab-control-wrapper { display: flex !important; width: 100% !important; }
+    .sn-toolbar .tc-tabs { flex: 1 1 auto; width: 100%; }
+    .sn-toolbar .tc-tab { flex: 1 1 0 !important; justify-content: center; text-align: center; padding: 0 4px !important; }
+    .sn-toolbar-left { width: 100%; justify-content: space-between; }
+}
+
+/* Chat list on a phone: Pin, Ping, Call and Delete are always shown on each row (small round buttons) */
+@media (max-width: 760px) {
+    .sn-body .sn-person-row .sn-team-actions {
+        display: flex !important; position: absolute !important; right: 8px; top: 50%; transform: translateY(-50%) !important;
+        opacity: 1 !important; pointer-events: auto !important; gap: 5px; padding: 0 0 0 16px !important;
+        background: linear-gradient(90deg, transparent, rgba(241, 245, 249, .96) 14px) !important;
+    }
+    html[data-theme="dark"] .sn-body .sn-person-row .sn-team-actions { background: linear-gradient(90deg, transparent, rgba(30, 33, 58, .97) 14px) !important; }
+    .sn-body .sn-person-row .sn-team-btn { width: 30px; height: 30px; font-size: 12px; }
+    .sn-body .sn-person-row .sn-person-open { padding-right: 150px !important; }
+    .sn-body .sn-person-row .sn-pin-mark { display: none; }
+}
