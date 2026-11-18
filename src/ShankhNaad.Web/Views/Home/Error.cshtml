@@ -5,5 +5,16 @@
 <div class="auth-card glass-strong center">
     <h2>Something went wrong</h2>
     <p class="muted">Please try again. If it keeps happening, tell your workspace admin.</p>
+    <p class="muted small">Reference: <b>@ViewData["ErrorCode"]</b></p>
+    @if (ViewData["ErrorDetail"] is string detail)
+    {
+        @* only admins see this *@
+        <div style="text-align:left;margin:12px 0 16px;padding:12px 14px;border-radius:14px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.25);font:12.5px/1.45 Consolas, monospace;color:#7F1D1D;word-break:break-word;max-height:220px;overflow:auto">
+            <div style="font:700 11px Roboto,sans-serif;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;color:#B91C1C">For admins · what went wrong</div>
+            @detail
+            <div style="margin-top:6px;color:#991B1B">Page: @ViewData["ErrorPath"]</div>
+            <div style="margin-top:6px;color:#991B1B;font-family:Roboto,sans-serif">Full details: App_Data/logs/errors-@(DateTime.UtcNow.ToString("yyyyMMdd")).log</div>
+        </div>
+    }
     <a class="btn btn-primary" href="/">Back to ShankhNaad</a>
 </div>

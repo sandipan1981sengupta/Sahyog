@@ -45,7 +45,7 @@ public sealed class AccountController : Controller
     /// The page always says the same thing, so it can't be used to find out who has an account.
     /// </summary>
     [HttpPost("forgot"), AllowAnonymous]
-    public async Task<IActionResult> Forgot(ForgotPasswordViewModel model)
+    public async Task<IActionResult> Forgot(ForgotPasswordViewModel model, [FromServices] ILogger<AccountController> log)
     {
         model.CanEmail = _mail.CanSend;
         if (!ModelState.IsValid || !model.CanEmail) return View(model);
@@ -53,11 +53,20 @@ public sealed class AccountController : Controller
         var user = await _users.FindByEmailAsync(model.Email);
         if (user is not null && user.IsActive && user.TenantActive)
         {
-            var (token, _) = await _users.CreatePasswordLinkAsync(user.UserId, PasswordLinkPurpose.Reset, ResetLinkLifetime);
+            var (token, error) = await _users.CreatePasswordLinkAsync(user.UserId, PasswordLinkPurpose.Reset, ResetLinkLifetime);
             if (token is not null)
-                await _mail.SendPasswordResetAsync(user.Email, user.DisplayName, user.TenantSlug,
+            {
+                var sent = await _mail.SendPasswordResetAsync(user.Email, user.DisplayName, user.TenantSlug,
                     PasswordLinks.Url(_app, Request, token), "1 hour");
+                log.LogInformation("Forgot password for {Email}: reset email {Result}.", model.Email.Trim(), sent ? "sent" : "NOT sent (see the SMTP line above)");
+            }
+            else log.LogWarning("Forgot password for {Email}: no email sent: {Why}", model.Email.Trim(),
+                     error ?? "couldn't create a reset link");
         }
+        else
+            // the page says the same thing either way (so nobody can test which emails have accounts); the log tells the admin
+            log.LogInformation("Forgot password for {Email}: {Why}, no email sent.", model.Email.Trim(),
+                user is null ? "no account with this email" : !user.IsActive ? "the account is switched off" : "the workspace is switched off");
         return View(new ForgotPasswordViewModel { Email = model.Email.Trim(), Sent = true, CanEmail = true });
     }
 

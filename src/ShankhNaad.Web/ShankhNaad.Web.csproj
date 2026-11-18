@@ -21,6 +21,9 @@
 
   <ItemGroup>
     <Content Update="App_Data\**" CopyToPublishDirectory="Never" />
+    <!-- the JaaS private key (Jaas:PrivateKeyPath = Key/jaas.pk) must go to the server with the app,
+         otherwise every call opens "Something went wrong". It's outside wwwroot, so it is never downloadable. -->
+    <None Update="Key\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

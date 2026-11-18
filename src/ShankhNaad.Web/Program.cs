@@ -6,6 +6,8 @@ using ShankhNaad.Web.Hubs;
 using ShankhNaad.Web.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+// always-on log file: App_Data/logs/app-yyyyMMdd.log (emails sent/failed, Forgot password, errors)
+builder.Logging.AddProvider(new ShankhNaad.Web.Infrastructure.FileLogProvider(builder.Environment.ContentRootPath));
 var config = builder.Configuration;
 
 // ---------- All business functions (stored procedure calls, meetings, email, files, video) ----------

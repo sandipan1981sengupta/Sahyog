@@ -80,13 +80,16 @@ public sealed class JaasVideoProvider : IVideoProvider, IDisposable
 {
     private readonly JaasOptions _o;
     private readonly Lazy<RSA> _rsa;
+    private readonly string _keyFile;
 
     public JaasVideoProvider(IOptions<JaasOptions> options, IHostEnvironment env)
     {
         _o = options.Value;
+        _keyFile = string.IsNullOrWhiteSpace(_o.PrivateKeyPath) ? ""
+            : Path.IsPathRooted(_o.PrivateKeyPath) ? _o.PrivateKeyPath : Path.Combine(env.ContentRootPath, _o.PrivateKeyPath);
         _rsa = new Lazy<RSA>(() =>
         {
-            var path = Path.IsPathRooted(_o.PrivateKeyPath) ? _o.PrivateKeyPath : Path.Combine(env.ContentRootPath, _o.PrivateKeyPath);
+            var path = _keyFile;
             var rsa = RSA.Create();
             rsa.ImportFromPem(File.ReadAllText(path));
             return rsa;
@@ -96,7 +99,8 @@ public sealed class JaasVideoProvider : IVideoProvider, IDisposable
     public string Name => "JaaS";
 
     public bool IsConfigured =>
-        !string.IsNullOrWhiteSpace(_o.AppId) && !string.IsNullOrWhiteSpace(_o.ApiKeyId) && !string.IsNullOrWhiteSpace(_o.PrivateKeyPath);
+        !string.IsNullOrWhiteSpace(_o.AppId) && !string.IsNullOrWhiteSpace(_o.ApiKeyId) && !string.IsNullOrWhiteSpace(_o.PrivateKeyPath)
+        && File.Exists(_keyFile);   // the key file missing on the server shows "video isn't set up" instead of an error page
 
     public VideoJoinInfo CreateJoin(VideoJoinRequest r)
     {
