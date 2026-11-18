@@ -984,7 +984,8 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0 !important; height: 
     .rf-e { font-size: 38px; }
 
     /* pop-ups */
-    .add-dlg, .leave-sheet { width: calc(100vw - 16px); }
+    .add-dlg { width: min(460px, calc(100vw - 16px)); }
+    .leave-sheet { width: min(380px, calc(100vw - 16px)); }
     .leave-sheet { right: 8px; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
     .toasts { left: 8px; right: 8px; }
     .cc-compose input[type=text] { font-size: 16px; }   /* no zoom-in on iPhone */

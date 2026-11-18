@@ -390,7 +390,8 @@ window.addEventListener("pageshow", () => {
     /** Shows / hides the Details panel with a slide, and remembers the choice on this device. */
     SN.toggleDetails = () => {
         const hidden = document.body.classList.toggle("sn-hide-info");
-        try { localStorage.setItem(KEY, hidden ? "1" : "0"); } catch (e) { }
+        // remember the choice only on a big screen (on tablets / phones Details always starts closed)
+        if (window.innerWidth > 1100) { try { localStorage.setItem(KEY, hidden ? "1" : "0"); } catch (e) { } }
         mark();
     };
     if (document.querySelector(".chat-info")) {

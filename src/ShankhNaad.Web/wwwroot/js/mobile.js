@@ -5,17 +5,19 @@
     const touch = () => window.matchMedia("(hover: none)").matches;
     const body = document.body;
 
-    // ---- Chat on a phone: the list, or the open conversation with a back button ----
+    // ---- Chat on a phone or tablet: the list, or the open conversation with a back button ----
     const chat = document.getElementById("chat");
     if (chat) {
-        const open = !!(chat.dataset.channel || "").trim();
+        // A conversation counts as "open" only when its address says so (/chat/{id}). Plain /chat —
+        // the ‹ back button, or the Chat tab — shows the list (the server still picks a chat for big screens).
+        const open = /^\/chat\/[0-9a-f-]{36}\/?$/i.test(location.pathname) && !!(chat.dataset.channel || "").trim();
         body.classList.toggle("sn-chat-open", open);
         if (open) {
             const left = document.querySelector(".sn-chat-page .sn-head .hdr-left");
             if (left && !left.querySelector(".sn-chat-back")) {
                 const back = document.createElement("a");
-                back.href = "/chat";
-                back.className = "sn-chat-back sn-m-only";
+                back.href = "/chat?list=1";
+                back.className = "sn-chat-back";
                 back.setAttribute("aria-label", "Back to chats");
                 back.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>';
                 left.prepend(back);
@@ -24,8 +26,18 @@
         // the Details panel starts closed on a phone, and has its own close button
         const info = document.querySelector(".chat-info");
         if (info) {
-            // (on tablets and phones it opens over the conversation, so it starts closed)
-            if (window.matchMedia("(max-width: 1100px)").matches) body.classList.add("sn-hide-info");
+            // On tablets and phones there's no room for Details next to the chat, so it's closed
+            // there — on page load AND whenever the window is made narrower. Made wide again,
+            // it comes back the way you last left it on a big screen.
+            const narrow = window.matchMedia("(max-width: 1100px)");
+            const savedWide = () => { try { return localStorage.getItem("sn-hide-details") !== "1"; } catch { return true; } };
+            const apply = () => {
+                if (narrow.matches) body.classList.add("sn-hide-info");
+                else body.classList.toggle("sn-hide-info", !savedWide());
+                document.querySelectorAll('[data-details-btn], .sn-details-btn').forEach((b) => b.setAttribute("aria-pressed", String(!body.classList.contains("sn-hide-info"))));
+            };
+            apply();
+            narrow.addEventListener("change", apply);
             if (!info.querySelector(".sn-info-close")) {
                 const x = document.createElement("button");
                 x.type = "button";

@@ -42,7 +42,7 @@ public sealed partial class ChatController : Controller
 
     [HttpGet("")]
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> Index(Guid? id)
+    public async Task<IActionResult> Index(Guid? id, bool list = false)
     {
         if (User.TenantId() is not Guid tenantId)
             return User.IsInRole(AppRoles.SuperAdmin) ? RedirectToAction("Index", "Admin") : Forbid();
@@ -71,6 +71,9 @@ public sealed partial class ChatController : Controller
         var current = all.FirstOrDefault(c => c.Id == id)
                       ?? all.Where(c => c.IsPinned).OrderByDescending(c => c.LastUtc).FirstOrDefault()
                       ?? all.OrderByDescending(c => c.LastUtc).FirstOrDefault();
+        // "‹ back" on a phone or tablet asks for just the list (/chat?list=1): open nothing, so no chat
+        // is quietly marked as read behind the list
+        if (id is null && list) current = null;
 
         var messages = new List<MessageDto>();
         var members = new List<PersonVm>();
