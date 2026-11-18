@@ -2730,3 +2730,9 @@ html, body { overflow-x: hidden; }
     background: radial-gradient(120% 80% at 50% -20%, rgba(167, 139, 250, .22), transparent 60%); }
 .sn-tip-arrow { width: 14px; height: 14px; margin-left: -7px; bottom: -7px; }
 .sn-tip.below .sn-tip-arrow { top: -7px; }
+
+/* Pop-ups that sit in the browser's top layer (tooltip, toasts): the browser gives them a scroll box by default,
+   and the tooltip's arrow and glow reach just outside it, which showed a scroll bar. Never scroll them. */
+.sn-tip, .sn-tip[popover], .toasts[popover] { overflow: visible !important; scrollbar-width: none; }
+.sn-tip::-webkit-scrollbar, .toasts[popover]::-webkit-scrollbar { display: none; width: 0 !important; height: 0 !important; }
+.sn-tip { box-sizing: border-box; width: max-content; height: auto; white-space: normal; }

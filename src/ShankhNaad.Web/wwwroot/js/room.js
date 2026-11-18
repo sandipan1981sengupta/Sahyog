@@ -104,7 +104,7 @@
             const role = p.role === "moderator" ? '<span class="role host">Host</span>' : guest ? '<span class="role guest">Guest</span>' : "";
             return `<div class="people-row ${speakerId && p.id === speakerId ? "speaking" : ""}" data-pid="${esc(p.id || "")}" style="--i:${i}">
                         <span class="pr-av"><span class="avatar av-36 tone-${guest ? 3 : i % 6}">${esc(initials(clean))}</span></span>
-                        <span class="pr-name">${esc(clean)}${isMe ? ' <small>(you)</small>' : ""}</span>
+                        <span class="pr-name"><span class="pr-n">${esc(clean)}</span>${isMe ? '<small class="pr-you">You</small>' : ""}</span>
                         <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
                         ${role}
                     </div>`;

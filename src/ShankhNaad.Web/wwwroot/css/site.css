@@ -777,3 +777,25 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0 !important; height: 
 
 @media (prefers-reduced-motion: reduce) { .studio-bg i, .stage::before, .orbit i, .eq i, .dock-btn.hand { animation: none !important; } }
 @media (max-width: 900px) { .room-head { flex-wrap: wrap; } .island .secure, .island .island-sep:first-of-type { display: none; } }
+
+/* top bar: the LIVE island always sits in the exact middle */
+.room-head { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; }
+.room-head > :first-child { justify-self: start; min-width: 0; }
+.room-head > .island { justify-self: center; }
+.room-head > :last-child { justify-self: end; }
+.room-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32vw; }
+/* the app mark: the real ShankhNaad logo, not a blank tile */
+.room-mark { background: none; box-shadow: none; padding: 0; overflow: hidden; }
+.room-mark img { filter: none; width: 40px; height: 40px; border-radius: 14px; box-shadow: 0 8px 20px -8px rgba(124, 58, 237, .9); }
+/* "You" as a small tag, so long names shorten but the tag stays */
+.pr-name { display: flex; align-items: center; gap: 6px; }
+.pr-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-you { flex: none; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #C4B5FD;
+    padding: 2px 6px; border-radius: 6px; background: rgba(139, 92, 246, .18); border: 1px solid rgba(139, 92, 246, .35); }
+@media (max-width: 900px) { .room-head { grid-template-columns: 1fr auto; } .room-head > :last-child { grid-column: 1 / -1; justify-self: stretch; } }
+
+/* Pop-ups that sit in the browser's top layer (tooltip, toasts): the browser gives them a scroll box by default,
+   and the tooltip's arrow and glow reach just outside it, which showed a scroll bar. Never scroll them. */
+.sn-tip, .sn-tip[popover], .toasts[popover] { overflow: visible !important; scrollbar-width: none; }
+.sn-tip::-webkit-scrollbar, .toasts[popover]::-webkit-scrollbar { display: none; width: 0 !important; height: 0 !important; }
+.sn-tip { box-sizing: border-box; width: max-content; height: auto; white-space: normal; }
