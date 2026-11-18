@@ -16,7 +16,7 @@
     const notice = (title, note, kind) => {
         const el = document.createElement("div");
         el.className = `toast room-notice ${kind || "left"}`;
-        el.innerHTML = `<span class="rn-ic">${kind === "declined" ? "&#128222;" : "&#128075;"}</span>`
+        el.innerHTML = `<span class="rn-ic">${kind === "declined" ? "&#128222;" : kind === "ring" ? "&#128276;" : "&#128075;"}</span>`
             + `<span class="rn-txt"><b>${esc(title)}</b>${note ? `<q>${esc(note)}</q>` : ""}</span>`;
         $("toasts").appendChild(el);
         setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 350); }, note ? 9000 : 5000);
@@ -123,11 +123,55 @@
         setBtn("ccBtn", on, "active");
     };
     $("tileBtn").onclick = () => api.executeCommand("toggleTileView");
-    $("panelBtn").onclick = () => {
-        const panel = $("roomPanel");
-        panel.classList.toggle("hidden-panel");
-        setBtn("panelBtn", !panel.classList.contains("hidden-panel"), "active");
+    // ---------- side panel: hide / show (button, the arrow on the panel, the "in call" tab, or the P key) ----------
+    const panel = $("roomPanel"), peek = $("panelPeek");
+    let panelOpen = true, autoHidden = false;
+    try { if (localStorage.getItem("sn-room-panel") === "0") panelOpen = false; } catch { }
+    const paintPanel = (animate) => {
+        document.body.classList.toggle("panel-off", !panelOpen);
+        if (!animate) document.body.classList.add("no-anim"), requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("no-anim")));
+        setBtn("panelBtn", panelOpen, "active", panelOpen ? "Hide the side panel (P)" : "Show the side panel (P)", "panelLabel", panelOpen ? "Hide panel" : "Show panel");
+        $("panelBtn").title = panelOpen ? "Hide the side panel (P)" : "Show the side panel (P)";
+        panel.setAttribute("aria-hidden", String(!panelOpen));
+        peek.hidden = panelOpen;
     };
+    const setPanel = (open, remember = true) => {
+        panelOpen = open;
+        if (remember) { autoHidden = false; try { localStorage.setItem("sn-room-panel", open ? "1" : "0"); } catch { } }
+        paintPanel(true);
+    };
+    $("panelBtn").onclick = () => setPanel(!panelOpen);
+    $("panelClose").onclick = () => setPanel(false);
+    peek.onclick = () => setPanel(true);
+    paintPanel(false);
+
+    // ---------- full screen: the whole meeting fills the screen (Esc or the button to come back) ----------
+    const fsOn = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+    $("fullBtn").onclick = async () => {
+        try {
+            if (fsOn()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+            else await (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement);
+        } catch { toast("Full screen isn't available in this browser."); }
+    };
+    let panelBeforeFs = null;
+    const onFs = () => {
+        const on = fsOn();
+        document.body.classList.toggle("is-full", on);
+        setBtn("fullBtn", on, "active", on ? "Exit full screen (F)" : "Full screen (F)", "fullLabel", on ? "Exit full" : "Full screen");
+        $("fullBtn").title = on ? "Exit full screen (F or Esc)" : "Full screen (F)";
+        // full screen also tucks the panel away; it comes back afterwards if it was open
+        if (on) { panelBeforeFs = panelOpen; if (panelOpen) { panelOpen = false; paintPanel(true); } }
+        else if (panelBeforeFs !== null) { panelOpen = panelBeforeFs; panelBeforeFs = null; paintPanel(true); }
+    };
+    document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("webkitfullscreenchange", onFs);
+
+    // keys (when the page, not the video, has focus): P = panel, F = full screen
+    document.addEventListener("keydown", (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, textarea, [contenteditable]")) return;
+        if (e.key === "p" || e.key === "P") { e.preventDefault(); setPanel(!panelOpen); }
+        if (e.key === "f" || e.key === "F") { e.preventDefault(); $("fullBtn").click(); }
+    });
 
     let handUp = false;
     $("handBtn").onclick = () => {
@@ -194,9 +238,88 @@
         try { api.executeCommand("hangup"); } catch { }   // camera and microphone switch off now
         setTimeout(() => leave(), 4000);
     };
+    // the most people this call has had at once (a one-to-one call with someone added becomes a group call)
+    let maxPeople = 1;
+    const notePeople = () => { try { maxPeople = Math.max(maxPeople, api.getNumberOfParticipants?.() || 1); } catch { } };
+    api.addListener("participantJoined", () => setTimeout(notePeople, 300));
     const othersInCall = () => { try { return Math.max(0, (api.getNumberOfParticipants?.() || 1) - 1); } catch { return 0; } };
 
     if (cfg.offlineNote) setTimeout(() => notice("Not online", cfg.offlineNote, "declined"), 1200);
+
+    // ---------- Add people: ring team members into this call ----------
+    const addDlg = $("addDlg");
+    if (addDlg && hub) {
+        let people = [], picked = new Set();
+        const list = $("addList"), search = $("addSearch"), ringBtn = $("addRing");
+        const stateOf = (p) => p.inCall ? ["in", "In this call"] : p.busy ? ["busy", "On another call"] : p.online ? ["on", "Available"] : ["off", "Offline · can't ring"];
+        const paintPicked = () => {
+            const n = picked.size;
+            $("addPicked").textContent = n ? `${n} picked` : "Nobody picked yet";
+            $("addRingText").textContent = n ? `Ring ${n}` : "Ring";
+            ringBtn.disabled = n === 0;
+        };
+        const paintList = () => {
+            const q = search.value.trim().toLowerCase();
+            const shown = people.filter((p) => !q || p.name.toLowerCase().includes(q));
+            list.innerHTML = shown.length ? shown.map((p) => {
+                const [st, label] = stateOf(p);
+                const can = !p.inCall && p.online;
+                return `<label class="add-row ${st} ${picked.has(p.userId) ? "picked" : ""} ${can ? "" : "dim"}" role="option" aria-selected="${picked.has(p.userId)}">
+                    <input type="checkbox" value="${p.userId}" ${picked.has(p.userId) ? "checked" : ""} ${can ? "" : "disabled"} />
+                    <span class="add-av tone-${p.tone}" data-user="${p.userId}" style="background-image:url('/team/photo/${p.userId}')">${esc(p.initials)}<i class="add-dot ${st}"></i></span>
+                    <span class="add-who"><b>${esc(p.name)}</b><small>${label}</small></span>
+                    <span class="add-tick" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10" /></svg></span>
+                </label>`;
+            }).join("") : `<p class="add-dlg-empty">${people.length ? "Nobody matches that name." : "There's nobody else in your team yet."}</p>`;
+            // photos that don't exist simply leave the initials showing
+            list.querySelectorAll(".add-av").forEach((a) => {
+                const img = new Image();
+                img.onload = () => a.classList.add("has-photo");
+                img.onerror = () => { a.style.backgroundImage = "none"; };
+                img.src = `/team/photo/${a.dataset.user}`;
+            });
+        };
+        list.addEventListener("change", (e) => {
+            const c = e.target;
+            if (!c.matches("input[type=checkbox]")) return;
+            c.checked ? picked.add(c.value) : picked.delete(c.value);
+            c.closest(".add-row").classList.toggle("picked", c.checked);
+            paintPicked();
+        });
+        search.addEventListener("input", paintList);
+        const openAdd = async () => {
+            picked = new Set(); search.value = ""; paintPicked();
+            list.innerHTML = '<p class="add-dlg-empty">Loading your team…</p>';
+            addDlg.showModal();
+            requestAnimationFrame(() => addDlg.classList.add("open"));
+            try { people = await hub.invoke("PeopleForCall", cfg.meetingId) || []; } catch { people = []; }
+            paintList();
+            search.focus();
+        };
+        const closeAdd = () => { addDlg.classList.remove("open"); setTimeout(() => addDlg.open && addDlg.close(), 220); };
+        $("addPeopleBtn").onclick = () => {
+            if (hub.state !== "Connected") { toast("Still connecting… try again in a moment."); return; }
+            openAdd();
+        };
+        addDlg.addEventListener("click", (e) => { if (e.target === addDlg || e.target.closest("[data-close]")) closeAdd(); });
+        addDlg.addEventListener("cancel", (e) => { e.preventDefault(); closeAdd(); });
+        ringBtn.onclick = async () => {
+            if (!picked.size) return;
+            ringBtn.disabled = true;
+            try {
+                const r = await hub.invoke("RingIntoCall", cfg.meetingId, [...picked]);
+                closeAdd();
+                if (r.rung && r.rung.length) notice(`Ringing ${r.rung.join(", ")}`, "They'll join as soon as they press Accept.", "ring");
+                if (r.offline && r.offline.length) notice(`${r.offline.join(", ")} ${r.offline.length === 1 ? "is" : "are"} offline`, "They can't be rung right now.", "declined");
+                if ((!r.rung || !r.rung.length) && (!r.offline || !r.offline.length)) toast("Nobody new to ring.");
+            } catch { toast("Couldn't ring them. Try again."); ringBtn.disabled = false; }
+        };
+        // someone else in the call added people
+        hub.on("PeopleRung", (meetingId, by, names) => {
+            if (String(meetingId).toLowerCase() !== String(cfg.meetingId).toLowerCase()) return;
+            notice(`${by} is adding ${names.join(", ")}`, null, "ring");
+        });
+    }
 
     if (hub) {
         // the person you called said no
@@ -208,7 +331,8 @@
         // someone hung up: on a one-to-one call it ends for both; in a group, everyone sees who dropped
         hub.on("ParticipantLeft", (meetingId, _userId, name, note) => {
             if (String(meetingId).toLowerCase() !== String(cfg.meetingId).toLowerCase()) return;
-            if (cfg.oneToOne) endScreen(`${name} ended the call`, note);
+            // a one-to-one call ends for both — unless more people were added, then it's a small group call
+            if (cfg.oneToOne && maxPeople <= 2) endScreen(`${name} ended the call`, note);
             else notice(`${name} left the call`, note, "left");
         });
         // nobody picked up in time
@@ -237,6 +361,15 @@
     api.addListener("screenSharingStatusChanged", ({ on }) =>
         setBtn("shareBtn", on, "sharing", on ? "Stop sharing your screen" : "Share your screen", "shareLabel", on ? "Stop share" : "Share"));
     api.addListener("tileViewChanged", ({ enabled }) => setBtn("tileBtn", enabled, "active"));
+    // someone shares a screen: give it the whole width (the panel slides away, and comes back when sharing stops)
+    api.addListener("contentSharingParticipantsChanged", ({ data }) => {
+        const sharing = Array.isArray(data) && data.length > 0;
+        if (sharing && panelOpen) { panelOpen = false; autoHidden = true; paintPanel(true); toast("Side panel hidden for the shared screen. Press Show panel (or P) to bring it back."); }
+        else if (!sharing && autoHidden) { autoHidden = false; panelOpen = true; paintPanel(true); }
+    });
+    // the small "N in call" tab shown while the panel is hidden
+    new MutationObserver(() => { const n = $("peopleCount")?.textContent; if (n) $("peekCount").textContent = n; })
+        .observe($("peopleCount"), { childList: true, characterData: true, subtree: true });
     ["participantJoined", "participantLeft", "displayNameChange", "participantRoleChanged"].forEach((ev) =>
         api.addListener(ev, refreshPeople));
     api.addListener("participantJoined", ({ displayName }) => displayName && toast(`${displayName} joined`));

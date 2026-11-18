@@ -95,3 +95,10 @@ public sealed record SharedFileDto(
     Guid AttachmentId, string FileName, string ContentType, long SizeBytes, DateTime UploadedUtc,
     Guid UploaderId, string UploaderName, int UploaderTone,
     Guid ChannelId, bool IsDirect, string ChannelName, Guid? OtherId, string? OtherName, int OtherTone);
+
+
+/// <summary>A person in the "Add people" list of a call.</summary>
+public sealed record CallPersonDto(Guid UserId, string Name, string Initials, int Tone, bool Online, bool Busy, bool InCall);
+
+/// <summary>Who was rung into a call, and who couldn't be (offline).</summary>
+public sealed record RingResultDto(List<string> Rung, List<string> Offline);

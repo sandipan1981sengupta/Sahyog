@@ -38,7 +38,7 @@
         if (!target || !target.isConnected) return hide(true);
         const r = target.getBoundingClientRect();
         const t = tip.getBoundingClientRect();
-        const gap = 10, vw = window.innerWidth;
+        const gap = 12, vw = window.innerWidth;
         let below = r.top - t.height - gap < 8;
         let top = below ? r.bottom + gap : r.top - t.height - gap;
         let left = r.left + r.width / 2 - t.width / 2;

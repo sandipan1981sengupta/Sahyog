@@ -19,9 +19,11 @@ public sealed class ChatHub : Hub
     private readonly PresenceTracker _presence;
     private readonly MeetingRoomTracker _rooms;
     private readonly ICallLogService _calls;
+    private readonly IUserService _users;
 
-    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls)
+    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls, IUserService users)
     {
+        _users = users;
         _calls = calls;
         _chat = chat;
         _meetings = meetings;
@@ -184,6 +186,47 @@ public sealed class ChatHub : Hub
         if (note is not null && await _meetings.GetAsync(tenantId, meetingId) is { } meeting)
             await PostNoteAsync(tenantId, meeting.ChannelId, userId, note);
         await LeaveRoomAsync(tenantId, meetingId, note);
+    }
+
+    /// <summary>"Add people" in a call: everyone in my workspace, with whether they're online, on another call or already here.</summary>
+    public async Task<List<CallPersonDto>> PeopleForCall(Guid meetingId)
+    {
+        var (tenantId, userId) = Caller();
+        if (await _meetings.GetAsync(tenantId, meetingId) is null) return new();
+        var online = _presence.OnlineUsers(tenantId);
+        var busy = _rooms.BusyUsers();
+        return (await _users.ListByTenantAsync(tenantId))
+            .Where(u => u.IsActive && u.UserId != userId)
+            .Select(u => new CallPersonDto(u.UserId, u.DisplayName, u.Initials, u.AvatarTone,
+                online.Contains(u.Id), busy.Contains(u.Id), _rooms.Contains(meetingId, u.Id)))
+            .OrderByDescending(p => p.Online).ThenBy(p => p.Name)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Rings team members into a call that's already going: their screen shows the ringing card and they join
+    /// with Accept. Only someone who is in the call can do this. Returns who was rung and who is offline.
+    /// </summary>
+    public async Task<RingResultDto> RingIntoCall(Guid meetingId, List<Guid> userIds)
+    {
+        var (tenantId, me) = Caller();
+        var meeting = await _meetings.GetAsync(tenantId, meetingId);
+        if (meeting is null || !_rooms.Contains(meetingId, me.ToString())) return new RingResultDto(new(), new());
+        var team = (await _users.ListByTenantAsync(tenantId)).Where(u => u.IsActive).ToDictionary(u => u.UserId);
+        var online = _presence.OnlineUsers(tenantId);
+        var targets = (userIds ?? new()).Distinct().Where(id => id != me && team.ContainsKey(id) && !_rooms.Contains(meetingId, id.ToString())).Take(50).ToList();
+        var call = new IncomingCallDto(meetingId, meeting.Title, Context.User!.DisplayName(), Context.User!.Initials(), Context.User!.AvatarTone(),
+            $"/meetings/room/{meetingId}")
+        {
+            CallerId = me.ToString()
+        };
+        var rung = targets.Where(id => online.Contains(id.ToString())).ToList();
+        if (rung.Count > 0) await Clients.Users(rung.Select(id => id.ToString()).ToList()).SendAsync("IncomingCall", call);
+        // tell the others in the call who is being added
+        if (rung.Count > 0)
+            await Clients.OthersInGroup(MeetingGroup(meetingId)).SendAsync("PeopleRung", meetingId, Context.User!.DisplayName(), rung.Select(id => team[id].DisplayName).ToList());
+        return new RingResultDto(rung.Select(id => team[id].DisplayName).ToList(),
+                                 targets.Where(id => !online.Contains(id.ToString())).Select(id => team[id].DisplayName).ToList());
     }
 
     /// <summary>Calls ringing for me right now (a page that was asleep or reconnecting asks on wake-up).</summary>
