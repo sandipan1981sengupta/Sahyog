@@ -17,7 +17,7 @@
                 back.href = "/chat";
                 back.className = "sn-chat-back sn-m-only";
                 back.setAttribute("aria-label", "Back to chats");
-                back.innerHTML = '<i class="fa fa-chevron-left" aria-hidden="true"></i>';
+                back.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>';
                 left.prepend(back);
             }
         }
