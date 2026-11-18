@@ -84,6 +84,7 @@
     };
     const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+    let speakerId = null, peopleById = new Map(), speakerT = null;
     async function refreshPeople() {
         let people = [];
         try {
@@ -94,15 +95,27 @@
         }
         $("peopleCount").textContent = people.length || 1;
         $("peopleCount2").textContent = people.length || 1;
+        const me = String(cfg.displayName || "").trim().toLowerCase();
         $("peopleList").innerHTML = people.map((p, i) => {
             const name = p.displayName || "Guest";
             const guest = /\(guest\)/i.test(name);
-            return `<div class="people-row">
-                        <span class="avatar av-36 tone-${guest ? 3 : i % 6}">${esc(initials(name))}</span>
-                        <span>${esc(name.replace(/\s*\(guest\)/i, ""))}</span>
-                        <span class="tag">${p.role === "moderator" ? "Host" : guest ? "Guest" : ""}</span>
+            const clean = name.replace(/\s*\(guest\)/i, "");
+            const isMe = clean.trim().toLowerCase() === me;
+            const role = p.role === "moderator" ? '<span class="role host">Host</span>' : guest ? '<span class="role guest">Guest</span>' : "";
+            return `<div class="people-row ${speakerId && p.id === speakerId ? "speaking" : ""}" data-pid="${esc(p.id || "")}" style="--i:${i}">
+                        <span class="pr-av"><span class="avatar av-36 tone-${guest ? 3 : i % 6}">${esc(initials(clean))}</span></span>
+                        <span class="pr-name">${esc(clean)}${isMe ? ' <small>(you)</small>' : ""}</span>
+                        <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+                        ${role}
                     </div>`;
         }).join("");
+        // small stack of faces in the top bar
+        const stack = $("avatarStack");
+        if (stack) stack.innerHTML = people.slice(0, 3).map((p, i) => {
+            const nm = (p.displayName || "Guest").replace(/\s*\(guest\)/i, "");
+            return `<span class="avatar tone-${/\(guest\)/i.test(p.displayName || "") ? 3 : i % 6}">${esc(initials(nm))}</span>`;
+        }).join("");
+        peopleById = new Map(people.map((p) => [p.id, (p.displayName || "Guest").replace(/\s*\(guest\)/i, "")]));
     }
 
     // ---------- dock ----------
@@ -244,6 +257,34 @@
     api.addListener("participantJoined", () => setTimeout(notePeople, 300));
     const othersInCall = () => { try { return Math.max(0, (api.getNumberOfParticipants?.() || 1) - 1); } catch { return 0; } };
 
+    // ---------- Copy guest link: puts the link on the clipboard, to paste into WhatsApp, mail, Teams… ----------
+    document.querySelectorAll("[data-copy]").forEach((btn) => {
+        const label = btn.textContent;
+        btn.addEventListener("click", async () => {
+            const src = document.querySelector(btn.dataset.copy);
+            const link = (src?.value || src?.textContent || "").trim();
+            if (!link) return;
+            let ok = false;
+            try { await navigator.clipboard.writeText(link); ok = true; }
+            catch {
+                // older browsers / no permission: copy through a hidden text box
+                const t = document.createElement("textarea");
+                t.value = link; t.setAttribute("readonly", ""); t.style.position = "fixed"; t.style.opacity = "0";
+                document.body.appendChild(t); t.select();
+                try { ok = document.execCommand("copy"); } catch { }
+                t.remove();
+            }
+            if (ok) {
+                btn.textContent = "Copied \u2713";
+                btn.classList.add("copied");
+                setTimeout(() => { btn.textContent = label; btn.classList.remove("copied"); }, 2200);
+                notice("Guest link copied", `Paste it into WhatsApp, mail or chat. Anyone with it can join as a guest, no account needed. ${link}`, "ring");
+            } else {
+                window.prompt("Copy this guest link:", link);
+            }
+        });
+    });
+
     if (cfg.offlineNote) setTimeout(() => notice("Not online", cfg.offlineNote, "declined"), 1200);
 
     // ---------- Add people: ring team members into this call ----------
@@ -361,6 +402,22 @@
     api.addListener("screenSharingStatusChanged", ({ on }) =>
         setBtn("shareBtn", on, "sharing", on ? "Stop sharing your screen" : "Share your screen", "shareLabel", on ? "Stop share" : "Share"));
     api.addListener("tileViewChanged", ({ enabled }) => setBtn("tileBtn", enabled, "active"));
+    // who is talking: their row lights up with moving sound bars, and a chip on the video shows their name
+    api.addListener("dominantSpeakerChanged", ({ id }) => {
+        speakerId = id;
+        document.querySelectorAll(".people-row").forEach((r) => r.classList.toggle("speaking", r.dataset.pid === id));
+        const name = peopleById.get(id);
+        const chip = $("speakerChip");
+        if (chip && name) {
+            $("speakerName").textContent = name;
+            chip.hidden = false;
+            chip.classList.remove("show"); void chip.offsetWidth; chip.classList.add("show");
+            clearTimeout(speakerT);
+            speakerT = setTimeout(() => chip.classList.remove("show"), 4000);
+        }
+        $("jaas")?.parentElement.classList.add("talking");
+        clearTimeout(window.__snTalk); window.__snTalk = setTimeout(() => $("jaas")?.parentElement.classList.remove("talking"), 1800);
+    });
     // someone shares a screen: give it the whole width (the panel slides away, and comes back when sharing stops)
     api.addListener("contentSharingParticipantsChanged", ({ data }) => {
         const sharing = Array.isArray(data) && data.length > 0;
