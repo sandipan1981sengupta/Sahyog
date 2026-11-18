@@ -102,3 +102,9 @@ public sealed record CallPersonDto(Guid UserId, string Name, string Initials, in
 
 /// <summary>Who was rung into a call, and who couldn't be (offline).</summary>
 public sealed record RingResultDto(List<string> Rung, List<string> Offline);
+
+/// <summary>One message in a call's chat (text or a shared file). SenderId is null for a guest.</summary>
+public sealed record CallChatMessageDto(long MessageId, Guid MeetingId, Guid? SenderId, string SenderName, int SenderTone,
+    string? Body, Guid? FileId, string? FileName, string? ContentType, long? SizeBytes, DateTime SentUtc);
+
+public sealed record CallChatFileDto(Guid MeetingId, string FileName, string ContentType, long SizeBytes, string StoragePath);

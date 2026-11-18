@@ -20,9 +20,11 @@ public sealed class ChatHub : Hub
     private readonly MeetingRoomTracker _rooms;
     private readonly ICallLogService _calls;
     private readonly IUserService _users;
+    private readonly ICallChatService _callChat;
 
-    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls, IUserService users)
+    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls, IUserService users, ICallChatService callChat)
     {
+        _callChat = callChat;
         _users = users;
         _calls = calls;
         _chat = chat;
@@ -186,6 +188,40 @@ public sealed class ChatHub : Hub
         if (note is not null && await _meetings.GetAsync(tenantId, meetingId) is { } meeting)
             await PostNoteAsync(tenantId, meeting.ChannelId, userId, note);
         await LeaveRoomAsync(tenantId, meetingId, note);
+    }
+
+    // ---------- in a call: chat and reactions ----------
+
+    /// <summary>The chat of this call so far (null = 25_CallChat.sql not run yet).</summary>
+    public async Task<List<CallChatMessageDto>?> CallChatHistory(Guid meetingId)
+    {
+        var (tenantId, _) = Caller();
+        if (await _meetings.GetAsync(tenantId, meetingId) is null) return new();
+        return await _callChat.ListAsync(tenantId, meetingId);
+    }
+
+    /// <summary>Sends a message to everyone in the call. Returns an error text, or null when sent.</summary>
+    public async Task<string?> CallChatSend(Guid meetingId, string body)
+    {
+        var (tenantId, me) = Caller();
+        body = (body ?? "").Trim();
+        if (body.Length == 0) return null;
+        if (body.Length > 2000) body = body[..2000];
+        if (!_rooms.Contains(meetingId, me.ToString())) return "Join the call to send messages.";
+        var (status, message) = await _callChat.AddAsync(tenantId, meetingId, me, Context.User!.DisplayName(), Context.User!.AvatarTone(), body);
+        if (status == 9) return "Run database/25_CallChat.sql (or 99_ApplyAllUpdates.sql) to use chat in calls.";
+        if (status != 0 || message is null) return "Couldn't send. Try again.";
+        await Clients.Group(MeetingGroup(meetingId)).SendAsync("CallChat", message);
+        return null;
+    }
+
+    /// <summary>A reaction (👍 👏 ❤️ …) everyone in the call sees float up for a moment. Nothing is saved.</summary>
+    public async Task CallReact(Guid meetingId, string emoji, string id)
+    {
+        var (_, me) = Caller();
+        var allowed = new[] { "👍", "👏", "❤️", "😂", "😮", "🎉", "🙌", "🙏" };
+        if (!allowed.Contains(emoji) || !_rooms.Contains(meetingId, me.ToString())) return;
+        await Clients.Group(MeetingGroup(meetingId)).SendAsync("CallReaction", meetingId, emoji, Context.User!.DisplayName(), (id ?? "").Length > 40 ? id![..40] : id);
     }
 
     /// <summary>"Add people" in a call: everyone in my workspace, with whether they're online, on another call or already here.</summary>

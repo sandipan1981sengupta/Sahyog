@@ -799,3 +799,114 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0 !important; height: 
 .sn-tip, .sn-tip[popover], .toasts[popover] { overflow: visible !important; scrollbar-width: none; }
 .sn-tip::-webkit-scrollbar, .toasts[popover]::-webkit-scrollbar { display: none; width: 0 !important; height: 0 !important; }
 .sn-tip { box-sizing: border-box; width: max-content; height: auto; white-space: normal; }
+
+/* =====================================================================
+   Meeting: panel tabs (People / Chat), the call chat, reactions
+   ===================================================================== */
+.pane-tabs { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-right: 40px; border-radius: 14px;
+    background: rgba(2, 6, 23, .45); border: 1px solid var(--st-line, rgba(255,255,255,.1)); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35); }
+.pane-tabs button { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; border: 0; border-radius: 10px;
+    background: transparent; color: #94A3B8; font: 700 13px Inter, sans-serif; cursor: pointer; transition: color .25s ease; }
+.pane-tabs button.on { color: #fff; }
+.pt-pill { position: absolute; z-index: 0; top: 4px; left: 4px; height: 34px; border-radius: 10px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, .55), rgba(139, 92, 246, .55)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 8px 18px -8px rgba(139, 92, 246, .9);
+    transition: transform .42s cubic-bezier(.22, 1, .36, 1), width .42s cubic-bezier(.22, 1, .36, 1); }
+.pt-n { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 7px; display: inline-grid; place-items: center; font-size: 11px; font-weight: 800; background: rgba(255, 255, 255, .12); }
+.pt-n.new { background: #EC4899; color: #fff; }
+.pt-n[hidden] { display: none; }
+.pane { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; }
+.pane[hidden] { display: none; }
+.room-panel { display: flex; flex-direction: column; }
+
+/* chat */
+.pane-chat { position: relative; }
+.cc-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 4px 2px 8px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.15) transparent; }
+.cc-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 20px 10px; color: #94A3B8; }
+.cc-empty b { color: #E2E8F0; font-size: 14px; }
+.cc-empty small { font-size: 12px; line-height: 1.45; }
+.cc-empty-ic { font-size: 30px; filter: drop-shadow(0 8px 16px rgba(139, 92, 246, .5)); }
+.cc-msg { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; margin-top: 10px; animation: ccIn .32s cubic-bezier(.22, 1, .36, 1) both; }
+.cc-msg.same { margin-top: 2px; }
+.cc-msg.mine { align-items: flex-end; }
+@keyframes ccIn { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.cc-head { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #CBD5E1; }
+.cc-head b { font-weight: 700; }
+.cc-head time { color: #64748B; font-size: 11px; }
+.cc-head .avatar.av-22 { width: 22px; height: 22px; font-size: 9px; }
+.cc-guest { font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #BAE6FD; padding: 1px 6px; border-radius: 5px; background: rgba(14, 165, 233, .14); }
+.cc-bubble { max-width: 92%; padding: 8px 12px; border-radius: 14px 14px 14px 4px; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .07);
+    font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.cc-msg.mine .cc-bubble { border-radius: 14px 14px 4px 14px; background: linear-gradient(135deg, rgba(59, 130, 246, .5), rgba(139, 92, 246, .5)); border-color: rgba(167, 139, 250, .35); }
+.cc-bubble a { color: #93C5FD; }
+.cc-file { position: relative; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; max-width: 100%; padding: 10px 10px 10px 12px; border-radius: 14px;
+    background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .1); overflow: hidden; }
+.cc-msg.mine .cc-file { background: rgba(139, 92, 246, .22); border-color: rgba(167, 139, 250, .35); }
+.cc-thumb { grid-column: 1 / -1; display: block; margin: -2px -2px 4px; border-radius: 10px; overflow: hidden; }
+.cc-thumb img { display: block; max-width: 100%; max-height: 180px; object-fit: cover; }
+.cc-fic { font-size: 22px; }
+.cc-fmeta { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cc-fmeta b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-fmeta small { font-size: 11.5px; color: #94A3B8; }
+.cc-dl { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: rgba(255, 255, 255, .12); transition: background .2s ease, transform .2s ease; }
+.cc-dl:hover { background: #7C3AED; transform: translateY(-1px); }
+.cc-bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+.cc-bar i { display: block; width: 0; height: 100%; background: linear-gradient(90deg, #3B82F6, #EC4899); transition: width .2s ease; }
+.cc-compose { display: flex; align-items: center; gap: 6px; padding: 6px; border-radius: 16px; background: rgba(2, 6, 23, .55); border: 1px solid rgba(255, 255, 255, .1);
+    transition: border-color .2s ease, box-shadow .2s ease; }
+.cc-compose:focus-within { border-color: rgba(167, 139, 250, .6); box-shadow: 0 0 0 3px rgba(139, 92, 246, .15); }
+.cc-compose input[type=text] { flex: 1; min-width: 0; height: 36px; border: 0; outline: none; background: transparent; color: #fff; font: 14px Inter, sans-serif; padding: 0 6px; }
+.cc-attach, .cc-send { width: 36px; height: 36px; flex: none; border-radius: 11px; display: grid; place-items: center; cursor: pointer; border: 0; color: #CBD5E1; background: rgba(255, 255, 255, .06);
+    transition: background .2s ease, color .2s ease, transform .2s ease; }
+.cc-attach:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+.cc-send { color: #fff; background: linear-gradient(135deg, #3B82F6, #8B5CF6); box-shadow: 0 8px 18px -8px rgba(139, 92, 246, .9); }
+.cc-send:hover { transform: translateY(-1px); filter: brightness(1.1); }
+.cc-drop { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; border-radius: 18px; border: 2px dashed rgba(167, 139, 250, .8);
+    background: rgba(76, 29, 149, .55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); font-weight: 700; color: #fff; pointer-events: none; }
+.cc-drop[hidden] { display: none; }
+
+/* chat badge on the dock button */
+.dock-btn { position: relative; }
+.dock-badge { position: absolute; top: -4px; right: -4px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px; display: grid; place-items: center;
+    font: 800 10.5px Inter, sans-serif; color: #fff; background: linear-gradient(135deg, #EF4444, #EC4899); box-shadow: 0 0 0 2px #0C1022, 0 6px 14px -4px rgba(236, 72, 153, .9); }
+.dock-badge[hidden] { display: none; }
+.dock-badge.pop { animation: badgePop .5s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes badgePop { 0% { transform: scale(.3); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.toast.room-notice.chat { border-left-color: #60A5FA; }
+
+/* reactions: the tray above the button */
+.react-wrap { position: relative; }
+.react-tray { position: absolute; bottom: calc(100% + 14px); left: 50%; z-index: 20; display: flex; gap: 2px; padding: 6px; border-radius: 18px;
+    background: rgba(12, 16, 34, .92); border: 1px solid rgba(255, 255, 255, .12); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    box-shadow: 0 20px 40px -14px rgba(0, 0, 0, .9), 0 0 0 1px rgba(139, 92, 246, .15);
+    opacity: 0; transform: translate(-50%, 10px) scale(.92); transform-origin: 50% 100%; transition: opacity .2s ease, transform .28s cubic-bezier(.34, 1.56, .64, 1); }
+.react-tray.open { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.react-tray[hidden] { display: none; }
+.react-tray::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 12px; height: 12px; margin-left: -6px; transform: rotate(45deg);
+    background: rgba(12, 16, 34, .92); border-right: 1px solid rgba(255, 255, 255, .12); border-bottom: 1px solid rgba(255, 255, 255, .12); }
+.react-tray button { width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; font-size: 24px; cursor: pointer; line-height: 1;
+    transition: transform .2s cubic-bezier(.34, 1.56, .64, 1), background .15s ease; }
+.react-tray button:hover { transform: translateY(-4px) scale(1.25); background: rgba(255, 255, 255, .08); }
+.react-tray button.tap { animation: reactTap .35s ease; }
+@keyframes reactTap { 50% { transform: scale(.8); } }
+
+/* reactions floating up over the video */
+.react-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; border-radius: inherit; }
+.react-float { position: absolute; bottom: 70px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    animation: reactUp 3.4s cubic-bezier(.22, 1, .36, 1) forwards; }
+.rf-e { font-size: 46px; line-height: 1; filter: drop-shadow(0 10px 18px rgba(0, 0, 0, .55)); animation: reactPop .5s cubic-bezier(.34, 1.56, .64, 1); }
+.rf-n { padding: 3px 10px; border-radius: 999px; font: 700 12px Inter, sans-serif; color: #fff; background: rgba(2, 6, 23, .65); border: 1px solid rgba(255, 255, 255, .15);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); white-space: nowrap; }
+@keyframes reactUp {
+    0% { opacity: 0; transform: translate(0, 30px) rotate(0); }
+    12% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--drift, 0), -46vh) rotate(var(--spin, 0deg)); }
+}
+@keyframes reactPop { 0% { transform: scale(.2); } 70% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.react-spark { position: absolute; bottom: 90px; font-size: 22px; opacity: 0; animation: reactSpark 2.8s ease-out forwards; }
+@keyframes reactSpark {
+    0% { opacity: 0; transform: translate(0, 0) scale(.4); }
+    15% { opacity: .95; }
+    100% { opacity: 0; transform: translate(var(--drift, 0), -38vh) scale(.9); }
+}
+@media (prefers-reduced-motion: reduce) { .react-float { animation-duration: 2s; } .react-spark { display: none; } }

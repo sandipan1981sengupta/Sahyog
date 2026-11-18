@@ -321,6 +321,53 @@ public sealed class MeetingsController : Controller
         return RedirectToAction(nameof(Index), new { week = WeekOf(DateOnly.FromDateTime(local)).ToString("yyyy-MM-dd") });
     }
 
+    // ---------- files shared in a call's chat ----------
+
+    /// <summary>Shares a file in the call's chat (everyone in the call sees it; it counts toward storage).</summary>
+    [HttpPost("{id:guid}/chat/file")]
+    [RequestSizeLimit(200L * 1024 * 1024)]
+    public async Task<IActionResult> CallChatFile(Guid id, IFormFile file,
+        [FromServices] ICallChatService callChat, [FromServices] IFileStorage files, [FromServices] Microsoft.Extensions.Options.IOptions<StorageOptions> storage)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        if (file is null || file.Length == 0) return BadRequest(new { error = "Choose a file to share." });
+        var maxMb = storage.Value.MaxUploadMb;
+        if (file.Length > maxMb * 1024L * 1024L) return BadRequest(new { error = $"Files can be up to {maxMb} MB." });
+        if (!_rooms.Contains(id, Me.ToString())) return BadRequest(new { error = "Join the call to share files." });
+
+        string path;
+        await using (var stream = file.OpenReadStream())
+            path = await files.SaveAsync(tenantId, stream, Path.GetExtension(file.FileName), HttpContext.RequestAborted);
+        var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType;
+        var (status, message) = await callChat.AddAsync(tenantId, id, Me, User.DisplayName(), User.AvatarTone(), null,
+            Guid.NewGuid(), Path.GetFileName(file.FileName), contentType, file.Length, path);
+        if (status != 0 || message is null)
+        {
+            files.Delete(path);
+            return BadRequest(new { error = status switch
+            {
+                2 => "Storage full. Ask your admin to upgrade the plan.",
+                9 => "Run database/25_CallChat.sql (or 99_ApplyAllUpdates.sql) to share files in calls.",
+                _ => "Couldn't share the file."
+            } });
+        }
+        await _hub.Clients.Group(ChatHub.MeetingGroup(id)).SendAsync("CallChat", message);
+        return Json(message);
+    }
+
+    /// <summary>Downloads (or shows) a file shared in a call. Anyone in the workspace who was given the link.</summary>
+    [HttpGet("chat/file/{fileId:guid}")]
+    public async Task<IActionResult> CallChatDownload(Guid fileId, [FromServices] ICallChatService callChat, [FromServices] IFileStorage files)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var f = await callChat.GetFileAsync(tenantId, fileId);
+        if (f is null) return NotFound();
+        var inline = f.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) || f.ContentType == "application/pdf";
+        var stream = files.OpenRead(f.StoragePath);
+        return inline ? File(stream, f.ContentType, enableRangeProcessing: true)
+                      : File(stream, f.ContentType, f.FileName, enableRangeProcessing: true);
+    }
+
     private string SafeReturn(string? url) => !string.IsNullOrEmpty(url) && Url.IsLocalUrl(url) && url.StartsWith("/meetings") ? url : "/meetings";
 
     /// <summary>Deletes several meetings at once (e.g. "Delete ended"). Only yours, unless you're a workspace admin.</summary>

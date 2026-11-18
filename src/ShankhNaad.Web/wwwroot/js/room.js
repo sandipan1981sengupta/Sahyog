@@ -16,7 +16,7 @@
     const notice = (title, note, kind) => {
         const el = document.createElement("div");
         el.className = `toast room-notice ${kind || "left"}`;
-        el.innerHTML = `<span class="rn-ic">${kind === "declined" ? "&#128222;" : kind === "ring" ? "&#128276;" : "&#128075;"}</span>`
+        el.innerHTML = `<span class="rn-ic">${kind === "declined" ? "&#128222;" : kind === "ring" ? "&#128276;" : kind === "chat" ? "&#128172;" : "&#128075;"}</span>`
             + `<span class="rn-txt"><b>${esc(title)}</b>${note ? `<q>${esc(note)}</q>` : ""}</span>`;
         $("toasts").appendChild(el);
         setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 350); }, note ? 9000 : 5000);
@@ -283,6 +283,268 @@
                 window.prompt("Copy this guest link:", link);
             }
         });
+    });
+
+
+    // =====================================================================
+    // Panel tabs (People / Chat), the call chat, and reactions
+    // Team members talk through the server (messages are saved with the meeting);
+    // guests have no account, so everything is also passed on through the video
+    // service's own data channel, which reaches every browser in the call.
+    // =====================================================================
+    const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const seen = new Set();
+    const myName = String(cfg.displayName || "Guest").replace(/\s*\(guest\)/i, "");
+    const myTone = cfg.isGuest ? 3 : 1;
+
+    // ---- tabs ----
+    let pane = "people", unread = 0;
+    const tabsEl = document.querySelector(".pane-tabs");
+    const movePill = () => {
+        const on = tabsEl?.querySelector("button.on"), pill = tabsEl?.querySelector(".pt-pill");
+        if (on && pill) { pill.style.width = on.offsetWidth + "px"; pill.style.transform = `translateX(${on.offsetLeft - 4}px)`; }
+    };
+    const paintUnread = () => {
+        const b = $("chatBadge"), t = $("chatUnread");
+        [b, t].forEach((x) => { if (!x) return; x.textContent = unread > 9 ? "9+" : String(unread); x.hidden = unread === 0; });
+        if (b && unread) { b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop"); }
+    };
+    const showPane = (name) => {
+        pane = name;
+        $("panePeople").hidden = name !== "people";
+        $("paneChat").hidden = name !== "chat";
+        tabsEl?.querySelectorAll("[data-pane]").forEach((b) => { const on = b.dataset.pane === name; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); });
+        setBtn("chatBtn", name === "chat" && panelOpen, "active");
+        movePill();
+        if (name === "chat") { unread = 0; paintUnread(); scrollChat(true); setTimeout(() => $("ccInput")?.focus(), 60); }
+    };
+    tabsEl?.querySelectorAll("[data-pane]").forEach((b) => b.addEventListener("click", () => showPane(b.dataset.pane)));
+    requestAnimationFrame(movePill);
+    window.addEventListener("resize", movePill);
+    const chatVisible = () => panelOpen && pane === "chat" && !document.hidden;
+    $("chatBtn").onclick = () => {
+        if (panelOpen && pane === "chat") { setPanel(false); setBtn("chatBtn", false, "active"); return; }
+        if (!panelOpen) setPanel(true);
+        showPane("chat");
+    };
+    // keep the Chat button in step when the panel is hidden or shown some other way
+    new MutationObserver(() => setBtn("chatBtn", panelOpen && pane === "chat", "active"))
+        .observe(document.body, { attributes: true, attributeFilter: ["class"] });
+
+    // ---- the chat list ----
+    const list = $("ccList");
+    const fmtSize = (b) => b == null ? "" : b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(0)} KB` : `${(b / 1048576).toFixed(1)} MB`;
+    const fmtTime = (d) => new Date(d).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const linkify = (t) => esc(t).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    const fileIcon = (name, type) => {
+        const ext = (name.split(".").pop() || "").toLowerCase();
+        if ((type || "").startsWith("image/")) return "🖼️";
+        if (ext === "pdf") return "📕";
+        if (["doc", "docx", "txt", "rtf"].includes(ext)) return "📄";
+        if (["xls", "xlsx", "csv"].includes(ext)) return "📊";
+        if (["ppt", "pptx"].includes(ext)) return "📽️";
+        if (["zip", "rar", "7z"].includes(ext)) return "🗜️";
+        return "📎";
+    };
+    let lastSender = null;
+    function scrollChat(force) {
+        const near = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+        if (force || near) list.scrollTop = list.scrollHeight;
+    }
+    function addMessage(m) {
+        // m: { id, name, tone, mine, body, file: {id, name, type, size} | null, at, guest }
+        if (m.id && seen.has(m.id)) return;
+        if (m.id) seen.add(m.id);
+        $("ccEmpty")?.remove();
+        const same = lastSender === (m.mine ? "\u0001me" : m.name);
+        lastSender = m.mine ? "\u0001me" : m.name;
+        const el = document.createElement("div");
+        el.className = `cc-msg ${m.mine ? "mine" : ""} ${same ? "same" : ""}`;
+        let content = "";
+        if (m.file) {
+            const isImg = (m.file.type || "").startsWith("image/") && m.file.id;
+            const href = m.file.id ? `/meetings/chat/file/${m.file.id}` : null;
+            content = `<div class="cc-file">`
+                + (isImg ? `<a class="cc-thumb" href="${href}" target="_blank" rel="noopener"><img src="${href}" alt="${esc(m.file.name)}" loading="lazy" /></a>` : "")
+                + `<span class="cc-fic" aria-hidden="true">${fileIcon(m.file.name, m.file.type)}</span>`
+                + `<span class="cc-fmeta"><b>${esc(m.file.name)}</b><small>${fmtSize(m.file.size)}${href ? "" : " · open the call as a team member to download"}</small></span>`
+                + (href ? `<a class="cc-dl" href="${href}" download title="Download"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M5 20h14" /></svg></a>` : "")
+                + `</div>`;
+        } else content = `<div class="cc-bubble">${linkify(m.body || "")}</div>`;
+        el.innerHTML = (same ? "" : `<div class="cc-head">${m.mine ? "" : `<span class="avatar av-22 tone-${m.tone ?? 3}">${esc(initials(m.name))}</span>`}<b>${m.mine ? "You" : esc(m.name)}</b>${m.guest ? '<span class="cc-guest">Guest</span>' : ""}<time>${fmtTime(m.at || Date.now())}</time></div>`) + content;
+        list.appendChild(el);
+        scrollChat(m.mine);
+        if (!m.mine && !m.history) {
+            if (!chatVisible()) {
+                unread++; paintUnread();
+                notice(m.name, m.file ? `shared ${m.file.name}` : (m.body || "").slice(0, 140), "chat");
+            }
+        }
+    }
+    const fromServer = (m, history) => addMessage({
+        id: "db" + m.messageId, name: m.senderName, tone: m.senderTone, mine: !!m.senderId && !!cfg.userId && String(m.senderId).toLowerCase() === String(cfg.userId).toLowerCase(),
+        body: m.body, at: m.sentUtc, guest: !m.senderId, history,
+        file: m.fileId ? { id: m.fileId, name: m.fileName, type: m.contentType, size: m.sizeBytes } : null
+    });
+
+    // ---- passing things to everyone through the video service (reaches guests too) ----
+    const broadcast = (payload) => {
+        try {
+            const text = JSON.stringify({ k: "sn", ...payload });
+            (api.getParticipantsInfo?.() || []).forEach((p) => {
+                if (p.participantId) api.executeCommand("sendEndpointTextMessage", p.participantId, text);
+            });
+        } catch { /* the data channel isn't ready yet */ }
+    };
+    api.addListener("endpointTextMessageReceived", (e) => {
+        let d = null;
+        try { d = JSON.parse(e?.data?.eventData?.text || ""); } catch { return; }
+        if (!d || d.k !== "sn") return;
+        if (d.t === "r") showReaction(d.e, d.n, d.id);
+        if (d.t === "m") {
+            // team members already get team messages from the server; they only take guests' messages from here
+            if (!cfg.isGuest && !d.g) return;
+            addMessage({ id: d.id, name: d.n, tone: d.tone, body: d.body, file: d.file || null, at: Date.now(), guest: !!d.g });
+        }
+    });
+
+    // ---- sending ----
+    const input = $("ccInput");
+    $("ccForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const body = input.value.trim();
+        if (!body) return;
+        input.value = "";
+        if (cfg.isGuest || !hub) {
+            const id = uid();
+            addMessage({ id, name: myName, mine: true, body, at: Date.now(), guest: true });
+            broadcast({ t: "m", id, n: myName, tone: 3, body, g: 1 });
+            return;
+        }
+        try {
+            const err = await hub.invoke("CallChatSend", cfg.meetingId, body);
+            if (err) { toast(err); input.value = body; return; }
+            broadcast({ t: "m", id: uid(), n: myName, tone: myTone, body, g: 0 });   // guests see it too
+        } catch { toast("Couldn't send. Check your connection."); input.value = body; }
+    });
+
+    // files (team members): the paper clip, or drag a file onto the chat
+    const uploadFile = (file) => {
+        if (!file || cfg.isGuest) return;
+        const row = document.createElement("div");
+        row.className = "cc-msg mine cc-uploading";
+        row.innerHTML = `<div class="cc-file"><span class="cc-fic" aria-hidden="true">${fileIcon(file.name, file.type)}</span><span class="cc-fmeta"><b>${esc(file.name)}</b><small>Sending… <span class="cc-pct">0%</span></small></span><i class="cc-bar"><i></i></i></div>`;
+        $("ccEmpty")?.remove();
+        list.appendChild(row); scrollChat(true);
+        const fd = new FormData(); fd.append("file", file);
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `/meetings/${cfg.meetingId}/chat/file`);
+        const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
+        xhr.setRequestHeader("RequestVerificationToken", token);
+        xhr.upload.onprogress = (ev) => {
+            if (!ev.lengthComputable) return;
+            const pct = Math.round(ev.loaded * 100 / ev.total);
+            row.querySelector(".cc-pct").textContent = pct + "%";
+            row.querySelector(".cc-bar i").style.width = pct + "%";
+        };
+        xhr.onload = () => {
+            row.remove();
+            let res = null; try { res = JSON.parse(xhr.responseText); } catch { }
+            if (xhr.status >= 200 && xhr.status < 300 && res) {
+                fromServer(res, false);
+                broadcast({ t: "m", id: uid(), n: myName, tone: myTone, g: 0, file: { name: res.fileName, size: res.sizeBytes, type: res.contentType } });
+            } else toast(res?.error || "Couldn't share the file.");
+        };
+        xhr.onerror = () => { row.remove(); toast("Couldn't share the file. Check your connection."); };
+        xhr.send(fd);
+    };
+    $("ccFile")?.addEventListener("change", (e) => { [...e.target.files].forEach(uploadFile); e.target.value = ""; });
+    const chatPane = $("paneChat"), drop = $("ccDrop");
+    if (!cfg.isGuest) {
+        let depth = 0;
+        chatPane.addEventListener("dragenter", (e) => { if (e.dataTransfer?.types?.includes("Files")) { depth++; drop.hidden = false; e.preventDefault(); } });
+        chatPane.addEventListener("dragover", (e) => { if (e.dataTransfer?.types?.includes("Files")) e.preventDefault(); });
+        chatPane.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; drop.hidden = true; } });
+        chatPane.addEventListener("drop", (e) => { e.preventDefault(); depth = 0; drop.hidden = true; [...(e.dataTransfer?.files || [])].forEach(uploadFile); });
+        // paste a screenshot straight into the message box
+        input.addEventListener("paste", (e) => { const f = [...(e.clipboardData?.files || [])][0]; if (f) { e.preventDefault(); uploadFile(f); } });
+    }
+
+    // history and live messages (team members)
+    if (hub) {
+        hub.on("CallChat", (m) => {
+            if (String(m.meetingId).toLowerCase() !== String(cfg.meetingId).toLowerCase()) return;
+            fromServer(m, false);
+        });
+        const loadHistory = async () => {
+            if (hub.state !== "Connected") return setTimeout(loadHistory, 800);
+            try {
+                const items = await hub.invoke("CallChatHistory", cfg.meetingId);
+                if (items === null) { $("ccEmpty")?.querySelector("small")?.replaceChildren("Run database/25_CallChat.sql to turn on chat in calls."); return; }
+                (items || []).forEach((m) => fromServer(m, true));
+                scrollChat(true);
+            } catch { }
+        };
+        loadHistory();
+    }
+
+    // ---- reactions: 👍 👏 ❤️ … float up over the video for everyone ----
+    const tray = $("reactTray"), reactBtn = $("reactBtn");
+    const layer = $("reactLayer");
+    function showReaction(emoji, name, id) {
+        if (id && seen.has(id)) return;
+        if (id) seen.add(id);
+        const el = document.createElement("div");
+        el.className = "react-float";
+        el.style.left = (6 + Math.random() * 22) + "%";
+        el.style.setProperty("--drift", (Math.random() * 60 - 30).toFixed(0) + "px");
+        el.style.setProperty("--spin", (Math.random() * 24 - 12).toFixed(0) + "deg");
+        el.innerHTML = `<span class="rf-e">${esc(emoji)}</span><span class="rf-n">${esc(name)}</span>`;
+        layer.appendChild(el);
+        setTimeout(() => el.remove(), 3600);
+        // a burst for applause and party
+        if (emoji === "👏" || emoji === "🎉" || emoji === "🙌") {
+            for (let i = 0; i < 5; i++) {
+                const s = document.createElement("span");
+                s.className = "react-spark";
+                s.textContent = emoji;
+                s.style.left = `calc(${el.style.left} + ${Math.round(Math.random() * 80 - 20)}px)`;
+                s.style.animationDelay = (120 + i * 110) + "ms";
+                s.style.setProperty("--drift", (Math.random() * 80 - 40).toFixed(0) + "px");
+                layer.appendChild(s);
+                setTimeout(() => s.remove(), 3400);
+            }
+        }
+    }
+    const openTray = (open) => {
+        tray.hidden = !open;
+        reactBtn.setAttribute("aria-expanded", String(open));
+        reactBtn.classList.toggle("active", open);
+        if (open) requestAnimationFrame(() => tray.classList.add("open")); else tray.classList.remove("open");
+    };
+    reactBtn.onclick = (e) => { e.stopPropagation(); openTray(tray.hidden); };
+    document.addEventListener("click", (e) => { if (!tray.hidden && !e.target.closest(".react-wrap")) openTray(false); });
+    let lastReact = 0;
+    tray.querySelectorAll("[data-emoji]").forEach((b) => b.addEventListener("click", () => {
+        const now = Date.now();
+        if (now - lastReact < 450) return;   // no flooding
+        lastReact = now;
+        const emoji = b.dataset.emoji, id = uid();
+        showReaction(emoji, "You", id);
+        b.classList.remove("tap"); void b.offsetWidth; b.classList.add("tap");
+        if (hub && hub.state === "Connected") hub.invoke("CallReact", cfg.meetingId, emoji, id).catch(() => { });
+        broadcast({ t: "r", e: emoji, n: myName, id });
+    }));
+    if (hub) hub.on("CallReaction", (meetingId, emoji, name, id) => {
+        if (String(meetingId).toLowerCase() !== String(cfg.meetingId).toLowerCase()) return;
+        showReaction(emoji, name, id);
+    });
+    // keys: R = reactions, C = chat
+    document.addEventListener("keydown", (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, textarea, [contenteditable]")) return;
+        if (e.key === "r" || e.key === "R") { e.preventDefault(); openTray(tray.hidden); }
+        if (e.key === "c" || e.key === "C") { e.preventDefault(); $("chatBtn").click(); }
+        if (e.key === "Escape" && !tray.hidden) openTray(false);
     });
 
     if (cfg.offlineNote) setTimeout(() => notice("Not online", cfg.offlineNote, "declined"), 1200);
