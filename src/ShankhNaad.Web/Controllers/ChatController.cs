@@ -405,6 +405,16 @@ public sealed partial class ChatController : Controller
         return Json(message);
     }
 
+    /// <summary>Reactions on the messages on screen: /chat/reactions?ids=1,2,3</summary>
+    [HttpGet("reactions")]
+    public async Task<IActionResult> Reactions(string? ids, [FromServices] IReactionService reactions)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var list = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => long.TryParse(x, out var n) ? n : 0).Where(n => n > 0);
+        return Json(await reactions.GetAsync(tenantId, Me, list));
+    }
+
     [HttpGet("file/{id:guid}")]
     public async Task<IActionResult> Download(Guid id)
     {

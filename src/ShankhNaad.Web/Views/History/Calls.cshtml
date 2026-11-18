@@ -13,7 +13,7 @@
     var people = recent.Where(c => c.IsDirect && c.OtherId is not null).Select(c => c.OtherId).Distinct().Count();
 }
 
-<main class="sn-page">
+<main class="sn-page sn-page-fixed">
     <div class="sn-head glass">
         <action-header id="CallsHeader"
                        heading="Calls"

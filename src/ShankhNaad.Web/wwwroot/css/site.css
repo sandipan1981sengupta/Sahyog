@@ -910,3 +910,88 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0 !important; height: 
     100% { opacity: 0; transform: translate(var(--drift, 0), -38vh) scale(.9); }
 }
 @media (prefers-reduced-motion: reduce) { .react-float { animation-duration: 2s; } .react-spark { display: none; } }
+
+/* meeting page: the side panel never scrolls sideways */
+.room-panel { overflow-x: hidden; }
+.room-panel > *:not(.panel-close) { min-width: 0; }
+.panel-off .room-panel > * { min-width: 260px; }
+
+/* glass scroll bars (same as the rest of the app) */
+/* Chrome/Edge use the glass ::-webkit-scrollbar styles below (setting scrollbar-width there would switch them off);
+   Firefox gets the thin see-through version. The page itself keeps no scroll bar. */
+@supports not selector(::-webkit-scrollbar) {
+    * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .22) transparent; }
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+*::-webkit-scrollbar-track { background: transparent; margin: 6px; }
+*::-webkit-scrollbar-thumb { border-radius: 999px; border: 3px solid transparent; background-clip: padding-box;
+    background-color: rgba(255, 255, 255, .18); background-image: linear-gradient(180deg, rgba(255, 255, 255, .25), rgba(255, 255, 255, 0));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); }
+*::-webkit-scrollbar-thumb:hover { background-image: linear-gradient(180deg, #3B82F6, #8B5CF6 55%, #EC4899); background-color: transparent;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25), 0 0 14px rgba(139, 92, 246, .55); }
+*::-webkit-scrollbar-corner, *::-webkit-scrollbar-button { display: none; background: transparent; }
+
+/* =====================================================================
+   Meeting page on phones and tablets
+   ===================================================================== */
+.panel-scrim { display: none; }
+@media (max-width: 900px) {
+    .room-body { overflow: hidden; }
+    .room { height: 100dvh; min-height: 0; padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); gap: 8px; }
+    .room-head { grid-template-columns: minmax(0, 1fr) auto !important; row-gap: 8px; padding: 6px; border-radius: 18px; }
+    .room-head > .island { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; justify-content: center; height: 38px; gap: 8px; }
+    .room-head > :last-child { grid-column: 2; grid-row: 1; justify-self: end; }
+    .room-title { font-size: 14.5px; max-width: 52vw; }
+    .room-sub { font-size: 11px; }
+    .room-mark, .room-mark img { width: 34px; height: 34px; border-radius: 11px; }
+    .room-head .glass-dark-btn { width: 36px; height: 36px; }
+    .island .secure, .island .island-sep { display: none; }
+    .guest-btn { height: 36px; padding: 0 12px; }
+    .guest-btn span { display: none; }
+    .room-main { flex: 1 1 auto; min-height: 0; position: relative; }
+    .stage { min-height: 0 !important; flex: 1 1 auto; border-radius: 20px; }
+    .stage-chip { left: 10px; bottom: 10px; }
+    .panel-peek { display: none !important; }
+
+    /* the side panel slides in over the video */
+    .room-panel, .panel-off .room-panel {
+        display: flex !important; position: fixed; z-index: 60; top: 8px; bottom: 8px; right: 8px; left: auto; margin: 0 !important;
+        width: min(380px, calc(100vw - 16px)); flex-basis: auto !important; padding: 16px 12px 12px !important;
+        border-radius: 24px; background: rgba(10, 14, 30, .94);
+        transition: transform .42s cubic-bezier(.22, 1, .36, 1), opacity .3s ease !important;
+    }
+    .panel-off .room-panel { transform: translateX(calc(100% + 16px)); opacity: 0; pointer-events: none; }
+    .room-panel > *:not(.panel-close) { min-width: 0 !important; }
+    .panel-scrim { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(2, 6, 23, .55); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+        transition: opacity .3s ease; }
+    .panel-off .panel-scrim { opacity: 0; pointer-events: none; }
+
+    /* the controls: one row that scrolls sideways if it doesn't fit */
+    .dock { align-self: stretch; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overflow-y: visible; padding: 8px 8px 6px; border-radius: 20px;
+        scroll-snap-type: x proximity; scrollbar-width: none; }
+    .dock::-webkit-scrollbar { display: none; }
+    .dock-item { min-width: 54px; font-size: 10px; gap: 4px; scroll-snap-align: start; }
+    .dock-btn { width: 44px; height: 44px; border-radius: 14px; }
+    .dock-btn svg { width: 20px; height: 20px; }
+    .dock-sep { display: none; }
+    .leave-btn { height: 44px; padding: 0 14px; border-radius: 14px; font-size: 14px; }
+    .dock-item:has(#fullBtn) { display: none; }   /* phones are full screen already */
+
+    /* reactions tray: centred above the controls */
+    .react-tray { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); flex-wrap: wrap; justify-content: center; width: min(360px, calc(100vw - 24px)); }
+    .react-tray::after { display: none; }
+    .react-tray button { width: 40px; height: 40px; font-size: 22px; }
+    .rf-e { font-size: 38px; }
+
+    /* pop-ups */
+    .add-dlg, .leave-sheet { width: calc(100vw - 16px); }
+    .leave-sheet { right: 8px; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+    .toasts { left: 8px; right: 8px; }
+    .cc-compose input[type=text] { font-size: 16px; }   /* no zoom-in on iPhone */
+    .add-dlg-search input { font-size: 16px; }
+    .sn-tip { display: none !important; }
+}
+@media (max-width: 420px) {
+    .live-badge { padding: 0 7px; letter-spacing: .06em; }
+    .people-pill small { display: none; }
+}

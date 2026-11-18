@@ -108,3 +108,6 @@ public sealed record CallChatMessageDto(long MessageId, Guid MeetingId, Guid? Se
     string? Body, Guid? FileId, string? FileName, string? ContentType, long? SizeBytes, DateTime SentUtc);
 
 public sealed record CallChatFileDto(Guid MeetingId, string FileName, string ContentType, long SizeBytes, string StoragePath);
+
+/// <summary>One person's reaction on a chat message.</summary>
+public sealed record ReactionDto(long MessageId, string Emoji, Guid UserId, string Name);

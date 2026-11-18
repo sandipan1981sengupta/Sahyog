@@ -1,0 +1,237 @@
+/* =====================================================================
+   ShankhNaad · phones and tablets
+   Loaded after every other style sheet. Desktop is unchanged.
+     ≤ 1100px  tablet: narrower rail, panels wrap, 2-column cards
+     ≤ 760px   phone:  the rail becomes a bottom tab bar (like the Teams app),
+                       chat shows the list OR the conversation, panels become sheets
+   ===================================================================== */
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.sn-body button, .sn-body a, .sn-body [role="button"] { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.sn-body dialog, .sn-body .mb-dialog { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+.sn-m-only { display: none !important; }
+
+/* ---------------------------------------------------------------- tablet */
+@media (max-width: 1100px) {
+    .sn-shell { gap: 12px; padding: 12px; }
+    .sn-rail { flex-basis: 76px; }
+    .sn-rail .report-rail { width: 76px !important; }
+    .sn-topbar .strip-extra .sn-pill:last-child { display: none; }          /* the clock */
+    .sn-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    .sn-meet-row, .sn-team-row { flex-wrap: wrap; }
+    .sn-side { flex: 1 1 100% !important; max-width: none !important; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+    /* chat: Details opens over the conversation instead of squeezing it */
+    .sn-chat-row { flex-wrap: nowrap; position: relative; }
+    .sn-body .chat-info { position: absolute; right: 0; top: 0; bottom: 0; z-index: 30; width: min(340px, 86vw); max-width: none !important;
+        box-shadow: -20px 0 50px -20px rgba(2, 6, 23, .55); border-radius: 26px; }
+    .sn-body:not(.sn-hide-info) .chat-info { transform: none; opacity: 1; }
+}
+
+/* ---------------------------------------------------------------- phone */
+@media (max-width: 760px) {
+    .sn-m-only { display: revert !important; }
+    .sn-d-only { display: none !important; }
+
+    /* the page: one column, room at the bottom for the tab bar */
+    .sn-shell { flex-direction: column; flex-wrap: nowrap; height: 100dvh; min-height: 0; padding: 8px 8px 0; gap: 8px; }
+    .sn-col { flex: 1 1 auto; min-height: 0; gap: 8px; padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+    .sn-body-row { flex: 1 1 auto; min-height: 0; flex-wrap: nowrap; }
+    .sn-page, .sn-chat-page { gap: 10px; }
+
+    /* the rail → a floating glass tab bar at the bottom */
+    .sn-rail { position: fixed; z-index: 60; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); height: 64px;
+        flex: none !important; flex-direction: row; align-items: stretch; padding: 0 6px; border-radius: 22px;
+        box-shadow: 0 18px 40px -16px rgba(2, 6, 23, .6), inset 0 1px 0 rgba(255, 255, 255, .35); }
+    .sn-rail .report-rail { width: 100% !important; height: 100% !important; flex-direction: row !important; padding: 0 !important; display: flex; align-items: center; }
+    .sn-rail .rr-logo, .sn-rail .rr-divider, .sn-rail .rr-active-indicator, .sn-rail .rr-carets, .sn-rail .rr-footer-image, .sn-rail-foot { display: none !important; }
+    .sn-rail .rr-items { display: flex !important; flex-direction: row !important; justify-content: space-around; align-items: center; width: 100%; height: 100%; margin: 0; padding: 0; gap: 0; }
+    .sn-rail .rr-item { flex: 1 1 0; margin: 0 !important; display: flex; justify-content: center; }
+    .sn-rail .rr-item-btn { width: 100% !important; max-width: 76px; height: 54px !important; padding: 4px 2px !important; border-radius: 16px !important; gap: 3px !important; }
+    .sn-rail .rr-item-icon { font-size: 19px !important; }
+    .sn-rail .rr-item-label { font-size: 10.5px !important; }
+    .sn-rail .sn-rail-badge { top: 2px; right: calc(50% - 22px); }
+    .sn-rail-pill, [style*="sn-rail-pill"] { display: none !important; }
+
+    /* top bar: just the workspace and you */
+    .sn-topbar { padding: 4px 6px !important; border-radius: 18px !important; }
+    .sn-topbar .strip-extra .sn-pill { display: none !important; }
+    .sn-topbar .strip-extra #snConn { display: inline-flex !important; width: 30px; padding: 0 !important; justify-content: center; }
+    .sn-topbar .strip-extra #snConn span:last-child { display: none; }
+    .sn-topbar .strip-heading { font-size: 15px !important; }
+    .sn-topbar .strip-subheading { font-size: 11px !important; }
+    .sn-topbar .strip-user-info, .sn-topbar .strip-user-time { display: none !important; }
+    .sn-topbar .strip-icon-frame { width: 34px !important; height: 34px !important; }
+
+    /* page headers (Chat, Calls, Meetings…): the built-in menu button holds the actions */
+    .sn-head { padding: 4px 6px !important; border-radius: 18px !important; }
+    .sn-head .hdr-subtitle { display: none; }
+    html[data-theme="dark"] .sn-head .hdr-menu-toggle { background: rgba(255, 255, 255, .08) !important; border-color: rgba(255, 255, 255, .16) !important; color: #E2E8F0 !important; }
+    html[data-theme="dark"] .sn-head .hdr-right { background: rgba(15, 20, 40, .97) !important; border-color: rgba(255, 255, 255, .12) !important; }
+
+    /* cards and stats */
+    .sn-grid-4, .sn-grid-3, .sn-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+    .sn-stat { padding: 10px 12px !important; gap: 10px !important; }
+    .sn-stat-ic { width: 34px !important; height: 34px !important; }
+    .sn-stat-val { font-size: 20px !important; }
+    .sn-side { grid-template-columns: 1fr; }
+
+    /* ---- Chat: the list, or the open conversation (with a back button) ---- */
+    .sn-chat-row { gap: 0; }
+    .sn-body .chat-side { flex: 1 1 100% !important; max-width: none !important; width: 100%; }
+    .sn-body .chat-main { flex: 1 1 100% !important; width: 100%; display: none; }
+    .sn-body.sn-chat-open .chat-side { display: none !important; }
+    .sn-body.sn-chat-open .chat-main { display: flex !important; }
+    .sn-body .chat-info { position: fixed; top: 8px; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); right: 8px; left: 8px; width: auto; z-index: 70; }
+    .sn-chat-back { display: inline-flex !important; align-items: center; justify-content: center; width: 40px; height: 40px; flex: none; border-radius: 13px; border: 0; cursor: pointer;
+        background: rgba(255, 255, 255, .6); color: #0F172A; font-size: 18px; margin-right: 4px; }
+    html[data-theme="dark"] .sn-chat-back { background: rgba(255, 255, 255, .08); color: #F1F5F9; }
+    .sn-body .messages { padding-left: 8px !important; padding-right: 8px !important; }
+    .sn-body .msg { max-width: 100%; }
+    .sn-body .msg .bubble { max-width: 82vw; }
+    .sn-body .msg-del { right: -6px; top: -10px; margin: 0; width: 28px; height: 28px; }
+    .sn-body .msg.mine .msg-del { left: -6px; right: auto; }
+    .sn-body .composer { padding: 6px !important; gap: 6px !important; }
+    .sn-body .composer textarea { font-size: 16px !important; }   /* no zoom-in on iPhone */
+    .sn-body input, .sn-body select, .sn-body textarea { font-size: max(16px, 1em); }
+    .sn-person-row .sn-team-actions { display: none !important; }   /* pin / call / delete are in the chat header on a phone */
+    .sn-body .chat-info .sn-info-close { display: inline-flex !important; }
+
+    /* ---- Calls / Files ---- */
+    .sn-hist { padding: 12px 10px 14px; border-radius: 20px; }
+    .sn-hist-bar { gap: 8px; }
+    .sn-hist-bar .tab-control-wrapper { width: 100%; }
+    .sn-hist-tools { width: 100%; justify-content: flex-start; }
+    .sn-hist-tools .sn-tool { height: 34px; padding: 0 12px; font-size: 12.5px; }
+    .sn-hist-bar .sn-hist-search { width: 100% !important; }
+    .sn-hrow, .sn-frow, .sn-hist.picking .sn-hrow, .sn-hist.picking .sn-frow { grid-template-columns: auto minmax(0, 1fr) auto !important; gap: 10px; padding: 10px 6px; }
+    .sn-hist.picking .sn-hrow, .sn-hist.picking .sn-frow { grid-template-columns: auto auto minmax(0, 1fr) auto !important; }
+    .sn-hrow .sn-htime, .sn-frow .sn-fwhere { display: none; }
+    .sn-hact { opacity: 1; gap: 4px; }
+    .sn-hbtn { height: 34px; padding: 0 10px; }
+    .sn-hbtn span { display: none; }
+    .sn-hbtn.chat { display: none; }
+
+    /* ---- Meetings ---- */
+    .sn-toolbar { flex-wrap: wrap; gap: 8px; }
+    .sn-toolbar > * { flex: 1 1 auto; }
+    .sn-toolbar .tab-control-wrapper { width: 100%; }
+    .sn-mcell { min-height: 58px !important; padding: 4px !important; }
+    .sn-mev { padding: 2px 4px !important; font-size: 10px !important; }
+    .sn-mev .n { display: none; }
+    .sn-mev .sn-ev-del { display: none; }
+    .sn-ev-del { opacity: 1; transform: none; }
+    .sn-gauge-card { padding: 14px !important; }
+
+    /* ---- Team / Clients ---- */
+    .sn-plan-grid { grid-template-columns: 1fr !important; }
+    .sn-body .mt-wrapper, .sn-body .modern-table-wrapper, .sn-body .mt-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .sn-body table { min-width: 560px; }
+    .sn-admin-bar { flex-wrap: wrap; }
+
+    /* ---- pop-ups ---- */
+    .sn-toast { max-width: calc(100vw - 24px) !important; }
+    .sn-tip { display: none !important; }        /* no hover on a phone */
+    .sn-call, .sn-call[popover] { bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important; }
+    .msg-quick { display: flex !important; opacity: 0; pointer-events: none; }
+    .msg.show-acts .msg-quick { opacity: 1; transform: none; pointer-events: auto; }
+    .msg.show-acts .msg-del { opacity: 1; transform: none; }
+}
+
+/* very small phones */
+@media (max-width: 380px) {
+    .sn-rail .rr-item-label { display: none; }
+    .sn-rail { height: 56px; }
+    .sn-grid-4 { grid-template-columns: 1fr 1fr !important; }
+}
+
+/* tablets held sideways / short screens: the rail scrolls if it doesn't fit */
+@media (max-height: 560px) and (min-width: 761px) {
+    .sn-rail .report-rail { overflow-y: auto; }
+}
+
+/* Details close button (phones and tablets) */
+.sn-info-close { display: none; position: absolute; top: 10px; right: 10px; z-index: 5; width: 34px; height: 34px; border-radius: 50%; border: 0; cursor: pointer;
+    align-items: center; justify-content: center; font-size: 20px; line-height: 1; background: rgba(15, 23, 42, .08); color: inherit; }
+html[data-theme="dark"] .sn-info-close { background: rgba(255, 255, 255, .1); }
+@media (max-width: 1100px) { .sn-body .chat-info { position: absolute; } .sn-body .chat-info .sn-info-close { display: inline-flex; } }
+@media (max-width: 760px) { .sn-body .chat-info { position: fixed; } }
+
+/* Tablets 761–900 px: an older rule turned the rail into a full-width block at the top
+   (its items still stacked, so it filled the screen). Keep the slim rail on the left instead. */
+@media (min-width: 761px) and (max-width: 900px) {
+    .sn-shell { flex-direction: row !important; flex-wrap: nowrap !important; height: 100dvh !important; min-height: 0 !important; padding: 10px !important; gap: 10px !important; }
+    .sn-rail { flex: 0 0 72px !important; flex-direction: column !important; align-items: center !important; padding: 12px 0 !important; position: static; height: auto; }
+    .sn-rail .report-rail { width: 72px !important; flex-direction: column !important; }
+    .sn-rail .rr-items { flex-direction: column !important; }
+    .sn-rail .rr-item-btn { width: 60px !important; }
+    .sn-rail .rr-item-label { font-size: 10.5px !important; }
+    .sn-rail-foot { flex-direction: column !important; margin-left: 0 !important; display: flex !important; }
+    .sn-col { min-width: 0; }
+    .sn-body-row { flex-wrap: nowrap !important; min-height: 0; }
+    .sn-body .chat-side { flex: 0 0 280px !important; max-width: 280px !important; }
+    .sn-topbar .strip-extra { display: flex !important; }
+    .sn-topbar .strip-extra .sn-pill:last-child { display: none !important; }
+    .sn-topbar .strip-user-time { display: none !important; }
+}
+
+/* =====================================================================
+   Fixes from testing on small screens
+   ===================================================================== */
+/* Cards on a page never get squeezed shorter than their content (that made the Calls / Files
+   list spill out under its card, and showed two scroll bars). Only the page scrolls. */
+.sn-chat-page > .sn-head { flex-shrink: 0; }
+@media (max-width: 1100px) {
+    .sn-page > * { flex-shrink: 0; }
+    .sn-page { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+    .sn-sched-scroll { max-height: 68dvh; }
+    .sn-hist, .sn-hist-list { overflow: visible !important; max-height: none !important; }
+    .sn-side { flex-shrink: 0; }
+}
+
+@media (max-width: 760px) {
+    /* Meetings → Week / Day: the 7 days fit the screen, no sideways scrolling (and no double scroll bar) */
+    .sn-sched { overflow: hidden !important; min-height: 0; --tw: 40px; --hr: 46px; border-radius: 18px; }
+    .sn-sched-head, .sn-sched-grid { min-width: 0 !important; }
+    .sn-sched-scroll { overflow-x: hidden !important; overflow-y: auto; max-height: 62dvh; }
+    .sn-sched-dayhead { padding: 6px 0 !important; }
+    .sn-sched-dayhead .d, .sn-sched-dayhead b, .sn-sched-dayhead strong { font-size: 15px !important; }
+    .sn-sched-dayhead small, .sn-sched-dayhead span:first-child { font-size: 10px !important; letter-spacing: .04em; }
+    .sn-sched-times span, .sn-sched-times div { font-size: 10px !important; }
+    .sn-ev { padding: 3px 4px !important; font-size: 10px !important; border-radius: 8px !important; }
+    .sn-ev .sn-ev-meta, .sn-ev .sn-ev-time + * { display: none; }
+    .sn-views { overflow: visible !important; }
+    .sn-toolbar .sn-navgroup { flex: 0 0 auto; }
+    .sn-toolbar .sn-week-label { font-size: 15px !important; }
+
+    /* Schedule a meeting (and every dialog): one column, full width, fields not squeezed */
+    .sn-dialog, .sn-dialog.wide { width: calc(100vw - 12px) !important; max-height: calc(100dvh - 12px) !important; border-radius: 22px !important; }
+    .sn-dlg-head { padding: 12px 14px !important; }
+    .sn-dlg-body { padding: 10px !important; gap: 10px !important; }
+    .sn-form-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+    .sn-dialog .cee-group-content { padding: 12px !important; }
+    /* switches and tick boxes: the switch on the left, its label and note next to it */
+    .sn-dialog .modern-checkbox-wrapper { width: 100%; }
+    .sn-dialog .mc-control { display: flex !important; align-items: center; gap: 12px; width: 100%; }
+    .sn-dialog .mc-cbx { flex: none !important; width: auto !important; }
+    .sn-dialog .mc-text { flex: 1 1 auto; min-width: 0; display: flex !important; flex-direction: column; gap: 2px; width: auto !important; text-align: left; }
+    .sn-dialog .mc-title { white-space: normal; }
+    .sn-dialog .mc-desc { white-space: normal; }
+    .sn-allday-toggle { align-items: center !important; padding: 0 !important; }
+    .sn-pick .modern-checkbox-wrapper { padding: 8px 12px !important; }
+    .sn-dialog .sn-repeat-box { padding: 12px !important; }
+    .sn-dialog .sn-pick { max-height: 40dvh; }
+    .sn-dlg-foot { position: sticky; bottom: 0; z-index: 5; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)) !important; flex-wrap: wrap; gap: 8px;
+        background: rgba(248, 250, 252, .97); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: 0 -12px 24px -16px rgba(15, 23, 42, .4); }
+    html[data-theme="dark"] .sn-dlg-foot { background: rgba(14, 19, 36, .97); box-shadow: 0 -12px 24px -14px rgba(0, 0, 0, .8); }
+    .sn-dlg-foot > :not(.cee-btn):not(button) { flex: 1 1 100%; order: -1; font-size: 12px; }
+    .sn-dlg-foot .cee-btn { flex: 1 1 auto; }
+}
+
+/* Calls and Files on a computer: the header, cards and tabs stay put; only the list scrolls */
+@media (min-width: 1101px) {
+    .sn-page.sn-page-fixed { overflow: hidden; }
+    .sn-page-fixed > * { flex-shrink: 0; }
+    .sn-page-fixed > .sn-hist { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+    .sn-page-fixed .sn-hist-bar, .sn-page-fixed .sn-hist-chips { flex-shrink: 0; }
+    .sn-page-fixed .sn-hist-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; margin-right: -8px; padding-right: 8px; overscroll-behavior: contain; }
+}

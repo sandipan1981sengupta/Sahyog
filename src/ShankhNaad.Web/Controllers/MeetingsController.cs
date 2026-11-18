@@ -487,8 +487,17 @@ public sealed class MeetingsController : Controller
 
         var just = justId is Guid jid ? await _meetings.GetAsync(tenantId, jid) : null;
 
+        // calls in the same period (local time), for the Calls card next to the Meetings card
+        var allCalls = await _calls.ListForUserAsync(tenantId, me, 500);
+        var periodCalls = allCalls?.Where(c =>
+        {
+            var local = MeetingCalendar.ToLocal(c.StartedUtc, zone);
+            return local >= fromLocal && local < toLocal;
+        }).ToList();
+
         return new MeetingsViewModel
         {
+            PeriodCalls = periodCalls,
             WeekStart = weekStart,
             Days = days,
             UpNext = next is null ? null : ToVm(next),

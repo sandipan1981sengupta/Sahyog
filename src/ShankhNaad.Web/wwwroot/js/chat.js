@@ -146,6 +146,60 @@
         f.submit();
     });
 
+    // ---------- reactions on messages (👍 ❤️ 😂 …), like Teams ----------
+    const REACTS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "👏", "🎉"];
+    const reactState = new Map();   // message id → [{ emoji, userId, name }]
+    let reactQueue = new Set(), reactTimer = null;
+    function queueReactions(id) {
+        reactQueue.add(id);
+        clearTimeout(reactTimer);
+        reactTimer = setTimeout(async () => {
+            const ids = [...reactQueue]; reactQueue = new Set();
+            try {
+                const res = await fetch(`/chat/reactions?ids=${ids.join(",")}`, { headers: { Accept: "application/json" } });
+                if (!res.ok) return;
+                const byMsg = new Map();
+                (await res.json()).forEach((r) => { if (!byMsg.has(r.messageId)) byMsg.set(r.messageId, []); byMsg.get(r.messageId).push(r); });
+                byMsg.forEach((list, id) => { reactState.set(id, list); paintReactions(id, false); });
+            } catch { }
+        }, 150);
+    }
+    function paintReactions(id, animate) {
+        const box = document.querySelector(`.msg-reacts[data-mid="${id}"]`);
+        if (!box) return;
+        const list = reactState.get(id) || [];
+        const groups = new Map();
+        list.forEach((r) => { if (!groups.has(r.emoji)) groups.set(r.emoji, []); groups.get(r.emoji).push(r); });
+        const before = new Map([...box.querySelectorAll("[data-react]")].map((b) => [b.dataset.react, b.dataset.n]));
+        box.innerHTML = [...groups].map(([emoji, who]) => {
+            const minePick = who.some((r) => String(r.userId).toLowerCase() === String(me).toLowerCase());
+            const names = who.map((r) => String(r.userId).toLowerCase() === String(me).toLowerCase() ? "You" : r.name);
+            const bump = animate && before.get(emoji) !== String(who.length) ? " bump" : "";
+            return `<button type="button" class="react-chip${minePick ? " mine" : ""}${bump}" data-react="${emoji}" data-mid="${id}" data-n="${who.length}"
+                        title="${S.escape(names.join(", "))} reacted ${emoji}" aria-pressed="${minePick}">
+                        <span class="rc-e">${emoji}</span><span class="rc-n">${who.length}</span></button>`;
+        }).join("");
+        box.classList.toggle("has", groups.size > 0);
+    }
+    async function react(id, emoji, btn) {
+        btn?.classList.remove("tap"); void btn?.offsetWidth; btn?.classList.add("tap");
+        // show it straight away; the server's answer then corrects it
+        const list = (reactState.get(id) || []).slice();
+        const i = list.findIndex((r) => r.emoji === emoji && String(r.userId).toLowerCase() === String(me).toLowerCase());
+        if (i >= 0) list.splice(i, 1); else list.push({ messageId: id, emoji, userId: me, name: "You" });
+        reactState.set(id, list); paintReactions(id, true);
+        try {
+            const err = await hub.invoke("ReactToMessage", Number(id), emoji);
+            if (err) { S.toast(err, { kind: "warn" }); queueReactions(id); }
+        } catch { queueReactions(id); }
+    }
+    document.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-react][data-mid]");
+        if (!b || !b.closest(".msg")) return;
+        e.preventDefault();
+        react(Number(b.dataset.mid), b.dataset.react, b);
+    });
+
     function messageEl(m, previous) {
         const mine = m.senderId === me;
         const grouped = previous && previous.senderId === m.senderId && previous.day === dayKey(m.sentUtc)
@@ -169,8 +223,12 @@
             <span class="avatar av-38 tone-${m.senderTone}" data-user="${S.escape(m.senderId)}">${S.escape(m.senderInitials)}</span>
             <div class="msg-body">
                 <span class="msg-meta">${mine ? "You" : `<strong>${S.escape(m.senderName)}</strong>`} · ${time(m.sentUtc)}${fromGroup ? ` <span class="msg-from" title="Written in the group ${S.escape(fromGroup)}"><i class="fa fa-users" aria-hidden="true"></i> in ${S.escape(fromGroup)}</span>` : ""}</span>
-                <div class="msg-line">${body}${file}${mine && !fromGroup ? ticksHtml(m.sentUtc) : ""}${canDelete ? `<button type="button" class="msg-del" data-del="${m.id}" title="Delete message" aria-label="Delete message"><i class="fa fa-trash-o" aria-hidden="true"></i></button>` : ""}</div>
+                <div class="msg-line">${body}${file}${mine && !fromGroup ? ticksHtml(m.sentUtc) : ""}${canDelete ? `<button type="button" class="msg-del" data-del="${m.id}" title="Delete message" aria-label="Delete message"><i class="fa fa-trash-o" aria-hidden="true"></i></button>` : ""}
+                    <span class="msg-quick" role="toolbar" aria-label="React to this message">${REACTS.map((e) => `<button type="button" data-react="${e}" data-mid="${m.id}" aria-label="React ${e}">${e}</button>`).join("")}</span>
+                </div>
+                <div class="msg-reacts" data-mid="${m.id}"></div>
             </div>`;
+        queueReactions(m.id);
         return el;
     }
 
@@ -359,6 +417,12 @@
             const id = c.meetingId.toLowerCase();
             callStates.set(id, c);
             paintCall(id);
+        });
+
+        // someone reacted to a message in this chat
+        hub.on("MessageReactions", (id, list) => {
+            reactState.set(Number(id), list || []);
+            paintReactions(Number(id), true);
         });
 
         hub.on("MessageDeleted", (cid, mid) => { if (cid === channelId) removeMessage(mid); });

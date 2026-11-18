@@ -10,7 +10,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#2563EB" />
     <title>@(ViewData["Title"] is string t ? $"{t} · ShankhNaad" : "ShankhNaad")</title>
     @* Theme (light / dark) is applied before anything paints, so there is no flash. *@
@@ -108,6 +108,7 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/shankhnaad.css" asp-append-version="true" />
     @await RenderSectionAsync("Head", required: false)
+    <link rel="stylesheet" href="~/css/responsive.css" asp-append-version="true" />
 </head>
 <body class="sn-body" data-me="@(isSuperAdmin ? "" : User.UserId())">
     <div class="sn-backdrop" aria-hidden="true">
@@ -323,6 +324,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
     <script src="~/js/toast.js" asp-append-version="true"></script>
     <script src="~/js/tooltip.js" asp-append-version="true"></script>
+    <script src="~/js/mobile.js" asp-append-version="true" defer></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     <script src="~/js/shankhnaad.js" asp-append-version="true"></script>
     <script src="~/js/pwa-install.js" asp-append-version="true"></script>

@@ -2736,3 +2736,57 @@ html, body { overflow-x: hidden; }
 .sn-tip, .sn-tip[popover], .toasts[popover] { overflow: visible !important; scrollbar-width: none; }
 .sn-tip::-webkit-scrollbar, .toasts[popover]::-webkit-scrollbar { display: none; width: 0 !important; height: 0 !important; }
 .sn-tip { box-sizing: border-box; width: max-content; height: auto; white-space: normal; }
+
+/* =====================================================================
+   Reactions on chat messages
+   ===================================================================== */
+.msg-quick {
+    position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 6; display: flex; gap: 1px; padding: 4px; border-radius: 14px;
+    background: rgba(255, 255, 255, .96); border: 1px solid rgba(15, 23, 42, .08);
+    box-shadow: 0 12px 28px -12px rgba(15, 23, 42, .45), 0 0 0 1px rgba(124, 58, 237, .06);
+    opacity: 0; transform: translateY(6px) scale(.94); transform-origin: 0 100%; pointer-events: none;
+    transition: opacity .16s ease, transform .22s cubic-bezier(.34, 1.56, .64, 1);
+}
+.msg.mine .msg-quick { left: auto; right: 0; transform-origin: 100% 100%; }
+.msg:hover .msg-quick, .msg-quick:focus-within { opacity: 1; transform: none; pointer-events: auto; transition-delay: .12s; }
+.msg-quick button { width: 32px; height: 32px; border: 0; border-radius: 9px; background: transparent; font-size: 18px; line-height: 1; cursor: pointer;
+    transition: transform .2s cubic-bezier(.34, 1.56, .64, 1), background .15s ease; }
+.msg-quick button:hover { transform: translateY(-3px) scale(1.3); background: rgba(124, 58, 237, .08); }
+.msg-quick button.tap, .react-chip.tap { animation: snReactTap .35s ease; }
+@keyframes snReactTap { 50% { transform: scale(.75); } }
+html[data-theme="dark"] .msg-quick { background: rgba(22, 28, 48, .96); border-color: rgba(255, 255, 255, .1); box-shadow: 0 14px 30px -12px rgba(0, 0, 0, .8), 0 0 0 1px rgba(139, 92, 246, .15); }
+html[data-theme="dark"] .msg-quick button:hover { background: rgba(255, 255, 255, .08); }
+@media (hover: none) { .msg-quick { display: none; } }
+
+.msg-reacts { display: none; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.msg-reacts.has { display: flex; }
+.msg.mine .msg-reacts { justify-content: flex-end; }
+.react-chip { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px 0 7px; border-radius: 999px; cursor: pointer;
+    border: 1px solid rgba(15, 23, 42, .1); background: rgba(255, 255, 255, .8); color: #334155; font: 700 12px Roboto, sans-serif;
+    transition: transform .2s cubic-bezier(.34, 1.56, .64, 1), background .15s ease, border-color .15s ease; }
+.react-chip:hover { transform: translateY(-1px); border-color: rgba(124, 58, 237, .45); }
+.react-chip .rc-e { font-size: 14px; line-height: 1; }
+.react-chip.mine { background: rgba(124, 58, 237, .12); border-color: rgba(124, 58, 237, .55); color: #6D28D9; }
+.react-chip.bump { animation: snChipBump .45s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes snChipBump { 0% { transform: scale(.6); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+html[data-theme="dark"] .react-chip { background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .12); color: #CBD5E1; }
+html[data-theme="dark"] .react-chip.mine { background: rgba(139, 92, 246, .22); border-color: rgba(167, 139, 250, .6); color: #E9D5FF; }
+
+/* Meetings page: the Calls card (same style as the Meetings card) */
+.sn-gauge-ic.call { background: linear-gradient(135deg, #22C55E, #0EA5E9 55%, #6366F1); }
+.sn-cseg { stroke-linecap: round; }
+.sn-cseg.ok { filter: drop-shadow(0 4px 10px rgba(14, 165, 233, .45)); }
+.sn-cseg.miss { filter: drop-shadow(0 4px 10px rgba(244, 63, 94, .5)); }
+.sn-cseg.other { filter: drop-shadow(0 3px 8px rgba(245, 158, 11, .35)); }
+.sn-gs-dot.ok { background: linear-gradient(135deg, #22C55E, #0EA5E9); }
+.sn-gs-dot.miss { background: #F43F5E; box-shadow: 0 0 0 3px rgba(244, 63, 94, .18); }
+.sn-gs-dot.other { background: #F59E0B; }
+.sn-gauge-stats > div.is-missed { border-color: rgba(244, 63, 94, .45) !important; box-shadow: 0 0 0 3px rgba(244, 63, 94, .08); }
+.sn-cstat-link { color: #7C3AED; font-weight: 700; text-decoration: none; }
+.sn-cstat-link:hover { text-decoration: underline; }
+.sn-cstat-link i { color: inherit !important; margin: 0 0 0 4px !important; transition: transform .2s ease; }
+.sn-cstat-link:hover i { transform: translateX(3px); }
+html[data-theme="dark"] .sn-cstat-link { color: #C4B5FD; }
+.sn-cstat-note { margin: 4px 0 0; font-size: 12px; color: #B45309; }
+/* the side column scrolls by itself when the three cards don't fit */
+@media (min-width: 1101px) { .sn-side { overflow-y: auto; min-height: 0; padding-right: 2px; } }

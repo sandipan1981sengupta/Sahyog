@@ -21,9 +21,11 @@ public sealed class ChatHub : Hub
     private readonly ICallLogService _calls;
     private readonly IUserService _users;
     private readonly ICallChatService _callChat;
+    private readonly IReactionService _reactions;
 
-    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls, IUserService users, ICallChatService callChat)
+    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls, IUserService users, ICallChatService callChat, IReactionService reactions)
     {
+        _reactions = reactions;
         _callChat = callChat;
         _users = users;
         _calls = calls;
@@ -188,6 +190,19 @@ public sealed class ChatHub : Hub
         if (note is not null && await _meetings.GetAsync(tenantId, meetingId) is { } meeting)
             await PostNoteAsync(tenantId, meeting.ChannelId, userId, note);
         await LeaveRoomAsync(tenantId, meetingId, note);
+    }
+
+    // ---------- reactions on chat messages ----------
+
+    /// <summary>Adds my reaction to a message (or takes it back); everyone in that chat sees it at once.</summary>
+    public async Task<string?> ReactToMessage(long messageId, string emoji)
+    {
+        var (tenantId, userId) = Caller();
+        var (status, channelId, list) = await _reactions.ToggleAsync(tenantId, messageId, userId, emoji);
+        if (status == 9) return "Run database/26_MessageReactions.sql (or 99_ApplyAllUpdates.sql) to react to messages.";
+        if (status != 0 || channelId is not Guid ch) return "You can't react to that message.";
+        await Clients.Group(ChannelGroup(ch)).SendAsync("MessageReactions", messageId, list);
+        return null;
     }
 
     // ---------- in a call: chat and reactions ----------

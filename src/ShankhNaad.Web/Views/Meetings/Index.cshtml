@@ -275,7 +275,7 @@
                                     }
                                     @if (d.IsToday && nowTop >= 0)
                                     {
-                                        <div class="sn-now" style="top:calc(var(--hr) * @nowTop.ToString("0.###", inv))"><i></i></div>
+                                        <div class="sn-now" style="top:calc(var(--hr) * @nowTop.ToString("0.###", inv))" data-top="@nowTop.ToString("0.####", inv)" data-max="@(endH - startH)"><i></i></div>
                                     }
                                     <div class="sn-slot-hint" aria-hidden="true"><i class="fa fa-plus"></i> <span></span></div>
                                 </div>
@@ -414,6 +414,75 @@
                 <div class="sn-mstat-foot">
                     <span><i class="fa fa-clock-o" aria-hidden="true"></i> @hoursText in meetings</span>
                     <span><i class="fa fa-user" aria-hidden="true"></i> @events.Count(e => e.IsHost) set up by you</span>
+                </div>
+            </section>
+
+            @* ---- calls in this period: the same kind of gauge, for calls made from Chat ---- *@
+            @{
+                var pc = Model.PeriodCalls ?? new List<CallHistoryDto>();
+                var meId = User.UserGuid();
+                var cAnswered = pc.Count(x => x.Outcome is 1 or 2);
+                var cMissed = pc.Count(x => x.CallerId != meId && x.Outcome is 3 or 5);
+                var cOther = pc.Count - cAnswered - cMissed;
+                var cTotal = pc.Count;
+                var cIn = pc.Count(x => x.CallerId != meId);
+                var cOut = cTotal - cIn;
+                var talk = pc.Where(x => x.AnsweredUtc is not null).Sum(x => Math.Max(0, ((x.EndedUtc ?? DateTime.UtcNow) - x.AnsweredUtc!.Value).TotalSeconds));
+                var talkTs = TimeSpan.FromSeconds(talk);
+                var talkText = talkTs.TotalHours >= 1 ? $"{(int)talkTs.TotalHours}h {talkTs.Minutes}m" : talkTs.TotalMinutes >= 1 ? $"{talkTs.Minutes}m {talkTs.Seconds}s" : $"{talkTs.Seconds}s";
+                var cPct = cTotal == 0 ? 0 : (int)Math.Round(cAnswered * 100.0 / cTotal);
+                var cParts = new[] { ("ok", cAnswered, "gCallOk"), ("miss", cMissed, "gCallMiss"), ("other", cOther, "gCallOther") }.Where(x => x.Item2 > 0).ToList();
+                var cUsable = 263.89 - 5 * Math.Max(0, cParts.Count - 1);
+                double cPos = 0;
+                var cSegs = new List<(string Key, string Grad, double Start, double Len)>();
+                foreach (var (key, n, grad) in cParts)
+                {
+                    var len = cTotal == 0 ? 0 : cUsable * n / cTotal;
+                    cSegs.Add((key, grad, cPos, len));
+                    cPos += len + 5;
+                }
+                string CF(double v) => v.ToString("0.##", inv);
+            }
+            <section class="sn-gauge-card glass sn-mstat sn-cstat" aria-label="@periodWord calls: @cAnswered answered, @cMissed missed, @cOther not connected">
+                <header class="sn-gauge-head">
+                    <span class="sn-gauge-ic call"><i class="fa fa-phone" aria-hidden="true"></i></span>
+                    <div class="sn-gauge-title">
+                        <h3>Calls</h3>
+                        <small>@cIn incoming · @cOut outgoing</small>
+                    </div>
+                    <span class="sn-gauge-pill">@periodWord</span>
+                </header>
+                @if (Model.PeriodCalls is null)
+                {
+                    <p class="sn-cstat-note">Run <b>database/23_CallsAndFiles.sql</b> to see your calls here.</p>
+                }
+                <div class="sn-gauge">
+                    <svg viewBox="0 0 200 112" aria-hidden="true">
+                        <defs>
+                            <linearGradient id="gCallOk" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#22C55E" /><stop offset="1" stop-color="#0EA5E9" /></linearGradient>
+                            <linearGradient id="gCallMiss" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#F43F5E" /><stop offset="1" stop-color="#DC2626" /></linearGradient>
+                            <linearGradient id="gCallOther" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#F59E0B" /><stop offset="1" stop-color="#94A3B8" /></linearGradient>
+                        </defs>
+                        <path class="sn-gauge-track" d="M16 100 A84 84 0 0 1 184 100" />
+                        @foreach (var g in cSegs)
+                        {
+                            <path class="sn-gauge-value sn-cseg @g.Key" d="M16 100 A84 84 0 0 1 184 100" stroke="url(#@g.Grad)"
+                                  stroke-dasharray="@CF(Math.Max(.01, g.Len)) 1000" stroke-dashoffset="@CF(-g.Start)" />
+                        }
+                    </svg>
+                    <div class="sn-gauge-center">
+                        <b>@cTotal</b>
+                        <small>@(cTotal == 1 ? "call" : "calls") · @cPct% answered</small>
+                    </div>
+                </div>
+                <div class="sn-gauge-stats">
+                    <div><span class="sn-gs-label"><i class="sn-gs-dot ok"></i><span class="sn-gs-text">Answered</span></span><b>@cAnswered</b></div>
+                    <div class="@(cMissed > 0 ? "is-missed" : "")"><span class="sn-gs-label"><i class="sn-gs-dot miss"></i><span class="sn-gs-text">Missed</span></span><b>@cMissed</b></div>
+                    <div><span class="sn-gs-label"><i class="sn-gs-dot other"></i><span class="sn-gs-text">No answer</span></span><b>@cOther</b></div>
+                </div>
+                <div class="sn-mstat-foot">
+                    <span><i class="fa fa-clock-o" aria-hidden="true"></i> @talkText talking</span>
+                    <a class="sn-cstat-link" href="/calls">Open Calls <i class="fa fa-arrow-right" aria-hidden="true"></i></a>
                 </div>
             </section>
 
@@ -858,5 +927,32 @@
             });
         })();
     </script>
-    <script src="~/js/meetings.js" asp-append-version="true"></script>
+    <script src="~/js/meetings.js" asp-append-version="true">
+        // ---- the red "now" line moves by itself; the page refreshes quietly so Live / Upcoming / Ended stay right ----
+        (function () {
+            var line = document.querySelector(".sn-now");
+            var t0 = Date.now(), loadedAt = Date.now();
+            var top0 = line ? parseFloat(line.getAttribute("data-top")) : NaN;
+            var max = line ? parseFloat(line.getAttribute("data-max")) : NaN;
+            function moveLine() {
+                if (!line || isNaN(top0)) return;
+                var h = top0 + (Date.now() - t0) / 3600000;
+                if (h > max) { line.hidden = true; return; }
+                line.style.top = "calc(var(--hr) * " + h.toFixed(4) + ")";
+            }
+            setInterval(moveLine, 30000);
+            // a quiet refresh: only when the page is on screen and you're not in the middle of something
+            function busy() {
+                return !!document.querySelector("dialog[open], .sn-dialog[open], .mb-overlay.show")
+                    || (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
+            }
+            function refresh() { if (!document.hidden && !busy()) location.reload(); }
+            setInterval(function () { if (Date.now() - loadedAt > 5 * 60 * 1000) refresh(); }, 60 * 1000);
+            // a new day starts: show it
+            var now = new Date(), midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+            setTimeout(refresh, midnight - now);
+            // coming back to the tab after a while
+            document.addEventListener("visibilitychange", function () { if (!document.hidden && Date.now() - loadedAt > 5 * 60 * 1000) refresh(); });
+        })();
+</script>
 }

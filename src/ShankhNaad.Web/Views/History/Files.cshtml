@@ -26,7 +26,7 @@
     var kinds = Model.Files.Select(Kind).GroupBy(k => k.Key).Select(g => (Key: g.Key, Label: g.First().Label, Count: g.Count())).OrderByDescending(g => g.Count).ToList();
 }
 
-<main class="sn-page">
+<main class="sn-page sn-page-fixed">
     <div class="sn-head glass">
         <action-header id="FilesHeader"
                        heading="Files"

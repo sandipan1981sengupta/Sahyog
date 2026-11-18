@@ -170,6 +170,8 @@ public sealed class ScheduleMeetingInput
 
 public sealed class MeetingsViewModel
 {
+    /// <summary>Calls (from Chat) in the period on screen, for the Calls card. Null = 23_CallsAndFiles.sql not run.</summary>
+    public List<CallHistoryDto>? PeriodCalls { get; init; }
     public required DateOnly WeekStart { get; init; }
     public required List<CalendarDayVm> Days { get; init; }
     public CalendarEventVm? UpNext { get; init; }

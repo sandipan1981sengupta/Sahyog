@@ -140,6 +140,9 @@
     const panel = $("roomPanel"), peek = $("panelPeek");
     let panelOpen = true, autoHidden = false;
     try { if (localStorage.getItem("sn-room-panel") === "0") panelOpen = false; } catch { }
+    // on a phone or small tablet the panel opens over the video, so it starts closed
+    const smallScreen = () => window.matchMedia("(max-width: 900px)").matches;
+    if (smallScreen()) panelOpen = false;
     const paintPanel = (animate) => {
         document.body.classList.toggle("panel-off", !panelOpen);
         if (!animate) document.body.classList.add("no-anim"), requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("no-anim")));
@@ -156,6 +159,7 @@
     $("panelBtn").onclick = () => setPanel(!panelOpen);
     $("panelClose").onclick = () => setPanel(false);
     peek.onclick = () => setPanel(true);
+    $("panelScrim")?.addEventListener("click", () => setPanel(false, !smallScreen()));
     paintPanel(false);
 
     // ---------- full screen: the whole meeting fills the screen (Esc or the button to come back) ----------
