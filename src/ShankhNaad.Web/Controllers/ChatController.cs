@@ -79,7 +79,8 @@ public sealed partial class ChatController : Controller
         var members = new List<PersonVm>();
         var files = new List<AttachmentDto>();
         var hasOlder = false;
-        bool isMain = false, canEdit = false, canDelete = false;
+        bool isMain = false, canEdit = false, canDelete = false, canManage = false;
+        string? createdBy = null;
         var readState = new List<ReadStateDto>();
 
         if (current is not null)
@@ -107,6 +108,8 @@ public sealed partial class ChatController : Controller
                 // admins always see Edit / Delete (if 14_ChannelEdit.sql isn't run yet, clicking says so)
                 canEdit = isAdmin || (info.CreatedBy is Guid by && by == Me);
                 canDelete = isAdmin && !isMain;
+                canManage = canEdit && !isMain;
+                createdBy = info.CreatedBy?.ToString();
             }
 
             if (await _chat.MarkReadAsync(tenantId, current.Id, Me) is DateTime readUtc)
@@ -133,6 +136,8 @@ public sealed partial class ChatController : Controller
             CanEditChannel = canEdit,
             CanDeleteChannel = canDelete,
             CurrentIsMain = isMain,
+            CanManageMembers = canManage,
+            CurrentCreatedBy = createdBy,
             ReadState = readState,
             CurrentDescription = sidebar.FirstOrDefault(s => s.ChannelId == current?.Id)?.Description,
             Messages = messages,
@@ -181,7 +186,8 @@ public sealed partial class ChatController : Controller
     /// </summary>
     [HttpPost("channels")]
     [HttpPost("groups")]
-    public async Task<IActionResult> CreateChannel(string name, string? description, List<Guid>? members = null)
+    public async Task<IActionResult> CreateChannel(string name, string? description, List<Guid>? members = null,
+        Guid? fromChat = null, string? history = null)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var clean = CleanName(name);
@@ -213,8 +219,74 @@ public sealed partial class ChatController : Controller
         var others = memberIds.Where(m => m != Me).Select(m => m.ToString()).ToList();
         if (others.Count > 0)
             await _hub.Clients.Users(others).SendAsync("AddedToGroup", User.DisplayName(), clean, $"/chat/{channelId}");
-        TempData["Message"] = $"\"{clean}\" is ready with {memberIds.Count} people. Only they can see it.";
+        // made from a one-to-one chat with "Add people": copy that chat's history in, if asked
+        var historyNote = "";
+        if (fromChat is Guid from && history is "1" or "7" or "all")
+        {
+            DateTime? since = history == "all" ? null : DateTime.UtcNow.AddDays(-int.Parse(history));
+            var copied = await _chat.CopyHistoryAsync(tenantId, from, channelId, Me, since);
+            historyNote = copied switch
+            {
+                null => " Chat history wasn't copied: run database/29_GroupMembers.sql first.",
+                < 0 => " Chat history wasn't copied (that chat isn't yours).",
+                0 => " There were no messages to copy for that period.",
+                _ => $" {copied} earlier message{(copied == 1 ? "" : "s")} copied in."
+            };
+        }
+        TempData["Message"] = $"\"{clean}\" is ready with {memberIds.Count} people. Only they can see it." + historyNote;
         return RedirectToAction(nameof(Index), new { id = channelId });
+    }
+
+    /// <summary>Adds people to a group that already exists (its creator or a workspace admin). They see the whole history.</summary>
+    [HttpPost("{id:guid}/members/add")]
+    public async Task<IActionResult> AddMembers(Guid id, List<Guid>? members)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var (status, added) = await _chat.AddMembersAsync(tenantId, id, Me, User.IsInRole(AppRoles.TenantAdmin), members ?? new List<Guid>());
+        if (status != 0)
+        {
+            TempData["Error"] = status switch
+            {
+                9 => "Adding people needs a database update: run database/29_GroupMembers.sql, then try again.",
+                1 => "People can only be added to groups. Everyone is already in \"Everyone\".",
+                2 => "Only the person who created this group, or a workspace admin, can add people.",
+                _ => "Pick at least one person who isn't in the group yet."
+            };
+            return RedirectToAction(nameof(Index), new { id });
+        }
+        var group = await _chat.GetChannelAsync(tenantId, id);
+        await AddConnectionsToGroupAsync(id, added.Select(a => a.ToString()));
+        await _hub.Clients.Users(added.Select(a => a.ToString()).ToList())
+            .SendAsync("AddedToGroup", User.DisplayName(), group?.Name ?? "a group", $"/chat/{id}");
+        TempData["Message"] = $"Added {added.Count} {(added.Count == 1 ? "person" : "people")}. They can see the group's messages and files.";
+        return RedirectToAction(nameof(Index), new { id });
+    }
+
+    /// <summary>Removes someone from a group (its creator or a workspace admin). Their chat list drops it straight away.</summary>
+    [HttpPost("{id:guid}/members/{memberId:guid}/remove")]
+    public async Task<IActionResult> RemoveMember(Guid id, Guid memberId)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var status = await _chat.RemoveMemberAsync(tenantId, id, Me, User.IsInRole(AppRoles.TenantAdmin), memberId);
+        if (status != 0)
+        {
+            TempData["Error"] = status switch
+            {
+                9 => "Removing people needs a database update: run database/29_GroupMembers.sql, then try again.",
+                1 => "People can only be removed from groups, not from \"Everyone\" or a one-to-one chat.",
+                2 => "Only the person who created this group, or a workspace admin, can remove people.",
+                4 => "You can't remove yourself here.",
+                5 => "Only a workspace admin can remove the person who created the group.",
+                _ => "That person isn't in the group any more."
+            };
+            return RedirectToAction(nameof(Index), new { id });
+        }
+        var group = await _chat.GetChannelAsync(tenantId, id);
+        foreach (var conn in _presence.Connections(memberId.ToString()))
+            await _hub.Groups.RemoveFromGroupAsync(conn, ChatHub.ChannelGroup(id));
+        await _hub.Clients.User(memberId.ToString()).SendAsync("RemovedFromGroup", id, group?.Name ?? "a group");
+        TempData["Message"] = "Removed from the group. They no longer see it.";
+        return RedirectToAction(nameof(Index), new { id });
     }
 
     private const string MissingScript = "Editing groups needs a database update: run database/99_ApplyAllUpdates.sql in SQL Server Management Studio, then try again.";

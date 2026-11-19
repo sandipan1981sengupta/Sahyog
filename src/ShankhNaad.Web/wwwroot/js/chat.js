@@ -155,6 +155,8 @@
         ["Hearts & fun", "❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💯 💥 ✨ 🔥 ⭐ 🌟 🎉 🎊 🎁 🏆 🥇".split(" ")],
         ["Work & more", "✅ ❌ ⚠️ ❓ ❗ 💡 📌 📎 📅 ⏰ 📞 💻 📊 📈 🚀 ☕ 🍕 🍰 🌹 🌞".split(" ")]
     ];
+    // words for the emoji panel's search box (English, a few per emoji)
+    const EMOJI_WORDS = {"😀": "grin smile happy", "😃": "smile happy joy", "😄": "smile happy laugh", "😁": "grin beam happy", "😆": "laugh lol happy", "😅": "sweat laugh nervous phew", "🤣": "rofl laugh lol", "😂": "joy laugh tears lol", "🙂": "slight smile ok", "😉": "wink", "😊": "blush smile happy", "😇": "angel innocent halo", "🥰": "love hearts adore", "😍": "heart eyes love", "🤩": "star struck wow amazing", "😘": "kiss love", "😋": "yum tasty delicious", "😜": "wink tongue silly crazy", "🤪": "zany crazy silly", "😎": "cool sunglasses", "🤓": "nerd geek glasses", "🥳": "party celebrate birthday", "😏": "smirk", "😌": "relieved calm peace", "😴": "sleep tired zzz", "🤗": "hug hugging", "🤔": "think thinking hmm", "🤭": "oops giggle hand", "🤫": "shush quiet secret", "😶": "no mouth silent speechless", "😐": "neutral meh", "😑": "expressionless meh", "😬": "grimace awkward", "🙄": "eye roll whatever", "😮": "wow surprised open mouth", "😯": "hushed surprised", "😲": "astonished shocked wow", "😳": "flushed embarrassed", "🥺": "pleading please puppy", "😢": "cry sad tear", "😭": "sob cry sad", "😤": "triumph huff angry", "😡": "angry mad rage", "🤯": "mind blown explode", "😱": "scream fear shock", "🤒": "sick fever ill", "🤧": "sneeze sick cold", "😷": "mask sick", "👍": "thumbs up like yes ok good", "👎": "thumbs down dislike no bad", "👌": "ok perfect fine", "✌️": "peace victory", "🤞": "fingers crossed luck hope", "🤟": "love you", "🤘": "rock horns", "👏": "clap applause bravo well done", "🙌": "raise hands celebrate hooray", "👐": "open hands", "🙏": "pray thanks please namaste", "🤝": "handshake deal agree", "💪": "strong muscle flex power", "👋": "wave hello hi bye", "✋": "hand stop high five", "👊": "fist bump punch", "✊": "fist power", "🫡": "salute respect yes sir", "👀": "eyes look see watching", "🧠": "brain smart think", "❤️": "heart love red", "🧡": "orange heart", "💛": "yellow heart", "💚": "green heart", "💙": "blue heart", "💜": "purple heart", "🖤": "black heart", "🤍": "white heart", "💔": "broken heart sad", "💯": "hundred perfect 100", "💥": "boom bang", "✨": "sparkles shine new", "🔥": "fire hot lit", "⭐": "star", "🌟": "glowing star shine", "🎉": "party tada celebrate congrats", "🎊": "confetti celebrate", "🎁": "gift present", "🏆": "trophy win award winner", "🥇": "gold medal first winner", "✅": "check done yes tick complete", "❌": "cross no wrong cancel", "⚠️": "warning alert caution", "❓": "question what", "❗": "exclamation important", "💡": "idea bulb light", "📌": "pin pushpin important", "📎": "paperclip attach file", "📅": "calendar date schedule meeting", "⏰": "alarm clock time reminder", "📞": "phone call", "💻": "laptop computer work", "📊": "chart bar stats report", "📈": "chart up growth trend", "🚀": "rocket launch fast ship", "☕": "coffee tea break", "🍕": "pizza food", "🍰": "cake birthday dessert", "🌹": "rose flower", "🌞": "sun sunny morning"};
     const msgInfo = new Map();      // message id → { name, text } (for replies)
     const reactState = new Map();   // message id → [{ emoji, userId, name }]
     let reactQueue = new Set(), reactTimer = null;
@@ -230,9 +232,35 @@
         if (mid) panel.dataset.mid = mid;
         panel.setAttribute("role", "dialog");
         panel.setAttribute("aria-label", forBox ? "Emoji" : "More reactions");
-        panel.innerHTML = EMOJI_GROUPS.map(([name, list]) => `<div class="mmp-head">${name}</div>` + list.map((e) => forBox
-            ? `<button type="button" data-insert="${e}" aria-label="${e}">${e}</button>`
-            : `<button type="button" data-react="${e}" data-mid="${mid}" aria-label="React ${e}">${e}</button>`).join("")).join("");
+        panel.innerHTML = `<label class="mmp-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" placeholder="Search emoji (happy, thumbs, fire…)" aria-label="Search emoji" autocomplete="off" /></label>`
+            + EMOJI_GROUPS.map(([name, list]) => `<div class="mmp-head" data-group="${name}">${name}</div>` + list.map((e) => {
+                const words = S.escape(`${EMOJI_WORDS[e] || ""} ${name}`.toLowerCase());
+                return forBox
+                    ? `<button type="button" data-insert="${e}" data-words="${words}" data-group="${name}" aria-label="${e}" title="${S.escape(EMOJI_WORDS[e] || "")}">${e}</button>`
+                    : `<button type="button" data-react="${e}" data-mid="${mid}" data-words="${words}" data-group="${name}" aria-label="React ${e}" title="${S.escape(EMOJI_WORDS[e] || "")}">${e}</button>`;
+            }).join("")).join("")
+            + `<div class="mmp-none" hidden>No emoji found</div>`;
+        // search: matches any word that starts with what you type ("thu" → 👍 👎), group headings hide when empty
+        const findBox = panel.querySelector(".mmp-search input");
+        findBox.addEventListener("input", () => {
+            const q = findBox.value.trim().toLowerCase();
+            let any = 0;
+            const shown = {};
+            panel.querySelectorAll("button[data-words]").forEach((b) => {
+                const ok = !q || b.dataset.words.split(" ").some((w) => w.startsWith(q)) || b.textContent === q;
+                b.hidden = !ok;
+                if (ok) { any++; shown[b.dataset.group] = true; }
+            });
+            panel.querySelectorAll(".mmp-head").forEach((h) => { h.hidden = !shown[h.dataset.group]; });
+            panel.querySelector(".mmp-none").hidden = any > 0;
+        });
+        // Enter picks the first match
+        findBox.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") { e.stopPropagation(); closeMorePanel(); return; }
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            panel.querySelector("button[data-words]:not([hidden])")?.click();
+        });
         document.body.appendChild(panel);
         panel.owner = btn;
         btn.closest(".msg")?.classList.add("acts-open");
@@ -243,7 +271,7 @@
         if (top < 8) top = Math.min(r.bottom + 8, window.innerHeight - h - 8);
         panel.style.left = `${left}px`; panel.style.top = `${Math.max(8, top)}px`;
         morePanel = panel;
-        requestAnimationFrame(() => panel.classList.add("show"));
+        requestAnimationFrame(() => { panel.classList.add("show"); findBox.focus({ preventScroll: true }); });
     }
     // an emoji picked for the message box goes where the cursor is; the panel stays open for more
     document.addEventListener("click", (e) => {
@@ -319,7 +347,7 @@
         const grouped = previous && previous.senderId === m.senderId && previous.day === dayKey(m.sentUtc)
             && new Date(m.sentUtc) - new Date(previous.sentUtc) < 5 * 60 * 1000;
         const el = document.createElement("div");
-        el.className = `msg${mine ? " mine" : ""}${grouped ? " grouped" : ""}`;
+        el.className = `msg${mine ? " mine" : ""}${grouped ? " grouped" : ""}${m.isCopied ? " msg-copied" : ""}`;
         el.dataset.id = m.id;
         if (mine && m.channelId === channelId) el.dataset.sent = m.sentUtc;
         // a call started from this chat: ONE card per call that changes as the call goes on
@@ -348,6 +376,13 @@
         return el;
     }
 
+    function historySep(text, icon) {
+        const el = document.createElement("div");
+        el.className = "history-sep";
+        el.innerHTML = `<span><i class="fa ${icon}" aria-hidden="true"></i> ${S.escape(text)}</span>`;
+        return el;
+    }
+
     function daySep(iso) {
         const el = document.createElement("div");
         el.className = "day-sep";
@@ -360,9 +395,13 @@
         seen.add(m.id);
         if (oldestId === null || m.id < oldestId) oldestId = m.id;
         const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 160;
+        // copied history (a group made from a one-to-one chat): a line where it starts and where the group's own messages begin
+        const wasCopied = !!lastRendered?.copied;
+        if (m.isCopied && !wasCopied) list.appendChild(historySep("Shared history from a one-to-one chat", "fa-history"));
+        if (!m.isCopied && wasCopied) list.appendChild(historySep("New messages in this group", "fa-users"));
         if (!lastRendered || lastRendered.day !== dayKey(m.sentUtc)) list.appendChild(daySep(m.sentUtc));
-        list.appendChild(messageEl(m, lastRendered));
-        lastRendered = { senderId: m.senderId, sentUtc: m.sentUtc, day: dayKey(m.sentUtc) };
+        list.appendChild(messageEl(m, lastRendered && !!lastRendered.copied === !!m.isCopied ? lastRendered : null));
+        lastRendered = { senderId: m.senderId, sentUtc: m.sentUtc, day: dayKey(m.sentUtc), copied: !!m.isCopied };
         if (nearBottom || m.senderId === me) scroller.scrollTop = scroller.scrollHeight;
     }
 
@@ -556,6 +595,13 @@
         });
 
         // A chat was deleted: a one-to-one chat (by you in another tab, or the other person) or a channel (by an admin).
+        // you were removed from a group: it leaves your list (and the page, if it's open)
+        hub.on("RemovedFromGroup", (cid, name) => {
+            S.toast(`You were removed from "${name}".`, { kind: "info", title: "Removed from group" });
+            if (cid === channelId) { setTimeout(() => { window.location.href = "/chat"; }, 1400); return; }
+            document.querySelectorAll(`.side-item[data-channel="${cid}"]`).forEach((x) => x.remove());
+        });
+
         hub.on("ChannelDeleted", (cid) => {
             if (cid === channelId) { window.location.href = "/chat"; return; }
             const item = document.querySelector(`.side-item[data-channel="${cid}"]`);

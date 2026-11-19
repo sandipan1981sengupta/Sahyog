@@ -53,6 +53,8 @@ public sealed record MessageDto(
     public string? ReplyToSender { get; init; }
     /// <summary>The start of the original's text (or its file name, for a file).</summary>
     public string? ReplyToText { get; init; }
+    /// <summary>Copied into a group from a one-to-one chat ("Add people" with history; needs 29_GroupMembers.sql).</summary>
+    public bool IsCopied { get; init; }
 }
 
 public sealed record SendMessageRequest(Guid TenantId, Guid ChannelId, Guid SenderId, string Body)

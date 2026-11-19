@@ -40,6 +40,14 @@ public interface IChatService
     /// <summary>Deletes a direct conversation (messages and files) for both people.</summary>
     /// <returns>Deleted = false when it isn't a direct chat this user is in; Files = storage paths to remove.</returns>
     Task<(bool Deleted, List<string> Files)> DeleteDirectAsync(Guid tenantId, Guid channelId, Guid userId);
+    /// <summary>Adds people to a group (its creator or an admin). Status 0 ok, 1 not a group you can change (or Everyone),
+    /// 2 not allowed, 3 nobody new, 9 script 29 not run. Returns who was added.</summary>
+    Task<(int Status, List<Guid> Added)> AddMembersAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, IEnumerable<Guid> memberIds);
+    /// <summary>Removes someone from a group. Status 0 ok, 1 not a group you can change, 2 not allowed, 3 not in it,
+    /// 4 yourself, 5 only an admin can remove the creator, 9 script 29 not run.</summary>
+    Task<int> RemoveMemberAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, Guid memberId);
+    /// <summary>Copies a one-to-one chat's messages (since a time, or all) into a group. Null when script 29 isn't run; -1 not allowed.</summary>
+    Task<int?> CopyHistoryAsync(Guid tenantId, Guid fromChannelId, Guid toChannelId, Guid userId, DateTime? sinceUtc);
     /// <summary>Deletes one message. Callers pass isAdmin = false so only the sender can delete it. Status 0 ok, 1 not found, 2 not allowed.</summary>
     Task<(int Status, Guid? ChannelId, string? FilePath)> DeleteMessageAsync(Guid tenantId, long messageId, Guid userId, bool isAdmin);
 }
@@ -66,7 +74,8 @@ public sealed class ChatService : IChatService
             ReplyToSender = r.Has("ReplyToSenderName") ? r.SN("ReplyToSenderName") : null,
             ReplyToText = r.Has("ReplyToBody")
                 ? (string.IsNullOrEmpty(r.SN("ReplyToBody")) ? r.SN("ReplyToFileName") : r.SN("ReplyToBody"))
-                : null
+                : null,
+            IsCopied = r.Has("CopiedFromId") && r["CopiedFromId"] is not DBNull
         };
     }
 
@@ -284,6 +293,54 @@ public sealed class ChatService : IChatService
             channel = p.AddOutput("@ChannelId", SqlDbType.UniqueIdentifier);
         });
         return channel!.Value is Guid g ? g : null;
+    }
+
+    public async Task<(int Status, List<Guid> Added)> AddMembersAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, IEnumerable<Guid> memberIds)
+    {
+        try
+        {
+            SqlParameter? result = null;
+            var added = await _db.QueryAsync("dbo.sahyog_Chat_AddMembers", p =>
+            {
+                p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", userId).With("@IsAdmin", isAdmin)
+                 .AddText("@MemberIds", string.Join(",", memberIds), -1);
+                result = p.AddOutput("@Result", SqlDbType.Int);
+            }, r => r.G("UserId"));
+            return (result!.OutInt(), added);
+        }
+        catch (SqlException ex) when (ex.Number == 2812) { return (9, new()); }
+    }
+
+    public async Task<int> RemoveMemberAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, Guid memberId)
+    {
+        try
+        {
+            SqlParameter? result = null;
+            await _db.ExecAsync("dbo.sahyog_Chat_RemoveMember", p =>
+            {
+                p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", userId).With("@IsAdmin", isAdmin)
+                 .With("@MemberId", memberId);
+                result = p.AddOutput("@Result", SqlDbType.Int);
+            });
+            return result!.OutInt();
+        }
+        catch (SqlException ex) when (ex.Number == 2812) { return 9; }
+    }
+
+    public async Task<int?> CopyHistoryAsync(Guid tenantId, Guid fromChannelId, Guid toChannelId, Guid userId, DateTime? sinceUtc)
+    {
+        try
+        {
+            SqlParameter? result = null;
+            var rows = await _db.QueryAsync("dbo.sahyog_Chat_CopyHistory", p =>
+            {
+                p.With("@TenantId", tenantId).With("@FromChannelId", fromChannelId).With("@ToChannelId", toChannelId)
+                 .With("@UserId", userId).AddDateTime2("@SinceUtc", sinceUtc);
+                result = p.AddOutput("@Result", SqlDbType.Int);
+            }, r => r.I("Copied"));
+            return result!.OutInt() == 0 ? rows.FirstOrDefault() : -1;
+        }
+        catch (SqlException ex) when (ex.Number == 2812) { return null; }
     }
 
     public async Task<(bool Deleted, List<string> Files)> DeleteDirectAsync(Guid tenantId, Guid channelId, Guid userId)

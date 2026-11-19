@@ -72,6 +72,10 @@ public sealed class ChatViewModel
     /// <summary>Only workspace admins, and never the main channel (#general).</summary>
     public bool CanDeleteChannel { get; init; }
     public bool CurrentIsMain { get; init; }
+    /// <summary>Add / remove people: a private group, and you created it or are a workspace admin.</summary>
+    public bool CanManageMembers { get; init; }
+    /// <summary>Who created the current group (they can only be removed by an admin).</summary>
+    public string? CurrentCreatedBy { get; init; }
     /// <summary>Who has read up to when in this conversation (for ✓✓ read ticks).</summary>
     public List<ReadStateDto> ReadState { get; init; } = new();
     public string? CurrentDescription { get; init; }

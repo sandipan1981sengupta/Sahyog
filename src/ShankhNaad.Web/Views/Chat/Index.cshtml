@@ -53,6 +53,11 @@
                 <action-btn text="Add people" icon-css="bi bi-person-plus-fill" icon-color="#7C3AED" tooltip="Make a group with @c.Name and more people"
                             on-click="snAddPeople()"></action-btn>
             }
+            @if (!c.IsDirect && Model.CanManageMembers)
+            {
+                <action-btn text="Add people" icon-css="bi bi-person-plus-fill" icon-color="#7C3AED" tooltip="Add people to @c.Name"
+                            on-click="SN.open('addMembersDialog')"></action-btn>
+            }
             <action-btn text="@(c.IsPinned ? "Unpin" : "Pin")" icon-css="bi bi-pin-angle-fill" icon-color="#D97706" tooltip="Keep this chat at the top of your list"
                         on-click="snTogglePin()"></action-btn>
             <action-btn text="Call" icon-css="bi bi-telephone-fill" icon-color="#1D4ED8" tooltip="Start a call with everyone here"
@@ -67,6 +72,71 @@
     }
 </div>
 <div class="sn-chat-row">
+
+@* ---------- people picker (New group, Add people): slim rows A–Z, search, All / Online, picked people as chips.
+   Looks and works the same for 2 or 500 people: the list scrolls, search and chips stay in view. ---------- *@
+@{
+    void PeoplePicker(string ppId, IEnumerable<PersonVm> people, string emptyText, bool newGroupHint)
+    {
+        var ppList = people.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        string? ppLast = null;
+        <div id="@ppId" class="sn-pp" data-pp>
+            <div class="sn-pp-head">
+                <span class="sn-pp-title"><b>People</b> <span class="sn-pp-count" data-pp-count>0 picked</span></span>
+                <span class="sn-pp-total muted tiny">@ppList.Count to pick from · @ppList.Count(x => x.Online) online</span>
+            </div>
+            <div class="sn-pp-chips" data-pp-chips aria-live="polite">
+                <span class="sn-pp-chips-empty">No one picked yet. Search or tick people below.</span>
+            </div>
+            <div class="sn-pp-tools">
+                <label class="sn-pp-search">
+                    <i class="fa fa-search" aria-hidden="true"></i>
+                    <input type="search" data-pp-search placeholder="Search by name, then press Enter to pick" aria-label="Search people" autocomplete="off" />
+                </label>
+                <span class="sn-pp-seg" role="group" aria-label="Show">
+                    <button type="button" class="on" data-pp-show="all">All</button>
+                    <button type="button" data-pp-show="online"><i class="dot-on" aria-hidden="true"></i> Online</button>
+                </span>
+            </div>
+            <div class="sn-pp-bar">
+                <span class="muted tiny" data-pp-shown></span>
+                <span class="sn-pp-acts">
+                    <button type="button" class="sn-link" data-pp-all>Select shown</button>
+                    <button type="button" class="sn-link sn-pp-clear" data-pp-clear>Clear</button>
+                </span>
+            </div>
+            <div class="sn-pp-list" data-pp-list>
+                @foreach (var ppT in ppList)
+                {
+                    var ppLetter = string.IsNullOrEmpty(ppT.Name) || !char.IsLetter(ppT.Name[0]) ? "#" : char.ToUpperInvariant(ppT.Name[0]).ToString();
+                    if (ppLetter != ppLast)
+                    {
+                        ppLast = ppLetter;
+                        <div class="sn-pp-letter" data-letter="@ppLetter">@ppLetter</div>
+                    }
+                    <label class="sn-pp-row" data-name="@ppT.Name.ToLowerInvariant()" data-letter="@ppLetter" data-online="@(ppT.Online ? "1" : "0")">
+                        <input type="checkbox" name="members" value="@ppT.Id" />
+                        <span class="avatar av-34 tone-@(ppT.Tone)" data-presence="@ppT.Id" data-user="@ppT.Id">@ppT.Initials<i class="dot @(ppT.Online ? "on" : "")"></i></span>
+                        <span class="sn-pp-who">
+                            <span class="sn-pp-name">@ppT.Name</span>
+                            <span class="sn-pp-state">@(ppT.Online ? "Online" : "Offline")</span>
+                        </span>
+                        <span class="sn-pp-tick" aria-hidden="true"><i class="fa fa-check"></i></span>
+                    </label>
+                }
+                <div class="sn-pp-none" data-pp-none hidden>No one matches “<span></span>”.</div>
+                @if (ppList.Count == 0)
+                {
+                    <p class="muted small" style="padding:10px">@emptyText</p>
+                }
+            </div>
+            @if (newGroupHint)
+            {
+                <span class="sn-hint"><i class="fa fa-lock" aria-hidden="true"></i> New teammates aren't added automatically. Everybody is always in "Everyone".</span>
+            }
+        </div>
+    }
+}
 
 @* ---------- one chat row (group or person) with its hover buttons ---------- *@
 @{
@@ -238,6 +308,16 @@
                 </span>
             }
         </div>
+        @if (c is { IsDirect: false })
+        {
+            <div class="sn-mem-acts">
+                <button type="button" class="sn-link" onclick="SN.open('membersDialog')"><i class="fa fa-users" aria-hidden="true"></i> @(Model.Members.Count > 12 ? $"See all {Model.Members.Count}" : "See all")@(Model.CanManageMembers ? " · remove" : "")</button>
+                @if (Model.CanManageMembers)
+                {
+                    <button type="button" class="sn-link" onclick="SN.open('addMembersDialog')"><i class="fa fa-user-plus" aria-hidden="true"></i> Add people</button>
+                }
+            </div>
+        }
     </modern-group-box>
 
     <modern-group-box title="Files | shared" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="24px" content-layout="block">
@@ -300,31 +380,24 @@
                     <modern-input id="channelDesc" name="description" label="Description" placeholder="What is this group for?" max-length="300" label-font-size="13.5px"></modern-input>
                 </div>
             </modern-group-box>
-            <div id="groupPeople" style="margin-top:14px;display:flex;flex-direction:column;gap:10px">
-                <div class="sn-pick-head">
-                    <span><b>People</b> <span class="muted small" id="pickCount">0 picked</span></span>
-                    <span style="display:flex;gap:8px;align-items:center">
-                        <input type="search" class="sn-pick-search" id="pickSearch" placeholder="Find someone" aria-label="Find someone" />
-                        <button type="button" class="sn-link" id="pickAll">All</button>
-                    </span>
+            @* "Add people" from a one-to-one chat: copy that chat's history into the new group *@
+            @if (c is { IsDirect: true })
+            {
+                <div class="sn-hs" id="historyShare" hidden>
+                    <input type="hidden" name="fromChat" id="fromChat" value="@c.Id" disabled />
+                    <div class="sn-hs-head">
+                        <span class="sn-hs-ic"><i class="fa fa-history" aria-hidden="true"></i></span>
+                        <div><b>Share your chat history with @c.Name?</b><small>Copies your one-to-one messages (and files, without using more storage) into the new group, so everyone can read them. Your chat with @c.Name stays as it is.</small></div>
+                    </div>
+                    <div class="sn-hs-opts" role="radiogroup" aria-label="Chat history to share">
+                        <label><input type="radio" name="history" value="none" checked disabled /><span>Don't share</span></label>
+                        <label><input type="radio" name="history" value="1" disabled /><span>Last day</span></label>
+                        <label><input type="radio" name="history" value="7" disabled /><span>Last 7 days</span></label>
+                        <label><input type="radio" name="history" value="all" disabled /><span>All history</span></label>
+                    </div>
                 </div>
-                <div class="sn-pick-list">
-                    @foreach (var t in Model.Team.OrderBy(t => t.Name))
-                    {
-                        <label class="sn-pick" data-name="@t.Name.ToLowerInvariant()">
-                            <input type="checkbox" name="members" value="@t.Id" />
-                            <span class="avatar av-34 tone-@(t.Tone)" data-presence="@t.Id">@t.Initials<i class="dot @(t.Online ? "on" : "")"></i></span>
-                            <span class="grow">@t.Name</span>
-                            <i class="fa fa-check sn-pick-tick" aria-hidden="true"></i>
-                        </label>
-                    }
-                    @if (Model.Team.Count == 0)
-                    {
-                        <p class="muted small">No one else is in this workspace yet. Add people on the Team page first.</p>
-                    }
-                </div>
-                <span class="sn-hint"><i class="fa fa-lock" aria-hidden="true"></i> New teammates aren't added automatically. Everybody is always in "Everyone".</span>
-            </div>
+            }
+            @{ PeoplePicker("groupPeople", Model.Team, "No one else is in this workspace yet. Add people on the Team page first.", true); }
         </div>
         <div class="sn-dlg-foot">
             <span></span>
@@ -335,6 +408,73 @@
         </div>
     </form>
 </dialog>
+
+@if (c is { IsDirect: false } && Model.CanManageMembers)
+{
+    var notIn = Model.Team.Where(t => !Model.Members.Any(m => m.Id == t.Id)).ToList();
+    <dialog id="addMembersDialog" class="sn-dialog glass-strong">
+        <form method="post" asp-antiforgery="true" action="/chat/@c.Id/members/add" id="addMembersForm">
+            <div class="sn-dlg-head">
+                <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-user-plus" aria-hidden="true"></i></span><div><h2>Add people to @c.Name</h2><p>They'll see the group's whole history, messages and files.</p></div></div>
+                <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+            </div>
+            <div class="sn-dlg-body">
+                @{ PeoplePicker("addPeople", notIn, "Everyone in the workspace is already in this group.", false); }
+            </div>
+            <div class="sn-dlg-foot">
+                <span></span>
+                <span style="display:flex;gap:10px">
+                    <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                    <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-user-plus" aria-hidden="true"></i> Add</button>
+                </span>
+            </div>
+        </form>
+    </dialog>
+}
+
+@if (c is { IsDirect: false })
+{
+    var meId = User.UserId();
+    var isAdminHere = User.IsInRole(AppRoles.TenantAdmin);
+    <dialog id="membersDialog" class="sn-dialog glass-strong">
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-users" aria-hidden="true"></i></span><div><h2>Members · @Model.Members.Count</h2><p>@(Model.CurrentIsMain ? "Everyone in the workspace is in this group." : Model.CanManageMembers ? "Add or remove people. Removed people no longer see the group." : "People in this group.")</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body">
+            <div class="sn-pp-tools">
+                <label class="sn-pp-search">
+                    <i class="fa fa-search" aria-hidden="true"></i>
+                    <input type="search" id="memSearch" placeholder="Find a member" aria-label="Find a member" autocomplete="off" />
+                </label>
+                @if (Model.CanManageMembers)
+                {
+                    <button type="button" class="cee-btn cee-btn-gradient sn-mem-add" onclick="document.getElementById('membersDialog').close(); SN.open('addMembersDialog')"><i class="fa fa-user-plus" aria-hidden="true"></i> Add people</button>
+                }
+            </div>
+            <div class="sn-pp-list sn-mem-list" id="memList">
+                @foreach (var m in Model.Members.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    var isMe = m.Id == meId;
+                    var isCreator = Model.CurrentCreatedBy is not null && string.Equals(m.Id, Model.CurrentCreatedBy, StringComparison.OrdinalIgnoreCase);
+                    var canRemove = Model.CanManageMembers && !isMe && (!isCreator || isAdminHere);
+                    <div class="sn-pp-row sn-mem-row" data-name="@m.Name.ToLowerInvariant()">
+                        <span class="avatar av-34 tone-@(m.Tone)" data-presence="@m.Id" data-user="@m.Id">@m.Initials<i class="dot @(m.Online ? "on" : "")"></i></span>
+                        <span class="sn-pp-who">
+                            <span class="sn-pp-name">@m.Name @if (isMe) {<span class="sn-mem-tag">You</span>} @if (isCreator) {<span class="sn-mem-tag owner">Created the group</span>}</span>
+                            <span class="sn-pp-state">@(m.Online ? "Online" : "Offline")</span>
+                        </span>
+                        @if (canRemove)
+                        {
+                            <button type="button" class="sn-mem-remove" data-remove="@m.Id" data-name="@m.Name" title="Remove @m.Name from the group"><i class="fa fa-user-times" aria-hidden="true"></i> Remove</button>
+                        }
+                    </div>
+                }
+                <div class="sn-pp-none" id="memNone" hidden>No member matches.</div>
+            </div>
+        </div>
+    </dialog>
+}
 
 @if (c is { IsDirect: false } && Model.CanEditChannel)
 {
@@ -441,40 +581,147 @@
             });
         });
 
-        // ---- New group: pick the people ----
+        // ---- people picker (New group and Add people): search, All / Online, chips; fine for 2 or 500 people ----
+        function snPicker(root) {
+            if (!root) return null;
+            var q = function (sel) { return root.querySelector(sel); };
+            var rows = Array.prototype.slice.call(root.querySelectorAll(".sn-pp-row"));
+            var letters = Array.prototype.slice.call(root.querySelectorAll(".sn-pp-letter"));
+            var search = q("[data-pp-search]"), chips = q("[data-pp-chips]"), none = q("[data-pp-none]"), counter = q("[data-pp-count]");
+            var show = "all";
+            var esc = function (t) { return String(t).replace(/[&<>"]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]; }); };
+            function visible() { return rows.filter(function (r) { return !r.hidden; }); }
+            function filter() {
+                var text = search.value.trim().toLowerCase(), shown = 0;
+                rows.forEach(function (r) {
+                    var ok = (!text || r.dataset.name.indexOf(text) >= 0) && (show === "all" || r.dataset.online === "1");
+                    r.hidden = !ok; if (ok) shown++;
+                });
+                letters.forEach(function (h) { h.hidden = !rows.some(function (r) { return !r.hidden && r.dataset.letter === h.dataset.letter; }); });
+                if (none) { none.hidden = shown > 0 || rows.length === 0; none.querySelector("span").textContent = text || (show === "online" ? "online" : ""); }
+                q("[data-pp-shown]").textContent = (text || show !== "all") ? ("Showing " + shown + " of " + rows.length) : (rows.length + (rows.length === 1 ? " person" : " people"));
+            }
+            function render() {
+                var picked = rows.filter(function (r) { return r.querySelector("input").checked; });
+                counter.textContent = picked.length + " picked";
+                counter.classList.toggle("has", picked.length > 0);
+                chips.querySelectorAll(".sn-pp-chip").forEach(function (x) { x.remove(); });
+                chips.querySelector(".sn-pp-chips-empty").hidden = picked.length > 0;
+                picked.forEach(function (r) {
+                    var name = r.querySelector(".sn-pp-name").textContent;
+                    var av = r.querySelector(".avatar").cloneNode(true);
+                    av.className = av.className.replace("av-34", "av-22");
+                    if (av.querySelector(".dot")) av.querySelector(".dot").remove();
+                    var chip = document.createElement("span");
+                    chip.className = "sn-pp-chip";
+                    chip.innerHTML = '<span class="sn-pp-chip-name">' + esc(name) + '</span><button type="button" aria-label="Remove ' + esc(name) + '" data-unpick="' + esc(r.querySelector("input").value) + '">&times;</button>';
+                    chip.prepend(av);
+                    chips.appendChild(chip);
+                });
+                return picked.length;
+            }
+            root.addEventListener("change", function (e) { if (e.target.name === "members") render(); });
+            search.addEventListener("input", filter);
+            search.addEventListener("keydown", function (e) {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                var first = visible()[0];
+                if (!first || !search.value.trim()) return;
+                first.querySelector("input").checked = true;
+                search.value = ""; filter(); render();
+                Sahyog.toast(first.querySelector(".sn-pp-name").textContent + " added", { kind: "success" });
+            });
+            chips.addEventListener("click", function (e) {
+                var b = e.target.closest("[data-unpick]");
+                if (!b) return;
+                rows.forEach(function (r) { var i = r.querySelector("input"); if (i.value === b.dataset.unpick) i.checked = false; });
+                render();
+            });
+            root.querySelectorAll("[data-pp-show]").forEach(function (b) {
+                b.addEventListener("click", function () {
+                    show = b.dataset.ppShow;
+                    root.querySelectorAll("[data-pp-show]").forEach(function (x) { x.classList.toggle("on", x === b); });
+                    filter();
+                });
+            });
+            q("[data-pp-all]").addEventListener("click", function () { visible().forEach(function (r) { r.querySelector("input").checked = true; }); render(); });
+            q("[data-pp-clear]").addEventListener("click", function () { rows.forEach(function (r) { r.querySelector("input").checked = false; }); render(); });
+            filter(); render();
+            return {
+                count: render,
+                focus: function () { search.focus(); },
+                reset: function () {
+                    search.value = ""; show = "all";
+                    root.querySelectorAll("[data-pp-show]").forEach(function (x) { x.classList.toggle("on", x.dataset.ppShow === "all"); });
+                    filter();
+                },
+                pickOnly: function (ids) {
+                    rows.forEach(function (r) { var i = r.querySelector("input"); i.checked = ids.indexOf(i.value) >= 0; });
+                    render();
+                }
+            };
+        }
+
+        // ---- New group ----
+        var newPicker = null;
         (function () {
             var form = document.getElementById("newChannelForm");
             if (!form) return;
-            function count() {
-                var n = form.querySelectorAll('input[name="members"]:checked').length;
-                document.getElementById("pickCount").textContent = n + " picked";
-                return n;
+            newPicker = snPicker(document.getElementById("groupPeople"));
+            var share = document.getElementById("historyShare");
+            function shareOn(on) {
+                if (!share) return;
+                share.hidden = !on;
+                share.querySelectorAll("input").forEach(function (i) { i.disabled = !on; });
+                if (!on) share.querySelector('input[value="none"]').checked = true;
             }
-            form.addEventListener("change", function (e) { if (e.target.name === "members") count(); });
-            document.getElementById("pickSearch").addEventListener("input", function () {
-                var q = this.value.trim().toLowerCase();
-                form.querySelectorAll(".sn-pick").forEach(function (row) { row.hidden = q && row.dataset.name.indexOf(q) < 0; });
-            });
-            document.getElementById("pickAll").addEventListener("click", function () {
-                var boxes = form.querySelectorAll('.sn-pick:not([hidden]) input[name="members"]');
-                var all = Array.prototype.every.call(boxes, function (b) { return b.checked; });
-                boxes.forEach(function (b) { b.checked = !all; });
-                count();
-            });
             form.addEventListener("submit", function (e) {
                 if (!$.trim($("#channelName").val())) { e.preventDefault(); Sahyog.toast("Give the group a name, for example Project Alpha.", { kind: "warn", title: "Name needed" }); return; }
-                if (count() === 0) { e.preventDefault(); Sahyog.toast("Pick at least one person for the group.", { kind: "warn", title: "Who's in it?" }); }
+                if (newPicker && newPicker.count() === 0) { e.preventDefault(); Sahyog.toast("Pick at least one person for the group.", { kind: "warn", title: "Who's in it?" }); newPicker.focus(); }
             });
+            // fresh each time: search cleared, list back to "All", history option only when opened from "Add people"
+            document.getElementById("newChannelDialog").addEventListener("close", function () { if (newPicker) newPicker.reset(); shareOn(false); });
+            window.snShareHistory = shareOn;
             if (new URLSearchParams(location.search).get("new") === "group") setTimeout(function () { SN.open("newChannelDialog"); }, 350);
+        })();
+
+        // ---- Add people to this group ----
+        (function () {
+            var form = document.getElementById("addMembersForm");
+            if (!form) return;
+            var picker = snPicker(document.getElementById("addPeople"));
+            form.addEventListener("submit", function (e) {
+                if (picker && picker.count() === 0) { e.preventDefault(); Sahyog.toast("Pick at least one person to add.", { kind: "warn", title: "Who should join?" }); picker.focus(); }
+            });
+            document.getElementById("addMembersDialog").addEventListener("close", function () { if (picker) picker.reset(); });
+        })();
+
+        // ---- Members: find, remove ----
+        (function () {
+            var dlg = document.getElementById("membersDialog");
+            if (!dlg) return;
+            var rows = Array.prototype.slice.call(dlg.querySelectorAll(".sn-mem-row"));
+            document.getElementById("memSearch").addEventListener("input", function () {
+                var t = this.value.trim().toLowerCase(), n = 0;
+                rows.forEach(function (r) { r.hidden = t && r.dataset.name.indexOf(t) < 0; if (!r.hidden) n++; });
+                document.getElementById("memNone").hidden = n > 0;
+            });
+            dlg.addEventListener("click", function (e) {
+                var b = e.target.closest("[data-remove]");
+                if (!b) return;
+                SN.confirmPost("/chat/@(c?.Id)/members/" + b.dataset.remove + "/remove", {
+                    title: "Remove from group",
+                    text: "Remove " + b.dataset.name + " from this group? They stop seeing it straight away. Their old messages stay.",
+                    confirmText: "Remove",
+                    danger: true
+                });
+            });
         })();
 
         // ---- Add people (in a one-to-one chat): New group with this person already ticked ----
         function snAddPeople() {
-            var form = document.getElementById("newChannelForm");
-            form.querySelectorAll('input[name="members"]').forEach(function (b) { b.checked = b.value === "@(c?.DirectWith?.Id)"; });
-            form.dispatchEvent(new Event("change", { bubbles: true }));
-            var pick = form.querySelector('input[name="members"]:checked');
-            document.getElementById("pickCount").textContent = (pick ? 1 : 0) + " picked";
+            if (newPicker) newPicker.pickOnly(["@(c?.DirectWith?.Id)"]);
+            if (window.snShareHistory) window.snShareHistory(true);
             SN.open("newChannelDialog");
             setTimeout(function () { $("#channelName").trigger("focus"); }, 250);
         }
