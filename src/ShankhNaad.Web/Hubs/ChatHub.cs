@@ -40,6 +40,9 @@ public sealed class ChatHub : Hub
     /// <summary>Everyone's meeting page in one call (for "Sandy left the call" notices).</summary>
     public static string MeetingGroup(Guid meetingId) => $"m:{meetingId}";
 
+    // when each scheduled meeting last rang its participants (a quick leave + rejoin doesn't ring them twice)
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> MeetingRungAt = new();
+
     private static string? CleanNote(string? note)
     {
         note = (note ?? "").Trim();
@@ -372,6 +375,7 @@ public sealed class ChatHub : Hub
         if (joined is null) return;
         var me = Context.UserIdentifier!;
         var wasBusy = _rooms.IsBusy(me);
+        var firstIn = _rooms.Count(meetingId) == 0;
         _rooms.Join(meetingId, me, Context.ConnectionId);
         await Groups.AddToGroupAsync(Context.ConnectionId, MeetingGroup(meetingId));
         if (!wasBusy) await Clients.Group(TenantGroup(tenantId)).SendAsync("BusyChanged", me, true);   // red "on a call" dot
@@ -379,6 +383,40 @@ public sealed class ChatHub : Hub
         _presence.SetCall(me, joined.IsInstant ? "call" : "meeting");
         await BroadcastStatus(tenantId, me);
         await CallEvent(tenantId, meetingId, Context.User!.UserGuid(), 1);   // the person called has picked up
+        // the first person into a scheduled meeting starts it: ring everyone invited who isn't in it yet
+        if (firstIn && !joined.IsInstant && !joined.IsAllDay)
+            await RingMeetingStartedAsync(tenantId, joined);
+    }
+
+    /// <summary>
+    /// A scheduled meeting has started: every participant (host and team invitees) who is online and not in it
+    /// gets the ringing card ("Sandy started Weekly review · Join"). Not again within 2 minutes for the same meeting.
+    /// </summary>
+    private async Task RingMeetingStartedAsync(Guid tenantId, MeetingDto meeting)
+    {
+        var now = DateTime.UtcNow;
+        if (MeetingRungAt.TryGetValue(meeting.MeetingId, out var last) && now - last < TimeSpan.FromMinutes(2)) return;
+        MeetingRungAt[meeting.MeetingId] = now;
+        foreach (var old in MeetingRungAt.Where(kv => now - kv.Value > TimeSpan.FromHours(1)).Select(kv => kv.Key).ToList())
+            MeetingRungAt.TryRemove(old, out _);
+
+        var me = Context.UserIdentifier!;
+        var online = _presence.OnlineUsers(tenantId);
+        var people = (await _meetings.GetInviteesAsync(tenantId, meeting.MeetingId))
+            .Where(i => i.UserId is not null).Select(i => i.UserId!.Value.ToString())
+            .Append(meeting.HostId.ToString())
+            .Distinct()
+            .Where(id => id != me && online.Contains(id) && !_rooms.Contains(meeting.MeetingId, id))
+            .ToList();
+        if (people.Count == 0) return;
+        var ring = new IncomingCallDto(meeting.MeetingId, meeting.Title, Context.User!.DisplayName(), Context.User!.Initials(), Context.User!.AvatarTone(),
+            $"/meetings/room/{meeting.MeetingId}")
+        {
+            CallerId = me,
+            Kind = "meeting",
+            Note = "started the meeting"
+        };
+        await Clients.Users(people).SendAsync("IncomingCall", ring);
     }
 
     public async Task MeetingLeft(Guid meetingId)

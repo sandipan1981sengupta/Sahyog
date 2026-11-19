@@ -90,8 +90,11 @@ public sealed record IncomingCallDto(Guid MeetingId, string Title, string Caller
 {
     /// <summary>The caller's id, so the ringing card can show their photo.</summary>
     public string? CallerId { get; init; }
-    /// <summary>"video" for a call from Chat.</summary>
+    /// <summary>"video" for a call from Chat; "meeting" when someone has started a scheduled meeting;
+    /// "reminder" for a meeting that is about to start (or starts now).</summary>
     public string Kind { get; init; } = "video";
+    /// <summary>Extra line on the card, e.g. "starts in 5 minutes".</summary>
+    public string? Note { get; init; }
 }
 
 /// <summary>One call started from Chat. Outcome: 0 ringing, 1 in progress, 2 ended, 3 not answered, 4 declined, 5 cancelled.</summary>

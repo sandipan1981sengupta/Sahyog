@@ -1,3 +1,4 @@
+@inject ShankhNaad.Web.Infrastructure.AssetBundles Bundles
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,19 +11,8 @@
     <link rel="apple-touch-icon" href="~/icons/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="~/lib/Mordern-Controls/bootstrap-icon/bootstrap-icons.min.css" />
-    <link rel="stylesheet" href="~/lib/Mordern-Controls/font-awesome-4.7.0/css/font-awesome.min.css" />
-    <link rel="stylesheet" href="~/css/Theme/controls-theme.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/buttons.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-input.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-checkbox.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/tab-control.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/cee-group-box-modern.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/messagebox.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/shankhnaad.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/shankhnaad-auth.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/safari.css" asp-append-version="true" />
+    @* the sign-in pages' styles in one file (Infrastructure/AssetBundles.cs) *@
+    @Bundles.Tags("auth.css")
     @* Safari / iPhone / iPad: a lighter glass setup (css/safari.css) *@
     <script>
         (function () {
@@ -40,13 +30,9 @@
     <main class="auth-wrap">
         @RenderBody()
     </main>
+    <script src="~/js/sn-nav.js" asp-append-version="true"></script>
     <script src="~/lib/Mordern-Controls/JS/jquery-3.7.1.min.js"></script>
-    <script src="~/js/web-control/modern-input.js" asp-append-version="true"></script>
-    <script src="~/js/web-control/modern-checkbox.js" asp-append-version="true"></script>
-    <script src="~/js/web-control/tab-control.js" asp-append-version="true"></script>
-    <script src="~/js/web-control/messagebox.js" asp-append-version="true"></script>
-    <script src="~/js/toast.js" asp-append-version="true"></script>
-    <script src="~/js/pwa-install.js" asp-append-version="true"></script>
+    @Bundles.Tags("auth.js")
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

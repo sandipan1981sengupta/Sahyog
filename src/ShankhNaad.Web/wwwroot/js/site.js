@@ -26,11 +26,13 @@
             navigator.clipboard?.writeText(source?.value || source?.textContent || "").then(() => Sahyog.toast("Link copied"));
         }
     });
+    // Set up for every page (also after a partial page load, see sn-nav.js).
+    const onPage = (fn) => (window.SN && SN.onPage ? SN.onPage(fn) : fn());
     // Re-open a dialog only when the server says its form came back with errors.
     // Razor always writes data-* attributes (a false flag renders as "False"), so check the value, not just its presence.
-    document.querySelectorAll("dialog[data-open-on-load]").forEach((d) => {
+    onPage(() => document.querySelectorAll("dialog[data-open-on-load]").forEach((d) => {
         if ((d.dataset.openOnLoad || "").toLowerCase() === "true") d.showModal();
-    });
+    }));
 
     const filter = (inputId, itemSelector) => {
         const input = document.getElementById(inputId);
@@ -41,8 +43,10 @@
             });
         });
     };
-    filter("sideFilter", ".side-item[data-filter]");
-    filter("tenantFilter", "tr[data-filter]");
+    onPage(() => {
+        filter("sideFilter", ".side-item[data-filter]");
+        filter("tenantFilter", "tr[data-filter]");
+    });
 
     // ---------- real-time connection (only on signed-in workspace pages) ----------
     if (!window.signalR || !document.querySelector(".rail")) return;
@@ -175,6 +179,7 @@
         document.addEventListener("sahyog:connected", () => { if (idle) hub.invoke("SetIdle", true).catch(() => { }); });
     })();
 
+    const goTo = (url) => (window.SN && SN.go ? SN.go(url) : (location.href = url));
     // ---------- incoming call: ring (Teams-like tune) until answered, declined or 30 s ----------
     let ringTimer = null;
     let audioCtx = null;
@@ -182,7 +187,7 @@
     let titleTimer = null;
     let silenced = false;
     let ringingId = null;   // the call that is ringing on this screen
-    const pageTitle = document.title;
+    let pageTitle = document.title;              // this page's own title (the tab shows unread counts in front of it)
 
     // Browsers only allow sound after the person has clicked or typed on the page once.
     // So we "unlock" sound on the first click / key press, and later calls can ring.
@@ -242,31 +247,62 @@
 
     // calls already answered, declined or timed out on this screen (so they don't ring a second time)
     const handledCalls = new Set();
+    // The same card rings for three things (call.kind):
+    //   "video" (or none)  a call from Chat           → Accept / Decline (with a message), 30 s, a missed call after
+    //   "meeting"          someone started a meeting  → Join / Not now, 30 s
+    //   "reminder"         a meeting starts soon/now  → Join / Dismiss; call.ring = false: one soft chime, 60 s
+    const KINDS = {
+        video: { icon: "fa-video-camera", app: "Incoming video call", accept: "Accept", decline: "Decline", ms: 30000 },
+        meeting: { icon: "fa-calendar-check-o", app: "Meeting started", accept: "Join", decline: "Not now", ms: 30000 },
+        reminder: { icon: "fa-bell", app: "Meeting reminder", accept: "Join", decline: "Dismiss", ms: 60000 }
+    };
+    // a meeting that has rung recently (its start reminder then stays quiet)
+    const meetingRangAt = new Map();
     const showIncoming = (call) => {
         const box = callBox();
         if (!box || !call) return;
-        if (handledCalls.has(String(call.meetingId).toLowerCase())) return;
+        const kind = KINDS[call.kind] ? call.kind : "video";
+        const isCall = kind === "video";
+        const K = KINDS[kind];
+        const key = (isCall ? "" : kind + ":") + String(call.meetingId).toLowerCase() + (call.occurrence ? "@" + call.occurrence : "");
+        if (handledCalls.has(key)) return;
         // the same call ringing again (the caller pressed Call again): just keep the card, don't stack a second one
         if (ringingId === call.meetingId && !box.hidden) return;
+        // a call rings over a reminder, never the other way round
+        if (!isCall && ringingId && !box.hidden && box.dataset.kind === "video") return;
+        if (!isCall) meetingRangAt.set(String(call.meetingId).toLowerCase(), Date.now());
         clearInterval(ringTimer); clearTimeout(dismissTimer); clearInterval(titleTimer);
         silenced = false;
+        box.dataset.kind = kind;
+        box.querySelector(".sn-call-app").innerHTML = `<i class="fa ${K.icon}" aria-hidden="true"></i> ${K.app}`;
+        box.querySelector("#callAccept span").textContent = K.accept;
+        box.querySelector("#callDecline span").textContent = K.decline;
+        box.querySelector("#callAccept i").className = "fa " + (isCall ? "fa-video-camera" : "fa-sign-in");
+        box.querySelector("#callDecline i").className = "fa " + (isCall ? "fa-phone" : "fa-times");
+        box.querySelector("#callAccept").title = isCall ? "Accept with video" : "Join the meeting";
+        box.querySelector("#callDecline").title = K.decline;
         const avatar = document.getElementById("callAvatar");
         avatar.textContent = call.callerInitials;
         avatar.className = `avatar av-56 tone-${call.callerTone}`;
         if (call.callerId) { avatar.setAttribute("data-user", call.callerId); Sahyog.paintPhotos?.(box); }
-        document.getElementById("callWho").textContent = call.callerName;
-        document.getElementById("callTitle").textContent = "is calling you…";
+        // reminder: the meeting's name in big, "starts in 5 minutes · Sandy" under it; the others: who, then what
+        document.getElementById("callWho").textContent = kind === "reminder" ? call.title : call.callerName;
+        document.getElementById("callTitle").textContent = isCall ? "is calling you…"
+            : kind === "meeting" ? `started “${call.title}”`
+            : [call.note, call.callerName ? `hosted by ${call.callerName}` : ""].filter(Boolean).join(" · ");
         document.getElementById("callAccept").href = call.roomUrl;
-        const done = () => handledCalls.add(String(call.meetingId).toLowerCase());
+        const done = () => handledCalls.add(key);
         document.getElementById("callAccept").onclick = () => { done(); stopRinging(); };
         const decline = (note) => {
             done();
             stopRinging();
+            if (!isCall) return;                       // a meeting or reminder: just put the card away
             hub.invoke("DeclineCall", call.meetingId, note || null).catch(() => { });
             if (note) Sahyog.toast(`Declined. ${call.callerName} sees your message: “${note}”`, { kind: "info", title: "Call declined" });
         };
         const replies = document.getElementById("callReplies"), more = document.getElementById("callDeclineMore");
         replies.hidden = true; more.setAttribute("aria-expanded", "false");
+        more.hidden = !isCall;                          // "decline with a message" only for calls
         document.getElementById("callDecline").onclick = () => decline(null);
         more.onclick = () => {
             replies.hidden = !replies.hidden;
@@ -286,30 +322,48 @@
         box.hidden = false;
         // top layer: above every window, dialog and page animation
         try { if (!box.hasAttribute("popover")) box.setAttribute("popover", "manual"); if (box.matches(":popover-open")) box.hidePopover(); box.showPopover(); } catch { }
-        box.style.setProperty("--sn-call-ms", "30000ms");
+        box.style.setProperty("--sn-call-ms", K.ms + "ms");
         box.classList.remove("counting"); void box.offsetWidth; box.classList.add("counting");
 
+        // Do not disturb / presenting: meetings and reminders still show, but quietly
+        const me = document.body.dataset.me;
+        if (!isCall && me && Sahyog.stateOf && ["dnd", "presenting"].includes(Sahyog.stateOf(me))) { silenced = true; box.classList.add("silenced"); }
         ringOnce();
-        ringTimer = setInterval(ringOnce, RING_EVERY_MS);
+        if (call.ring !== false) ringTimer = setInterval(ringOnce, RING_EVERY_MS);   // a "soon" reminder chimes once
         // the tab title blinks while ringing
         let flip = false;
-        titleTimer = setInterval(() => { flip = !flip; document.title = flip ? `📞 ${call.callerName} is calling…` : pageTitle; }, 1000);
+        const blink = isCall ? `📞 ${call.callerName} is calling…` : kind === "meeting" ? `📅 ${call.title} has started` : `🔔 ${call.title} ${call.note || ""}`.trim();
+        titleTimer = setInterval(() => { flip = !flip; document.title = flip ? blink : pageTitle; }, 1000);
         ringingId = call.meetingId;
         dismissTimer = setTimeout(() => {
             done();
             stopRinging();
+            if (kind === "meeting") {
+                Sahyog.toast(`${call.callerName} started “${call.title}”.`, { kind: "info", title: "Meeting started", ms: 12000,
+                    action: { text: "Join", onClick: () => { location.href = call.roomUrl; } } });
+                return;
+            }
+            if (!isCall) return;
             hub.invoke("CallNotAnswered", call.meetingId).catch(() => { });
             Sahyog.addMissed?.();
             Sahyog.toast(`You missed a call from ${call.callerName}.`, { kind: "warn", title: "Missed call", ms: 10000,
-                action: { text: "Call back", onClick: () => { location.href = "/chat"; } } });
-        }, 30000);
+                action: { text: "Call back", onClick: () => goTo("/chat") } });
+        }, K.ms);
 
         if ("Notification" in window && Notification.permission === "granted" && (document.hidden || !document.hasFocus())) {
-            const n = new Notification(`${call.callerName} is calling you`, { body: "Click to answer.", tag: `call-${call.meetingId}`, requireInteraction: true });
+            const head = isCall ? `${call.callerName} is calling you` : kind === "meeting" ? `${call.callerName} started “${call.title}”` : `${call.title} ${call.note || ""}`.trim();
+            const n = new Notification(head, { body: isCall ? "Click to answer." : "Click to join.", tag: `${kind}-${call.meetingId}`, requireInteraction: isCall || call.ring !== false });
             n.onclick = () => { window.focus(); location.href = call.roomUrl; };
         }
     };
     hub.on("IncomingCall", showIncoming);
+    /** Shows the ringing card for a meeting reminder (js/meeting-alerts.js). */
+    Sahyog.ringMeeting = (call) => {
+        const id = String(call.meetingId).toLowerCase();
+        // its start reminder stays quiet when the meeting has just rung ("Sandy started …")
+        if (call.phase === "now" && Date.now() - (meetingRangAt.get(id) || 0) < 3 * 60 * 1000) return;
+        showIncoming(Object.assign({ kind: "reminder" }, call));
+    };
 
     // A call that started while this page was asleep, offline or reconnecting still rings when it wakes up
     // (the server keeps a call "ringing" for 45 s).
@@ -323,9 +377,8 @@
     const UNREAD_KEY = "sn-unread";
     const readUnread = () => { try { return JSON.parse(sessionStorage.getItem(UNREAD_KEY) || "{}"); } catch { return {}; } };
     const saveUnread = (u) => { try { sessionStorage.setItem(UNREAD_KEY, JSON.stringify(u)); } catch { } };
-    const chatMain = document.getElementById("chat");
-    const openChannel = chatMain?.dataset.channel || null;
-    if (openChannel) { const u = readUnread(); delete u[openChannel]; saveUnread(u); }   // opening a chat reads it
+    // the chat open on screen (changes when another page is loaded partially)
+    const openChannel = () => document.getElementById("chat")?.dataset.channel || null;
 
     const railChat = () => document.querySelector('.rail a[href="/chat"], .rail [data-key="chat"] a, .rail [href="/chat"]');
     Sahyog.paintUnread = () => {
@@ -340,12 +393,9 @@
         }
         if (!ringingId) document.title = total ? `(${total}) ${pageTitle}` : pageTitle;
     };
-    Sahyog.paintUnread();
-
     // missed calls: a red count on the Calls icon until you open the Calls page
     const MISSED_KEY = "sn-missed";
     const missedCount = () => { try { return Number(localStorage.getItem(MISSED_KEY) || 0); } catch { return 0; } };
-    if (location.pathname.toLowerCase().startsWith("/calls")) { try { localStorage.removeItem(MISSED_KEY); } catch { } }
     Sahyog.paintMissed = () => {
         const link = document.querySelector('.rail [href="/calls"]');
         if (!link) return;
@@ -356,7 +406,17 @@
         b.hidden = n === 0;
     };
     Sahyog.addMissed = () => { try { localStorage.setItem(MISSED_KEY, String(missedCount() + 1)); } catch { } Sahyog.paintMissed(); };
-    Sahyog.paintMissed();
+
+    // each page: its title, opening a chat reads it, opening Calls clears the missed count
+    onPage(() => {
+        if (!ringingId) pageTitle = document.title.replace(/^\(\d+\+?\) /, "");
+        const open = openChannel();
+        if (open) { const u = readUnread(); delete u[open]; saveUnread(u); }
+        if (location.pathname.toLowerCase().startsWith("/calls")) { try { localStorage.removeItem(MISSED_KEY); } catch { } }
+        Sahyog.paintUnread();
+        Sahyog.paintMissed();
+        if (hub.state === "Connected") paintPresence();
+    });
 
     // a soft two-note "ding" (quieter than the call ring)
     const ding = () => {
@@ -373,10 +433,10 @@
     hub.on("MessageReceived", (m) => {
         const me = document.body.dataset.me;
         if (!m || m.senderId === me || /^\[\[call:/.test(m.body || "")) return;   // calls ring instead
-        const looking = openChannel === m.channelId && document.visibilityState === "visible" && document.hasFocus();
+        const looking = openChannel() === m.channelId && document.visibilityState === "visible" && document.hasFocus();
         if (looking) return;   // you're reading this chat right now
 
-        if (openChannel !== m.channelId) {
+        if (openChannel() !== m.channelId) {
             const u = readUnread(); u[m.channelId] = (u[m.channelId] || 0) + 1; saveUnread(u);
             Sahyog.paintUnread();
         }
@@ -391,7 +451,7 @@
         av.dataset.user = m.senderId;
         av.textContent = m.senderInitials;
         Sahyog.paintPhotos?.(av.parentElement || document);
-        const go = () => { location.href = `/chat/${m.channelId}`; };
+        const go = () => goTo(`/chat/${m.channelId}`);
         Sahyog.toast(preview, {
             kind: "message",
             title: m.fromGroup ? `${m.senderName} · ${m.fromGroup}` : m.senderName,
@@ -426,7 +486,7 @@
     hub.on("AddedToGroup", (byName, groupName, url) => {
         Sahyog.toast(`${byName} added you to "${groupName}".`, {
             kind: "info", title: "New group", ms: 10000,
-            action: { text: "Open", onClick: () => { location.href = url; } }
+            action: { text: "Open", onClick: () => goTo(url) }
         });
     });
 
@@ -435,11 +495,11 @@
         ringOnce();
         Sahyog.toast(`${name} pinged you`, {
             kind: "info", title: "👋 Ping", ms: 12000,
-            action: { text: "Open chat", onClick: () => { location.href = chatUrl; } }
+            action: { text: "Open chat", onClick: () => goTo(chatUrl) }
         });
         if (document.hidden && "Notification" in window && Notification.permission === "granted") {
             const n = new Notification(`${name} pinged you`, { body: "Click to open your chat.", tag: `ping-${chatUrl}` });
-            n.onclick = () => { window.focus(); location.href = chatUrl; };
+            n.onclick = () => { window.focus(); goTo(chatUrl); };
         }
     });
 

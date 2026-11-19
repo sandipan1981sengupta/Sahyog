@@ -153,6 +153,8 @@ $(document).ready(function () {
         // the server-rendered active item already is, not slide in from
         // the top of the rail on page load).
         positionIndicator(false);
+        // ShankhNaad partial page loads: the rail stays on screen, so the page loader asks it to move the bar
+        $rail.data("rr-reposition", positionIndicator);
 
         // Widen the shared indicator bar specifically when the CURRENTLY
         // ACTIVE item is hovered (not just any item) — delegated on the

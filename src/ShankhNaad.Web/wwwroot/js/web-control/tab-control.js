@@ -18,9 +18,18 @@ var requestFrame = (typeof window !== "undefined" && window.requestAnimationFram
 
 $(document).ready(function () {
 
-    $(".tab-control-wrapper").each(function () {
-        initTabControl($(this));
-    });
+    // window.TabControl.init(context): set up tab strips in a part of the page loaded later
+    // (ShankhNaad loads pages partially); each strip is set up only once.
+    window.TabControl = window.TabControl || {};
+    window.TabControl.init = function (context) {
+        $(context || document).find(".tab-control-wrapper").addBack(".tab-control-wrapper").each(function () {
+            var $w = $(this);
+            if ($w.data("tc-inited")) return;
+            $w.data("tc-inited", true);
+            initTabControl($w);
+        });
+    };
+    window.TabControl.init();
 
     function initTabControl($wrapper) {
         var $tabsContainer = $wrapper.find(".tc-tabs");

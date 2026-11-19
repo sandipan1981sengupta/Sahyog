@@ -598,12 +598,12 @@
         // you were removed from a group: it leaves your list (and the page, if it's open)
         hub.on("RemovedFromGroup", (cid, name) => {
             S.toast(`You were removed from "${name}".`, { kind: "info", title: "Removed from group" });
-            if (cid === channelId) { setTimeout(() => { window.location.href = "/chat"; }, 1400); return; }
+            if (cid === channelId) { setTimeout(() => { window.SN?.go ? SN.go("/chat") : (window.location.href = "/chat"); }, 1400); return; }
             document.querySelectorAll(`.side-item[data-channel="${cid}"]`).forEach((x) => x.remove());
         });
 
         hub.on("ChannelDeleted", (cid) => {
-            if (cid === channelId) { window.location.href = "/chat"; return; }
+            if (cid === channelId) { window.SN?.go ? SN.go("/chat") : (window.location.href = "/chat"); return; }
             const item = document.querySelector(`.side-item[data-channel="${cid}"]`);
             if (item) item.remove();
         });
@@ -611,6 +611,8 @@
         document.addEventListener("sahyog:connected", () => {
             if (channelId) hub.invoke("WatchChannel", channelId).catch(() => { });
         });
+        // opened by a partial page load: the live connection is already up
+        if (channelId && hub.state === "Connected") hub.invoke("WatchChannel", channelId).catch(() => { });
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === "visible" && channelId && hub.state === "Connected")
                 hub.invoke("MarkRead", channelId).catch(() => { });

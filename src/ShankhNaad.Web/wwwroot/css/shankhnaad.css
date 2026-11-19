@@ -3128,3 +3128,173 @@ html[data-theme="dark"] .sn-status-now { background: rgba(96, 165, 250, .08); bo
 html[data-theme="dark"] .sn-status-now small { color: #94A3B8; }
 html[data-theme="dark"] .sn-status-tick { color: #C4B5FD; }
 @media (prefers-reduced-motion: reduce) { .sn-topbar .sn-my-dot, .sn-status-tick { transition: none; } }
+
+/* ===== Partial page loads (js/sn-nav.js) =====
+   A live refresh of the same page (e.g. a new call arrives on the Calls page) swaps the content in place:
+   nothing animates in again, it simply updates. */
+html.sn-quiet *, html.sn-quiet *::before, html.sn-quiet *::after { animation: none !important; transition: none !important; }
+
+/* ===== Meetings: the page stays put, only the calendar scrolls (big screens) =====
+   The header, the toolbar and the side cards keep their place; the calendar card takes the height
+   that is left and its hours (Day / Week), weeks (Month) or rows (List) scroll inside it.
+   (Tablets and phones already scroll the calendar inside a fixed height, see responsive.css.) */
+@media (min-width: 1101px) {
+    .sn-page:has(> .sn-meet-row) > :not(.sn-meet-row) { flex-shrink: 0; }
+    .sn-page > .sn-meet-row { flex: 1 1 0 !important; min-height: 420px; flex-wrap: nowrap; overflow: hidden; }
+    .sn-meet-row > .sn-views { min-height: 0; overflow: hidden; }
+    .sn-meet-row .sn-view { min-height: 0; overflow: hidden; }
+    .sn-meet-row .sn-sched, .sn-meet-row .sn-month { min-height: 0; }
+    .sn-meet-row .sn-sched-scroll { min-height: 0; overflow-y: auto; }
+    .sn-meet-row .sn-month-grid { min-height: 0; overflow-y: auto; }
+    .sn-meet-row #viewList { overflow-y: auto; }
+    .sn-meet-row > .sn-side { min-height: 0; overflow-y: auto; }
+    .sn-meet-row > .sn-side > * { flex-shrink: 0; }        /* cards keep their height; the column scrolls if they don't fit */
+}
+
+/* =====================================================================
+   Meetings calendar, refined (Day / Week / Month)
+   - meeting cards: a tinted card with a colour bar, title and time, and the 🗑 inside the card
+     (top-right on tall cards, vertically centred on short ones; text never runs under it)
+   - Live meetings get a small pulsing "Live" badge; ended ones fade back
+   - a calmer grid: hour lines, lighter half-hour lines, weekend and past hours shaded
+   - the red "now" line carries the time
+   ===================================================================== */
+.sn-sched-col .sn-ev.sn-ev {
+    position: absolute;                                    /* (a later ".sn-ev { position: relative }" stacked meetings of one day under each other) */
+    --ev: #2563EB; --ev-bg: #EAF1FE; --ev-ink: #1E3A8A; --ev-line: rgba(37, 99, 235, .22);
+    background: var(--ev-bg); color: var(--ev-ink);
+    border: 1px solid var(--ev-line); border-radius: 9px;
+    padding: 6px 10px 6px 13px; gap: 2px; justify-content: flex-start;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+    font: 500 11.5px/1.3 Roboto, system-ui, sans-serif;
+}
+.sn-sched-col .sn-ev.sn-ev::before {                       /* the colour bar */
+    content: ""; position: absolute; left: 4px; top: 4px; bottom: 4px; width: 3px; border-radius: 3px; background: var(--ev);
+}
+.sn-sched-col .sn-ev.sn-ev { --ev-solid: var(--ev-bg); }
+.sn-sched-col .sn-ev.tone-pink { --ev: #DB2777; --ev-bg: #FDEDF5; --ev-ink: #831843; --ev-line: rgba(219, 39, 119, .22); }
+.sn-sched-col .sn-ev.tone-slate { --ev: #64748B; --ev-bg: #F1F4F8; --ev-ink: #1E293B; --ev-line: rgba(100, 116, 139, .25); }
+.sn-sched-col .sn-ev.st-live { --ev: #16A34A; --ev-line: rgba(22, 163, 74, .45); }
+.sn-sched-col .sn-ev.sn-ev.st-ended { filter: none; opacity: 1; --ev: #94A3B8; --ev-bg: #F3F5F8; --ev-ink: #64748B; --ev-line: rgba(100, 116, 139, .18); }
+.sn-sched-col .sn-ev.sn-ev:hover { transform: translateY(-1px); z-index: 3; box-shadow: 0 10px 22px -12px rgba(30, 41, 99, .55); border-color: var(--ev); }
+.sn-sched-col .sn-ev.sn-ev.selected { outline: 2px solid var(--ev); outline-offset: 1px; z-index: 4; }
+
+.sn-sched-col .sn-ev .sn-ev-title { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; font-weight: 700; letter-spacing: -.005em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sn-sched-col .sn-ev .sn-ev-time { font-size: 11px; font-weight: 600; opacity: .72; font-variant-numeric: tabular-nums; }
+.sn-sched-col .sn-ev .sn-ev-meta { font-size: 11px; opacity: .62; }
+.sn-sched-col .sn-ev.sn-ev { padding-right: 8px; }
+
+/* short meetings (under 45 min): one line, everything centred */
+.sn-sched-col .sn-ev.sn-ev.short { flex-direction: row; align-items: center; gap: 8px; padding-top: 0; padding-bottom: 0; }
+.sn-sched-col .sn-ev.short .sn-ev-title { flex: 0 1 auto; min-width: 4ch; }
+.sn-sched-col .sn-ev.short .sn-ev-time { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sn-sched-col .sn-ev.short .sn-ev-meta { display: none; }
+.sn-sched-col .sn-ev.sn-ev.tiny { border-radius: 7px; }
+.sn-sched-col .sn-ev.tiny .sn-ev-title { font-size: 11.5px; }
+.sn-sched-col .sn-ev.tiny .sn-ev-time { font-size: 10.5px; }
+.sn-sched.is-day .sn-sched-col .sn-ev.sn-ev { padding-left: 16px; }
+
+.sn-sched.is-day .sn-sched-col .sn-ev .sn-ev-title { font-size: 14px; }
+
+/* Live badge */
+.sn-ev-live { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 16px; padding: 0 6px 0 5px; border-radius: 99px;
+    background: #16A34A; color: #fff; font: 800 9.5px/1 Roboto, sans-serif; letter-spacing: .06em; text-transform: uppercase; font-style: normal; }
+.sn-ev-live::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #fff; animation: snLiveDot 1.6s ease-in-out infinite; }
+@keyframes snLiveDot { 50% { opacity: .35; } }
+
+/* 🗑 inside the card */
+.sn-sched-col .sn-ev .sn-ev-del {
+    position: absolute; top: 6px; right: 6px; margin: 0; width: 24px; height: 24px; border-radius: 7px;
+    background: rgba(255, 255, 255, .9); color: #DC2626; border: 1px solid rgba(220, 38, 38, .2);
+    box-shadow: 0 2px 6px -2px rgba(15, 23, 42, .25); -webkit-backdrop-filter: none; backdrop-filter: none;
+    opacity: 0; transform: scale(.85);
+}
+.sn-sched-col .sn-ev .sn-ev-del svg { width: 13px; height: 13px; }
+.sn-sched-col .sn-ev.short .sn-ev-del { top: 50%; margin-top: -11px; width: 22px; height: 22px; }
+.sn-sched-col .sn-ev.tiny .sn-ev-del { margin-top: -9px; width: 18px; height: 18px; border-radius: 6px; }
+.sn-sched-col .sn-ev.tiny .sn-ev-del svg { width: 11px; height: 11px; }
+.sn-sched-col .sn-ev:hover .sn-ev-del, .sn-sched-col .sn-ev.selected .sn-ev-del, .sn-sched-col .sn-ev .sn-ev-del:focus-visible { opacity: 1; transform: none; }
+.sn-sched-col .sn-ev.can-del::after {                        /* the text fades out under the 🗑 instead of being covered by it */
+    content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 44px; pointer-events: none; border-radius: 0 9px 9px 0;
+    background: linear-gradient(90deg, transparent, var(--ev-solid, var(--ev-bg)) 55%); opacity: 0; transition: opacity .15s ease; }
+.sn-sched-col .sn-ev.can-del:hover::after, .sn-sched-col .sn-ev.can-del.selected::after { opacity: 1; }
+.sn-sched-col .sn-ev .sn-ev-del:hover { color: #fff; background: linear-gradient(135deg, #F43F5E, #DC2626); border-color: transparent; transform: scale(1.06) !important; }
+@media (hover: none) { .sn-sched-col .sn-ev .sn-ev-del { opacity: 1; transform: none; } }
+
+/* the grid */
+.sn-sched-times { border-right: 1px solid rgba(15, 23, 42, .07); }
+.sn-sched-times span { font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.sn-sched-col.weekend { background-color: rgba(15, 23, 42, .022); }
+.sn-sched-dayhead.weekend span { opacity: .75; }
+.sn-sched:not(.is-day) .sn-sched-dayhead.today::after { content: ""; position: absolute; left: 18%; right: 18%; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: var(--sn-grad); }
+.sn-sched-dayhead { text-decoration: none; transition: background .15s ease; }
+.sn-sched-dayhead:hover { background: rgba(37, 99, 235, .05); }
+.sn-sched-dayhead em { top: 10px; right: 10px; }
+
+/* the "now" line with its time */
+.sn-now { height: 2px; background: #EF4444; box-shadow: 0 0 0 1px rgba(239, 68, 68, .12); z-index: 0; }   /* behind the meetings */
+.sn-now i { left: -6px; top: -5px; width: 12px; height: 12px; background: #EF4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, .2); }
+.sn-sched-times { position: relative; }
+.sn-now-label { position: absolute; right: 6px; height: 18px; margin-top: -9px; padding: 0 5px; border-radius: 6px; display: flex; align-items: center; z-index: 2;
+    background: #EF4444; color: #fff; font: 700 10.5px/1 Roboto, sans-serif; font-variant-numeric: tabular-nums; box-shadow: 0 4px 10px -4px rgba(239, 68, 68, .7); }
+
+/* Month: the same card look in one line */
+.sn-mcell.weekend:not(.outside) { background-color: rgba(15, 23, 42, .018); }
+.sn-mcell .sn-mev.sn-mev { position: relative; height: 22px; padding: 0 8px 0 10px; border-radius: 6px; border: 1px solid transparent; box-shadow: none; font-size: 11.5px; }
+.sn-mcell .sn-mev.sn-mev:not(.allday)::before { content: ""; position: absolute; left: 3px; top: 4px; bottom: 4px; width: 3px; border-radius: 3px; background: #2563EB; }
+.sn-mcell .sn-mev.tone-pink:not(.allday)::before { background: #DB2777; }
+.sn-mcell .sn-mev.tone-slate:not(.allday)::before { background: #64748B; }
+.sn-mcell .sn-mev.st-live:not(.allday)::before { background: #16A34A; }
+.sn-mcell .sn-mev:not(.allday) > i { display: none; }
+.sn-mcell .sn-mev .t { font-variant-numeric: tabular-nums; opacity: .8; }
+.sn-mcell .sn-mev.sn-mev.st-ended { opacity: .55; }
+.sn-mcell .sn-mev:has(.sn-ev-del) { padding-right: 28px !important; }
+.sn-mcell .sn-mev .sn-ev-del { right: 3px; width: 20px; height: 20px; margin-top: -10px; border-radius: 6px;
+    background: rgba(255, 255, 255, .9); color: #DC2626; border: 1px solid rgba(220, 38, 38, .2); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.sn-mcell .sn-mev .sn-ev-del svg { width: 11px; height: 11px; }
+
+/* dark theme */
+html[data-theme="dark"] .sn-sched-col .sn-ev.sn-ev { --ev-solid: #1B2A52; }
+html[data-theme="dark"] .sn-sched-col .sn-ev.sn-ev.tone-pink { --ev-solid: #3A1D3A; }
+html[data-theme="dark"] .sn-sched-col .sn-ev.sn-ev.tone-slate { --ev-solid: #262E3F; }
+html[data-theme="dark"] .sn-sched-col .sn-ev.sn-ev.st-ended { --ev-solid: #1C2233; }
+html[data-theme="dark"] .sn-sched-col .sn-ev.sn-ev { --ev: #60A5FA; --ev-bg: rgba(37, 99, 235, .18); --ev-ink: #DBEAFE; --ev-line: rgba(96, 165, 250, .28); box-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+html[data-theme="dark"] .sn-sched-col .sn-ev.sn-ev.tone-pink { --ev: #F472B6; --ev-bg: rgba(219, 39, 119, .18); --ev-ink: #FCE7F3; --ev-line: rgba(244, 114, 182, .28); }
+html[data-theme="dark"] .sn-sched-col .sn-ev.sn-ev.tone-slate { --ev: #94A3B8; --ev-bg: rgba(148, 163, 184, .14); --ev-ink: #E2E8F0; --ev-line: rgba(148, 163, 184, .26); }
+html[data-theme="dark"] .sn-sched-col .sn-ev.sn-ev.st-live { --ev: #22C55E; --ev-line: rgba(34, 197, 94, .5); }
+html[data-theme="dark"] .sn-sched-col .sn-ev.sn-ev.st-ended { --ev: #64748B; --ev-bg: rgba(148, 163, 184, .08); --ev-ink: #94A3B8; --ev-line: rgba(148, 163, 184, .16); }
+html[data-theme="dark"] .sn-sched-col .sn-ev.sn-ev:hover { box-shadow: 0 12px 24px -12px rgba(0, 0, 0, .8); }
+/* dark cards are solid (the grid lines and the "now" line pass behind them, not through the title) */
+html[data-theme="dark"] .sn-sched-col .sn-ev.sn-ev { background: var(--ev-solid); }
+html[data-theme="dark"] .sn-sched-col .sn-ev .sn-ev-del, html[data-theme="dark"] .sn-mcell .sn-mev .sn-ev-del {
+    background: rgba(15, 20, 36, .85); color: #FCA5A5; border-color: rgba(248, 113, 113, .3); box-shadow: 0 2px 8px -2px rgba(0, 0, 0, .6); }
+html[data-theme="dark"] .sn-sched-times { border-right-color: rgba(255, 255, 255, .06); }
+html[data-theme="dark"] .sn-sched-col.weekend { background-color: rgba(0, 0, 0, .1); }
+html[data-theme="dark"] .sn-sched-dayhead:hover { background: rgba(255, 255, 255, .04); }
+html[data-theme="dark"] .sn-mcell.weekend:not(.outside) { background-color: rgba(0, 0, 0, .08); }
+html[data-theme="dark"] .sn-mcell .sn-mev.sn-mev:not(.allday)::before { background: #60A5FA; }
+html[data-theme="dark"] .sn-mcell .sn-mev.tone-pink:not(.allday)::before { background: #F472B6; }
+html[data-theme="dark"] .sn-mcell .sn-mev.st-live:not(.allday)::before { background: #22C55E; }
+
+/* phones, Week view: cards are narrow; the 🗑 is in the header (select a meeting, then Delete) */
+@media (max-width: 760px) {
+    .sn-sched:not(.is-day) .sn-sched-col .sn-ev .sn-ev-del { display: none; }
+    .sn-sched:not(.is-day) .sn-sched-col .sn-ev.can-del { padding-right: 4px !important; }
+    .sn-sched:not(.is-day) .sn-sched-col .sn-ev.sn-ev::before { left: 2px; width: 2px; }
+    .sn-now-label { right: 2px; padding: 0 3px; font-size: 9.5px; }
+}
+@media (prefers-reduced-motion: reduce) { .sn-ev-live::before { animation: none; } }
+
+/* ===== The ringing card for meetings ("Meeting started") and reminders ("Meeting reminder") =====
+   Same card as a call; Join is the main button and the other one simply puts the card away. */
+.sn-call[data-kind="meeting"] .sn-call-btn.decline,
+.sn-call[data-kind="reminder"] .sn-call-btn.decline { background: rgba(255, 255, 255, .1); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16); }
+.sn-call[data-kind="meeting"] .sn-call-btn.decline i,
+.sn-call[data-kind="reminder"] .sn-call-btn.decline i { transform: none; }
+.sn-call[data-kind="meeting"] .sn-call-btn.accept,
+.sn-call[data-kind="reminder"] .sn-call-btn.accept { background: linear-gradient(135deg, #2563EB, #7C3AED); box-shadow: 0 10px 22px -10px rgba(99, 102, 241, .9); animation: none; }
+.sn-call[data-kind="reminder"] .sn-call-app i { background: linear-gradient(135deg, #F59E0B, #EA580C); }
+.sn-call[data-kind="meeting"] .sn-call-app i { background: linear-gradient(135deg, #22C55E, #0EA5E9); }
+.sn-call[data-kind="reminder"] .sn-call-rings > i { animation-duration: 3.2s; }
+.sn-call[data-kind="reminder"] #callWho { font-size: 17px; }

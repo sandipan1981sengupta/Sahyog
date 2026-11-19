@@ -5,6 +5,8 @@
     const touch = () => window.matchMedia("(hover: none)").matches;
     const body = document.body;
 
+    // Page parts (set up on each page, also after a partial page load: see sn-nav.js)
+    const setupPage = () => {
     // ---- Chat on a phone or tablet: the list, or the open conversation with a back button ----
     const chat = document.getElementById("chat");
     if (chat) {
@@ -123,6 +125,9 @@
         window.addEventListener("resize", close);
         side.addEventListener("scroll", () => { if (open?.sheet.classList.contains("pop")) close(); }, true);
     }
+
+    };
+    if (window.SN && SN.onPage) SN.onPage(setupPage); else setupPage();
 
     // ---- touch screens: tap a message to show its reactions and delete button ----
     document.addEventListener("click", (e) => {

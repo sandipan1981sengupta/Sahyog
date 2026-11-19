@@ -38,6 +38,8 @@ if (!string.IsNullOrWhiteSpace(keysPath))
 
 builder.Services.AddControllersWithViews(o => o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 64 * 1024);
+// CSS / JS bundles for the layouts (Infrastructure/AssetBundles.cs), served at /bundles/…
+builder.Services.AddSingleton<AssetBundles>();
 
 // Compress CSS / JS / SVG (about 1.6 MB → about 300 KB per first visit). HTML pages are deliberately NOT
 // compressed: they carry the anti-forgery token, and compressing secrets over HTTPS opens the BREACH attack.
@@ -63,6 +65,30 @@ app.UseHttpsRedirection();
 // Static files. ".webmanifest" is listed explicitly so the desktop-app manifest is always served.
 var contentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
 contentTypes.Mappings[".webmanifest"] = "application/manifest+json";
+// Partial page loads (wwwroot/js/sn-nav.js) send "X-SN-Nav: 1". For those requests a redirect is
+// answered as "200 + X-SN-Redirect: <address>" instead of 302, so the page script decides where to go:
+// another workspace page → loaded partially; anything else (sign-in, meeting room) → a normal page load.
+// (Without this the browser would follow the redirect itself and the target page would be requested twice.)
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.Headers.ContainsKey("X-SN-Nav"))
+    {
+        ctx.Response.OnStarting(() =>
+        {
+            var status = ctx.Response.StatusCode;
+            if (status is 301 or 302 or 303 or 307 or 308)
+            {
+                var location = ctx.Response.Headers.Location.ToString();
+                ctx.Response.StatusCode = StatusCodes.Status200OK;
+                ctx.Response.Headers.Remove("Location");
+                ctx.Response.Headers["X-SN-Redirect"] = location;
+            }
+            ctx.Response.Headers["Cache-Control"] = "no-store";
+            return Task.CompletedTask;
+        });
+    }
+    await next();
+});
 app.UseResponseCompression();
 // Browser caching. Before this, CSS/JS/fonts were sent with no caching rule, so Safari asked the server
 // again for ~40 files on every page change (Chrome/Edge hid this by fetching pages in advance).
@@ -86,6 +112,19 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 app.UseRouting();
+
+// The bundles: /bundles/layout.css?v=<hash> and so on. The hash changes with the content,
+// so a matching ?v= is cached for a year; anything else is checked again each time.
+app.MapGet("/bundles/{name}", (string name, HttpContext ctx, AssetBundles bundles) =>
+{
+    if (!AssetBundles.Definitions.ContainsKey(name)) return Results.NotFound();
+    var (bytes, hash) = bundles.Get(name);
+    var etag = $"\"{hash}\"";
+    ctx.Response.Headers.ETag = etag;
+    ctx.Response.Headers.CacheControl = ctx.Request.Query["v"] == hash ? "public, max-age=31536000, immutable" : "no-cache";
+    if (ctx.Request.Headers.IfNoneMatch == etag) return Results.StatusCode(StatusCodes.Status304NotModified);
+    return Results.Bytes(bytes, AssetBundles.ContentType(name));
+}).AllowAnonymous();
 app.UseAuthentication();
 app.UseAuthorization();
 

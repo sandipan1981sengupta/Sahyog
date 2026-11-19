@@ -1,3 +1,4 @@
+@inject ShankhNaad.Web.Infrastructure.AssetBundles Bundles
 @{
     var section = ViewData["Section"] as string ?? "";
     var isTenantAdmin = User.IsInRole(AppRoles.TenantAdmin);
@@ -36,26 +37,37 @@
             //   1. the page frame slides in (view transition)   2. header and cards rise in
             //   3. only then the data (table rows, gauges, chat messages) fades in, row by row.
             var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-            var started = false;
+            var started = false, gen = 0, timers = [];
+            function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
             function arrive(vt) {
                 if (started || reduce) return;
                 started = true;
+                var my = ++gen;                                     // a newer arrival cancels this one
                 root.classList.add("sn-arriving", "sn-data-wait");
                 var shown = false;
                 function showData() {
-                    if (shown) return;
+                    if (shown || my !== gen) return;
                     shown = true;
                     root.classList.remove("sn-data-wait");
                     root.classList.add("sn-data-in");
                     root.setAttribute("data-arrived", "1");
                     document.dispatchEvent(new Event("sn:arrived"));   // toast.js shows waiting messages now
-                    setTimeout(function () { root.classList.remove("sn-data-in", "sn-arriving"); }, 1700);
+                    later(function () { if (my === gen) root.classList.remove("sn-data-in", "sn-arriving"); }, 1700);
                 }
-                setTimeout(showData, 1200);                         // safety net: data always appears
-                if (vt && vt.finished) vt.finished.then(function () { setTimeout(showData, 40); }, showData);
-                else if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(showData, 340); });
-                else setTimeout(showData, 340);
+                later(showData, 1200);                              // safety net: data always appears
+                if (vt && vt.finished) vt.finished.then(function () { later(showData, 40); }, showData);
+                else if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { later(showData, 340); });
+                else later(showData, 340);
             }
+            // partial page loads (js/sn-nav.js) run the same arrival for the page they swap in
+            window.SN = window.SN || {};
+            SN._arrive = function (vt) {
+                timers.forEach(function (t) { clearTimeout(t); }); timers = [];
+                gen++;
+                root.classList.remove("sn-arriving", "sn-data-wait", "sn-data-in");
+                started = false;
+                arrive(vt);
+            };
 
             // Safari: its page swap (view transition) snapshots the page and makes it jerky, so it is skipped
             // and the page frame rises in with plain CSS instead (css/safari.css part 4). Cards and data
@@ -79,13 +91,8 @@
             if (!("onpagereveal" in window)) { root.classList.add("sn-no-vt"); arrive(null); }
         })();
     </script>
-    @* Fetch a page as soon as the pointer rests on its link, so a click has nothing to wait for. *@
-    <script type="speculationrules">
-        { "prefetch": [ { "where": { "or": [ { "href_matches": "/chat" }, { "href_matches": "/team" }, { "href_matches": "/admin" },
-                                              { "href_matches": "/meetings" },
-                                              { "href_matches": "/calls" }, { "href_matches": "/files" } ] },
-                          "eagerness": "moderate" } ] }
-    </script>
+    @* Partial page loads: links and forms swap only the middle of the page (and prefetch rail pages on hover). *@
+    <script src="~/js/sn-nav.js" asp-append-version="true"></script>
     @* Edge/Chrome: show the new page only once the whole page (and its scripts) is in, so the tab highlight
        and table are already in place when the page change starts. Other browsers ignore this. *@
     <link rel="expect" href="#sn-ready" blocking="render" />
@@ -96,37 +103,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" />
 
-    @* Template 1 control libraries (offline copies) *@
-    <link rel="stylesheet" href="~/lib/Mordern-Controls/CSS/flatpickr.min.css" />
-    <link rel="stylesheet" href="~/lib/Mordern-Controls/bootstrap-icon/bootstrap-icons.min.css" />
-    <link rel="stylesheet" href="~/lib/Mordern-Controls/font-awesome-4.7.0/css/font-awesome.min.css" />
-
-    @* Template 1 control styles *@
-    <link rel="stylesheet" href="~/css/Theme/controls-theme.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/Theme/flatpickr-theme.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/buttons.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/report-sidebar.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-table.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-input.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-input-with-search.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-dropdown.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-dropdown-with-label.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-datepicker.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-datepicker-with-label.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-radio.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-checkbox.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/tab-control.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/cee-group-box-modern.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-donut-chart.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/modern-half-donut-chart.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/web-control/messagebox.css" asp-append-version="true" />
-
-    @* ShankhNaad: existing app styles (chat, dialogs, calls) + the liquid glass skin on top *@
-    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/shankhnaad.css" asp-append-version="true" />
+    @* All styles of the workspace pages in one file (Infrastructure/AssetBundles.cs: same files, same order) *@
+    @Bundles.Tags("layout.css")
     @await RenderSectionAsync("Head", required: false)
-    <link rel="stylesheet" href="~/css/responsive.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/safari.css" asp-append-version="true" />
 </head>
 <body class="sn-body" data-me="@(isSuperAdmin ? "" : User.UserId())">
     <div class="sn-backdrop" aria-hidden="true">
@@ -227,7 +206,9 @@
             <form method="post" asp-antiforgery="true" action="/account/logout" id="logoutForm" hidden></form>
 
             <div class="sn-body-row">
+                <script data-sn-skip>SN.nav && SN.nav.begin();</script>
                 @RenderBody()
+                <script data-sn-skip>SN.nav && SN.nav.pause();</script>
             </div>
         </div>
     </div>
@@ -327,27 +308,16 @@
     </div>
     <div class="toasts" id="toasts" aria-live="polite"></div>
 
-    @* Template 1 control scripts *@
-    <script src="~/lib/Mordern-Controls/JS/flatpickr-v4.6.13.js"></script>
-    <script src="~/js/web-control/report-sidebar.js" asp-append-version="true"></script>
-    <script src="~/js/web-control/modern-table.js" asp-append-version="true"></script>
-    <script src="~/js/web-control/modern-input.js" asp-append-version="true"></script>
-    <script src="~/js/web-control/modern-dropdown-with-label.js" asp-append-version="true"></script>
-    <script src="~/js/web-control/modern-datepicker-with-label.js" asp-append-version="true"></script>
-    <script src="~/js/web-control/modern-radio.js" asp-append-version="true"></script>
-    <script src="~/js/web-control/modern-checkbox.js" asp-append-version="true"></script>
-    <script src="~/js/web-control/tab-control.js" asp-append-version="true"></script>
-    <script src="~/js/web-control/messagebox.js" asp-append-version="true"></script>
+    @* Template 1 control scripts, in one file (Infrastructure/AssetBundles.cs) *@
+    @Bundles.Tags("controls.js")
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
-    <script src="~/js/toast.js" asp-append-version="true"></script>
-    <script src="~/js/tooltip.js" asp-append-version="true"></script>
-    <script src="~/js/mobile.js" asp-append-version="true" defer></script>
-    <script src="~/js/site.js" asp-append-version="true"></script>
-    <script src="~/js/shankhnaad.js" asp-append-version="true"></script>
-    <script src="~/js/people-picker.js" asp-append-version="true"></script>
-    <script src="~/js/pwa-install.js" asp-append-version="true"></script>
-    @await RenderSectionAsync("Scripts", required: false)
+    @* ShankhNaad's own scripts, in one file: toast, tooltip, mobile, site, meeting-alerts, shankhnaad, people-picker, pwa-install *@
+    @Bundles.Tags("app.js")
+    @* The page's own scripts. Kept in one box so a partial page load can find and run them again. *@
+    <script data-sn-skip>SN.nav && SN.nav.resume();</script>
+    <div id="sn-page-scripts" hidden>@await RenderSectionAsync("Scripts", required: false)</div>
+    <script data-sn-skip>SN.nav && SN.nav.endSync();</script>
     <span id="sn-ready" hidden></span>
 </body>
 </html>

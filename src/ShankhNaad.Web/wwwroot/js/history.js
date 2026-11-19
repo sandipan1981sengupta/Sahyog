@@ -155,7 +155,7 @@
 
     // live: a call or a file in one of your chats → refresh the list (quietly, at most every few seconds)
     let pending = null;
-    const later = () => { clearTimeout(pending); pending = setTimeout(() => { if (!document.hidden) location.reload(); }, 2500); };
+    const later = () => { clearTimeout(pending); pending = setTimeout(() => { if (!document.hidden) (window.SN?.nav ? SN.nav.refresh() : location.reload()); }, 2500); };
     const hook = () => {
         const hub = window.Sahyog?.hub;
         if (!hub) return;

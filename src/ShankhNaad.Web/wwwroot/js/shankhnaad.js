@@ -79,11 +79,13 @@
         ["openMessageBox", "confirmMessageBox"].forEach((name) => {
             const original = window[name];
             if (typeof original !== "function") return;
-            window[name] = function () {
+            const wrapped = function () {
                 const result = original.apply(this, arguments);
                 lift();
                 return result;
             };
+            // a message box belongs to the window, not to the page (it must keep working if the page changes)
+            window[name] = window.SN?.nav ? SN.nav.unscoped(wrapped) : wrapped;
         });
     })();
 
@@ -110,7 +112,8 @@
         add("__RequestVerificationToken", token());
         Object.entries(fields || {}).forEach(([k, v]) => add(k, v));
         document.body.appendChild(form);
-        form.submit();
+        form.submit();          // with partial page loads (sn-nav.js) this is sent in the background
+        form.remove();
     };
 
     /** Asks first (Template 1 confirm box), then posts. */
@@ -126,8 +129,10 @@
     };
 
     SN.open = (dialogId) => document.getElementById(dialogId)?.showModal();
-    SN.go = (url) => { window.location.href = url; };
-    SN.reload = () => window.location.reload();
+    /** Opens a page: workspace pages load partially (sn-nav.js), anything else normally. */
+    SN.go = (url, dir) => { if (SN.navigate) SN.navigate(url, { dir }); else window.location.href = url; };
+    /** Loads the current page again (with the page arrival animation). */
+    SN.reload = () => { if (SN.navigate && SN.nav.canGo(location.href)) SN.navigate(location.href, { push: false }); else window.location.reload(); };
 
     /** Downloads what the grid shows now (search, filters, sort and chosen columns) as a CSV file for Excel. */
     SN.exportTable = (tableId, fileName) => {
@@ -225,10 +230,11 @@
         closeAnimated(closer.closest("dialog"));
     }, true);
 
-    // Esc key
-    document.querySelectorAll("dialog.sn-dialog").forEach((d) => {
+    // Esc key (set up again for the windows of each page)
+    const escToClose = () => document.querySelectorAll("dialog.sn-dialog").forEach((d) => {
         d.addEventListener("cancel", (e) => { e.preventDefault(); closeAnimated(d); });
     });
+    if (window.SN.onPage) SN.onPage(escToClose); else escToClose();
 })();
 
 // ---------- light / dark theme ----------
@@ -356,6 +362,7 @@
     window.SN = window.SN || {};
     /** Goes to a URL; dir = "next" | "prev" makes the page slide that way (browsers with view transitions). */
     SN.goSmooth = (url, dir, delay) => {
+        if (SN.navigate && SN.nav.canGo(url)) { SN.navigate(url, { dir, minLeave: delay || 0 }); return; }
         try { if (dir) sessionStorage.setItem("sn-dir", dir); } catch (e) { }
         setTimeout(() => { window.location.href = url; }, delay || 0);
     };
@@ -415,6 +422,23 @@ window.addEventListener("pageshow", () => {
     };
     place();
     window.addEventListener("resize", () => { const a = active(); if (a) put(rectOf(a), false); });
+
+    // Partial page loads: the rail stays, so take the active tab from the new page and move the highlight
+    // (animate = slide it here; with view transitions the transition itself carries it over).
+    window.SN = window.SN || {};
+    SN.railSync = (doc, animate) => {
+        const fresh = doc && doc.querySelector(".sn-rail .report-rail .rr-items");
+        if (fresh) {
+            rail.querySelectorAll(".rr-items > .rr-item").forEach((item) => {
+                const key = item.getAttribute("data-key");
+                const twin = key && fresh.querySelector(`.rr-item[data-key="${key}"]`);
+                if (twin) item.className = twin.className;
+            });
+        }
+        const a = active();
+        if (a) put(rectOf(a), !!animate); else pill.style.opacity = "0";
+        try { window.jQuery && jQuery(rail).data("rr-reposition")?.(!!animate); } catch (e) { }
+    };
     // Back button (page restored from cache): just sit on the active tab.
     window.addEventListener("pageshow", (e) => { if (e.persisted) { const a = active(); if (a) put(rectOf(a), false); } });
 
@@ -426,9 +450,11 @@ window.addEventListener("pageshow", () => {
         if (!item || item.classList.contains("rr-active")) return;
         e.stopPropagation();
         const cur = active();
-        try { if (cur) sessionStorage.setItem(KEY, JSON.stringify(rectOf(cur))); } catch (x) { }
         // Without view transitions, start the glide right away while the next page loads.
         if (document.documentElement.classList.contains("sn-no-vt")) put(rectOf(item), true);
+        // the page itself loads partially (sn-nav.js): the rail, top bar and live connection stay
+        if (window.SN?.navigate && SN.nav.canGo(link.href)) { e.preventDefault(); SN.navigate(link.href); return; }
+        try { if (cur) sessionStorage.setItem(KEY, JSON.stringify(rectOf(cur))); } catch (x) { }
     }, true);
 })();
 
@@ -453,7 +479,8 @@ window.addEventListener("pageshow", () => {
         if (window.innerWidth > 1100) { try { localStorage.setItem(KEY, hidden ? "1" : "0"); } catch (e) { } }
         mark();
     };
-    if (document.querySelector(".chat-info")) {
+    const restoreDetails = () => {
+        if (!document.querySelector(".chat-info")) return;
         let saved = null;
         try { saved = localStorage.getItem(KEY); } catch (e) { }
         if (saved === "1") {
@@ -463,7 +490,8 @@ window.addEventListener("pageshow", () => {
             requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove("sn-still")));
         }
         mark();
-    }
+    };
+    if (SN.onPage) SN.onPage(restoreDetails); else restoreDetails();
 
     // + (new channel): a burst ring on click
     document.addEventListener("click", (e) => {

@@ -543,7 +543,10 @@ html[data-theme="dark"] .sn-sheet.pop .sn-sheet-item:hover { background: rgba(16
 @media (max-width: 760px), (max-height: 860px) {
     html body.sn-body dialog.sn-dialog[open]:has(> :is(form, div) > .sn-dlg-body),
     html body.sn-body dialog.sn-dialog[open]:has(> .sn-dlg-body) { display: flex !important; flex-direction: column; overflow: hidden !important; }
-    html body.sn-body dialog.sn-dialog[open] > :is(form, div):has(> .sn-dlg-body) { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; max-height: 100%; }
+    /* (no max-height: 100% here: Safari / every iPhone browser treats it as 0 inside a window without a fixed
+       height, so the window shrank to nothing and only the dark backdrop showed; the window's own
+       max-height already keeps it on screen) */
+    html body.sn-body dialog.sn-dialog[open] > :is(form, div):has(> .sn-dlg-body) { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
     html body.sn-body dialog.sn-dialog[open] .sn-dlg-head { position: relative !important; top: auto; flex: none; }
     html body.sn-body dialog.sn-dialog[open] .sn-dlg-foot { position: relative !important; bottom: auto; flex: none; }
     html body.sn-body dialog.sn-dialog[open] .sn-dlg-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }

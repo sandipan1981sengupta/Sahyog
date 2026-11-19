@@ -123,6 +123,9 @@
         return dismiss;
     };
 
+    // a toast belongs to the window, not to the page: it keeps its timer and buttons if the page changes
+    if (window.SN && SN.nav) Sahyog.toast = SN.nav.unscoped(Sahyog.toast);
+
     Sahyog.toastSuccess = (m, o) => Sahyog.toast(m, { ...(o || {}), kind: "success" });
     Sahyog.toastError = (m, o) => Sahyog.toast(m, { ...(o || {}), kind: "error" });
     Sahyog.toastWarn = (m, o) => Sahyog.toast(m, { ...(o || {}), kind: "warn" });
@@ -171,6 +174,8 @@
     };
     // a page change that ends later (Back button, slow device) lifts any visible toast above the new page
     window.addEventListener("pagereveal", (e) => { e.viewTransition?.finished.then(lift, lift); });
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+    // every page (also pages loaded partially, see sn-nav.js) can bring its own messages
+    if (window.SN && SN.onPage) SN.onPage(start);
+    else if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
     else start();
 })();

@@ -1,0 +1,224 @@
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Html;
+
+namespace ShankhNaad.Web.Infrastructure;
+
+/// <summary>
+/// CSS / JS bundles: the ~45 style and script files of the layouts are served as 4 files
+/// (/bundles/layout.css, /bundles/controls.js, /bundles/app.js, and the sign-in page's own two).
+///
+/// - Same order as the separate files had, nothing minified (the server compresses them, see Program.cs),
+///   so the code in the browser is exactly the code in wwwroot.
+/// - Each bundle URL carries a hash of its content (?v=…), so browsers keep it for a year and fetch it
+///   again only after a file in it has changed.
+/// - A changed file is picked up straight away (no rebuild or restart): the bundle is rebuilt when any
+///   of its files is newer than the bundle.
+/// - CSS: relative url(...) (fonts, images) are rewritten so they still point to the right place.
+/// - JS: files are joined with ";" so one file's last line can never run into the next file.
+/// - "App:BundleAssets": false in appsettings serves the separate files again (handy for debugging).
+/// </summary>
+public sealed class AssetBundles
+{
+    /// <summary>The bundles, in load order. Paths are relative to wwwroot.</summary>
+    public static readonly IReadOnlyDictionary<string, string[]> Definitions = new Dictionary<string, string[]>
+    {
+        // _Layout: every style of the workspace pages
+        ["layout.css"] = new[]
+        {
+            "lib/Mordern-Controls/CSS/flatpickr.min.css",
+            "lib/Mordern-Controls/bootstrap-icon/bootstrap-icons.min.css",
+            "lib/Mordern-Controls/font-awesome-4.7.0/css/font-awesome.min.css",
+            "css/Theme/controls-theme.css",
+            "css/Theme/flatpickr-theme.css",
+            "css/buttons.css",
+            "css/web-control/report-sidebar.css",
+            "css/web-control/modern-table.css",
+            "css/web-control/modern-input.css",
+            "css/web-control/modern-input-with-search.css",
+            "css/web-control/modern-dropdown.css",
+            "css/web-control/modern-dropdown-with-label.css",
+            "css/web-control/modern-datepicker.css",
+            "css/web-control/modern-datepicker-with-label.css",
+            "css/web-control/modern-radio.css",
+            "css/web-control/modern-checkbox.css",
+            "css/web-control/tab-control.css",
+            "css/web-control/cee-group-box-modern.css",
+            "css/web-control/modern-donut-chart.css",
+            "css/web-control/modern-half-donut-chart.css",
+            "css/web-control/messagebox.css",
+            "css/site.css",
+            "css/shankhnaad.css",
+            "css/responsive.css",
+            "css/safari.css",
+        },
+        // _Layout: the Template 1 controls (before the SignalR library)
+        ["controls.js"] = new[]
+        {
+            "lib/Mordern-Controls/JS/flatpickr-v4.6.13.js",
+            "js/web-control/report-sidebar.js",
+            "js/web-control/modern-table.js",
+            "js/web-control/modern-input.js",
+            "js/web-control/modern-dropdown-with-label.js",
+            "js/web-control/modern-datepicker-with-label.js",
+            "js/web-control/modern-radio.js",
+            "js/web-control/modern-checkbox.js",
+            "js/web-control/tab-control.js",
+            "js/web-control/messagebox.js",
+        },
+        // _Layout: ShankhNaad itself (after the SignalR library)
+        ["app.js"] = new[]
+        {
+            "js/toast.js",
+            "js/tooltip.js",
+            "js/mobile.js",
+            "js/site.js",
+            "js/meeting-alerts.js",
+            "js/shankhnaad.js",
+            "js/people-picker.js",
+            "js/pwa-install.js",
+        },
+        // _AuthLayout (sign-in, forgot / set password, guest join, setup)
+        ["auth.css"] = new[]
+        {
+            "lib/Mordern-Controls/bootstrap-icon/bootstrap-icons.min.css",
+            "lib/Mordern-Controls/font-awesome-4.7.0/css/font-awesome.min.css",
+            "css/Theme/controls-theme.css",
+            "css/buttons.css",
+            "css/web-control/modern-input.css",
+            "css/web-control/modern-checkbox.css",
+            "css/web-control/tab-control.css",
+            "css/web-control/cee-group-box-modern.css",
+            "css/web-control/messagebox.css",
+            "css/site.css",
+            "css/shankhnaad.css",
+            "css/shankhnaad-auth.css",
+            "css/safari.css",
+        },
+        ["auth.js"] = new[]
+        {
+            "js/web-control/modern-input.js",
+            "js/web-control/modern-checkbox.js",
+            "js/web-control/tab-control.js",
+            "js/web-control/messagebox.js",
+            "js/toast.js",
+            "js/pwa-install.js",
+        },
+    };
+
+    private sealed record Built(byte[] Bytes, string Hash, DateTime NewestSourceUtc);
+
+    private readonly IWebHostEnvironment _env;
+    private readonly bool _enabled;
+    private readonly ConcurrentDictionary<string, Built> _built = new();
+    private readonly ConcurrentDictionary<string, (DateTime Stamp, string Hash)> _fileHashes = new();
+    private readonly object _gate = new();
+
+    public AssetBundles(IWebHostEnvironment env, IConfiguration config)
+    {
+        _env = env;
+        _enabled = config.GetValue("App:BundleAssets", true);
+    }
+
+    public static string ContentType(string name) =>
+        name.EndsWith(".css", StringComparison.OrdinalIgnoreCase) ? "text/css; charset=utf-8" : "text/javascript; charset=utf-8";
+
+    /// <summary>The <c>&lt;link&gt;</c> or <c>&lt;script&gt;</c> tag(s) for a bundle (one tag, or one per file when bundling is off).</summary>
+    public IHtmlContent Tags(string name)
+    {
+        var css = name.EndsWith(".css", StringComparison.OrdinalIgnoreCase);
+        string Tag(string url) => css ? $"<link rel=\"stylesheet\" href=\"{url}\" />" : $"<script src=\"{url}\"></script>";
+        if (_enabled) return new HtmlString(Tag($"/bundles/{name}?v={Get(name).Hash}"));
+        var sb = new StringBuilder();
+        foreach (var file in Definitions[name])
+            sb.Append(Tag($"/{file}?v={FileHash(file)}")).Append('\n');
+        return new HtmlString(sb.ToString());
+    }
+
+    /// <summary>The bundle's content and hash (built on first use, rebuilt when one of its files changes).</summary>
+    public (byte[] Bytes, string Hash) Get(string name)
+    {
+        var files = Definitions[name];
+        var newest = files.Select(f => File.GetLastWriteTimeUtc(PathOf(f))).Max();
+        if (_built.TryGetValue(name, out var b) && b.NewestSourceUtc >= newest) return (b.Bytes, b.Hash);
+        lock (_gate)
+        {
+            if (_built.TryGetValue(name, out b) && b.NewestSourceUtc >= newest) return (b.Bytes, b.Hash);
+            var text = Build(name, files);
+            var bytes = new UTF8Encoding(false).GetBytes(text);
+            var built = new Built(bytes, HashOf(bytes), newest);
+            _built[name] = built;
+            return (built.Bytes, built.Hash);
+        }
+    }
+
+    private string PathOf(string file) => Path.Combine(_env.WebRootPath, file.Replace('/', Path.DirectorySeparatorChar));
+
+    private static string HashOf(byte[] bytes) =>
+        Convert.ToHexString(SHA256.HashData(bytes))[..12].ToLowerInvariant();
+
+    private string FileHash(string file)
+    {
+        var path = PathOf(file);
+        var stamp = File.GetLastWriteTimeUtc(path);
+        if (_fileHashes.TryGetValue(file, out var h) && h.Stamp == stamp) return h.Hash;
+        var hash = HashOf(File.ReadAllBytes(path));
+        _fileHashes[file] = (stamp, hash);
+        return hash;
+    }
+
+    // a whole data: URL first (an inline SVG can contain its own url(#id), which must stay as it is), then any other url(...)
+    private static readonly Regex CssUrl = new(@"url\(\s*(?<q>['""])data:.*?\k<q>\s*\)|url\(\s*data:[^)]*\)|url\(\s*(['""]?)([^'"")]+?)\1\s*\)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+    private static readonly Regex SourceMap = new(@"^\s*(//|/\*)\s*#\s*sourceMappingURL=.*$", RegexOptions.Compiled | RegexOptions.Multiline);
+
+    private string Build(string name, string[] files)
+    {
+        var css = name.EndsWith(".css", StringComparison.OrdinalIgnoreCase);
+        var sb = new StringBuilder();
+        foreach (var file in files)
+        {
+            var text = File.ReadAllText(PathOf(file));
+            if (text.Length > 0 && text[0] == '﻿') text = text[1..];   // a byte-order mark in the middle of a bundle breaks CSS
+            text = SourceMap.Replace(text, "");                               // maps point next to the original file, not to the bundle
+            if (css)
+            {
+                text = RebaseUrls(text, file);
+                sb.Append("/* ---- ").Append(file).Append(" ---- */\n").Append(text).Append('\n');
+            }
+            else
+            {
+                sb.Append("/* ---- ").Append(file).Append(" ---- */\n").Append(text).Append("\n;\n");
+            }
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>url(../fonts/x.woff) in lib/…/css/a.css → url(/lib/…/fonts/x.woff), so it works from /bundles/.</summary>
+    private static string RebaseUrls(string text, string file)
+    {
+        var dir = file.Contains('/') ? file[..file.LastIndexOf('/')] : "";
+        return CssUrl.Replace(text, m =>
+        {
+            if (!m.Groups[2].Success) return m.Value;                          // a data: URL
+            var quote = m.Groups[1].Value;
+            var url = m.Groups[2].Value.Trim();
+            if (url.Length == 0 || url.StartsWith('/') || url.StartsWith('#') || url.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+                || url.Contains("://") || url.StartsWith("//"))
+                return m.Value;
+            // keep ?query and #hash (font files use them: x.eot?#iefix, x.svg#fontawesomeregular)
+            var cut = url.IndexOfAny(new[] { '?', '#' });
+            var path = cut >= 0 ? url[..cut] : url;
+            var rest = cut >= 0 ? url[cut..] : "";
+            var parts = new List<string>(dir.Length == 0 ? Array.Empty<string>() : dir.Split('/'));
+            foreach (var seg in path.Split('/'))
+            {
+                if (seg == "..") { if (parts.Count > 0) parts.RemoveAt(parts.Count - 1); }
+                else if (seg != "." && seg.Length > 0) parts.Add(seg);
+            }
+            return $"url({quote}/{string.Join('/', parts)}{rest}{quote})";
+        });
+    }
+}

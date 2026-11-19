@@ -247,6 +247,44 @@ public sealed class MeetingsController : Controller
         await _hub.Clients.Users(others.Select(o => o.ToString()).ToList()).SendAsync("IncomingCall", call);
     }
 
+    /// <summary>
+    /// My meetings in the next 26 hours, for the reminders every page shows (js/meeting-alerts.js):
+    /// a card with a chime 5 minutes before, and a ring when the meeting starts. Times are UTC (ISO).
+    /// Meet-now calls and all-day entries are left out; "inIt" = I'm in that meeting right now.
+    /// </summary>
+    [HttpGet("upcoming")]
+    public async Task<IActionResult> Upcoming()
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var limits = (await _tenants.GetLimitsAsync(tenantId))!;
+        var zone = MeetingCalendar.FindZone(limits.TimeZoneId);
+        var nowUtc = DateTime.UtcNow;
+        var nowLocal = MeetingCalendar.ToLocal(nowUtc, zone);
+        var (meetings, _) = await _meetings.ListForUserAsync(tenantId, Me, nowUtc.AddHours(-1), nowUtc.AddHours(26));
+        var me = Me.ToString();
+        var list = MeetingCalendar.Expand(meetings.Where(m => !m.IsInstant && !m.IsAllDay), nowLocal.AddMinutes(-10), nowLocal.AddHours(26), zone)
+            .Where(o => o.EndLocal > nowLocal)
+            .OrderBy(o => o.StartLocal)
+            .Take(50)
+            .Select(o => new
+            {
+                id = o.Meeting.MeetingId,
+                title = o.Meeting.Title,
+                startUtc = DateTime.SpecifyKind(MeetingCalendar.ToUtc(o.StartLocal, zone), DateTimeKind.Utc),
+                endUtc = DateTime.SpecifyKind(MeetingCalendar.ToUtc(o.EndLocal, zone), DateTimeKind.Utc),
+                host = o.Meeting.HostName,
+                hostId = o.Meeting.HostId,
+                hostInitials = Names.Initials(o.Meeting.HostName),
+                hostTone = o.Meeting.HostTone,
+                isHost = o.Meeting.HostId == Me,
+                live = _rooms.Count(o.Meeting.MeetingId) > 0,
+                inIt = _rooms.Contains(o.Meeting.MeetingId, me),
+                roomUrl = $"/meetings/room/{o.Meeting.MeetingId}"
+            });
+        Response.Headers.CacheControl = "no-store";
+        return Json(new { nowUtc = DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc), meetings = list });
+    }
+
     /// <summary>The state of the calls behind call cards in a chat: /meetings/calls?ids=a,b,c</summary>
     [HttpGet("calls")]
     public async Task<IActionResult> Calls(string? ids)

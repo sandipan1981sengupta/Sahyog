@@ -14,6 +14,7 @@
     string Status(CalendarEventVm e) => e.EndLocal <= now ? "Ended" : e.StartLocal <= now ? "Live" : "Upcoming";
     var isAdmin = User.IsInRole(AppRoles.TenantAdmin);
     bool CanDel(CalendarEventVm e) => e.IsHost || isAdmin;
+    bool Weekend(DayOfWeek d) => d == DayOfWeek.Saturday || d == DayOfWeek.Sunday;
     var periodWord = Model.View switch { "day" => "Today", "month" => "This month", "list" => "This week", _ => "This week" };
     string DurText(int m) => m < 60 ? $"{m} min" : m % 60 == 0 ? $"{m / 60} hr" : $"{m / 60} hr {m % 60} min";
 
@@ -55,18 +56,11 @@
     });
     var hasFormErrors = !ViewData.ModelState.IsValid;
 
-    // ---- week scheduler: hour range that always fits this week's meetings ----
+    // ---- day / week scheduler: the whole day, 00:00 to 24:00 ----
+    // (the grid scrolls inside its card and opens at the current time, the first meeting, or 08:00)
     double HourOf(DateTime d) => d.Hour + d.Minute / 60.0;
-    var startH = 8;
-    var endH = 19;
-    foreach (var e in events.Where(x => !x.IsAllDay))
-    {
-        startH = Math.Min(startH, (int)Math.Floor(HourOf(e.StartLocal)));
-        var eh = e.EndLocal.Date > e.StartLocal.Date ? 24 : HourOf(e.EndLocal);
-        endH = Math.Max(endH, (int)Math.Ceiling(eh));
-    }
-    startH = Math.Clamp(startH, 0, 23);
-    endH = Math.Clamp(endH, startH + 1, 24);
+    var startH = 0;
+    var endH = 24;
 
     // side-by-side lanes for meetings that overlap on the same day
     (CalendarEventVm Ev, int Lane, int Lanes)[] LaneLayout(List<CalendarEventVm> dayEvents)
@@ -218,7 +212,7 @@
                         <div class="sn-sched-corner"><i class="fa fa-clock-o" aria-hidden="true"></i></div>
                         @foreach (var d in gridDays)
                         {
-                            <a class="sn-sched-dayhead @(d.IsToday ? "today" : "")" href="@PUrl("day", d.Date)" onclick="return snNav(this.href, '', event)" title="Open this day">
+                            <a class="sn-sched-dayhead @(d.IsToday ? "today" : "") @(Weekend(d.Date.DayOfWeek) ? "weekend" : "")" href="@PUrl("day", d.Date)" onclick="return snNav(this.href, '', event)" title="Open this day">
                                 <span>@d.Date.ToString(view == "day" ? "dddd" : "ddd", inv)</span><b>@d.Date.Day</b>
                                 @if (d.Events.Count > 0) { <em>@d.Events.Count</em> }
                             </a>
@@ -249,10 +243,15 @@
                                 {
                                     <span>@($"{h:00}:00")</span>
                                 }
+                                @if (nowTop >= 0 && gridDays.Any(x => x.IsToday))
+                                {
+                                    @* the current time, next to the red line *@
+                                    <b class="sn-now-label" style="top:calc(var(--hr) * @nowTop.ToString("0.###", inv))">@now.ToString("HH:mm", inv)</b>
+                                }
                             </div>
                             @foreach (var d in gridDays)
                             {
-                                <div class="sn-sched-col @(d.IsToday ? "today" : "") @(d.Date < today ? "past" : "") @(d.Events.Any(x => x.IsAllDay && !x.ShowAsFree) ? "busy-day" : "")" data-date="@d.Date.ToString("dd-MM-yyyy", inv)">
+                                <div class="sn-sched-col @(Weekend(d.Date.DayOfWeek) ? "weekend" : "") @(d.IsToday ? "today" : "") @(d.Date < today ? "past" : "") @(d.Events.Any(x => x.IsAllDay && !x.ShowAsFree) ? "busy-day" : "")" data-date="@d.Date.ToString("dd-MM-yyyy", inv)">
                                     @foreach (var (ev, lane, lanes) in LaneLayout(d.Events.Where(x => !x.IsAllDay).ToList()))
                                     {
                                         var st = Status(ev);
@@ -260,12 +259,12 @@
                                         var endHr = ev.EndLocal.Date > ev.StartLocal.Date ? 24 : HourOf(ev.EndLocal);
                                         var len = Math.Max(.4, endHr - HourOf(ev.StartLocal));
                                         var w = 100.0 / lanes;
-                                        <button type="button" class="sn-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(len < .75 ? "short" : "")"
+                                        <button type="button" class="sn-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(len < .75 ? "short" : "") @(len < .5 ? "tiny" : "") @(CanDel(ev) ? "can-del" : "")"
                                                 data-id="@ev.MeetingId"
                                                 style="top:calc(var(--hr) * @top.ToString("0.###", inv));height:calc(var(--hr) * @len.ToString("0.###", inv) - 3px);left:calc(@((lane * w).ToString("0.###", inv))% + 3px);width:calc(@w.ToString("0.###", inv)% - 6px)"
                                                 title="@ev.Title · @ev.StartLocal.ToString("HH:mm", inv)–@ev.EndLocal.ToString("HH:mm", inv) · @st">
-                                            <b>@ev.Title</b>
-                                            <span>@ev.StartLocal.ToString("HH:mm", inv) – @ev.EndLocal.ToString("HH:mm", inv)</span>
+                                            <b class="sn-ev-title">@if (st == "Live") { <em class="sn-ev-live">Live</em> }@ev.Title</b>
+                                            <span class="sn-ev-time">@ev.StartLocal.ToString("HH:mm", inv) – @ev.EndLocal.ToString("HH:mm", inv)</span>
                                             <span class="sn-ev-meta">@(ev.IsHost ? "You host" : "Invited") · @ev.People.Count @(ev.People.Count == 1 ? "person" : "people")</span>
                                             @if (CanDel(ev))
                                             {
@@ -299,7 +298,7 @@
                         {
                             var outside = d.Date.Month != anchor.Month;
                             var shown = d.Events.OrderByDescending(x => x.IsAllDay).ThenBy(x => x.StartLocal).Take(3).ToList();
-                            <div class="sn-mcell @(d.IsToday ? "today" : "") @(outside ? "outside" : "") @(d.Date < today ? "past" : "") @(d.Events.Any(x => x.IsAllDay && !x.ShowAsFree) ? "busy-day" : "")" data-date="@d.Date.ToString("dd-MM-yyyy", inv)" tabindex="0" role="button" aria-label="@d.Date.ToString("dddd d MMMM", inv): @d.Events.Count meetings. Press Enter to schedule.">
+                            <div class="sn-mcell @(Weekend(d.Date.DayOfWeek) ? "weekend" : "") @(d.IsToday ? "today" : "") @(outside ? "outside" : "") @(d.Date < today ? "past" : "") @(d.Events.Any(x => x.IsAllDay && !x.ShowAsFree) ? "busy-day" : "")" data-date="@d.Date.ToString("dd-MM-yyyy", inv)" tabindex="0" role="button" aria-label="@d.Date.ToString("dddd d MMMM", inv): @d.Events.Count meetings. Press Enter to schedule.">
                                 <div class="sn-mcell-top">
                                     <a class="sn-mday" href="@PUrl("day", d.Date)" onclick="return snNav(this.href, '', event)" title="Open this day">@d.Date.Day</a>
                                     <span class="sn-madd" aria-hidden="true"><i class="fa fa-plus"></i></span>
@@ -918,7 +917,8 @@
             });
         })();
     </script>
-    <script src="~/js/meetings.js" asp-append-version="true">
+    <script src="~/js/meetings.js" asp-append-version="true"></script>
+    <script>
         // ---- the red "now" line moves by itself; the page refreshes quietly so Live / Upcoming / Ended stay right ----
         (function () {
             var line = document.querySelector(".sn-now");
@@ -928,8 +928,10 @@
             function moveLine() {
                 if (!line || isNaN(top0)) return;
                 var h = top0 + (Date.now() - t0) / 3600000;
-                if (h > max) { line.hidden = true; return; }
+                if (h > max) { line.hidden = true; var l = document.querySelector(".sn-now-label"); if (l) l.hidden = true; return; }
                 line.style.top = "calc(var(--hr) * " + h.toFixed(4) + ")";
+                var label = document.querySelector(".sn-now-label"), d = new Date();
+                if (label) { label.style.top = line.style.top; label.textContent = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
             }
             setInterval(moveLine, 30000);
             // a quiet refresh: only when the page is on screen and you're not in the middle of something
@@ -937,7 +939,7 @@
                 return !!document.querySelector("dialog[open], .sn-dialog[open], .mb-overlay.show")
                     || (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
             }
-            function refresh() { if (!document.hidden && !busy()) location.reload(); }
+            function refresh() { if (!document.hidden && !busy()) { if (window.SN && SN.nav) SN.nav.refresh(); else location.reload(); } }
             setInterval(function () { if (Date.now() - loadedAt > 5 * 60 * 1000) refresh(); }, 60 * 1000);
             // a new day starts: show it
             var now = new Date(), midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);

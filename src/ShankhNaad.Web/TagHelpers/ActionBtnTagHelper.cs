@@ -807,7 +807,8 @@ namespace ShankhNaad.Web.TagHelpers
             // click listener no-ops in that case instead of throwing.
             sb.Append($@"
 <script>
-(function() {{
+// set up once for the whole window (outside any page: ShankhNaad loads pages partially, see sn-nav.js)
+(window.SN && SN.nav ? SN.nav.unscoped : function(f) {{ return f; }})(function() {{
   if (!window.__actionHeaderDelegated) {{
     window.__actionHeaderDelegated = true;
 

@@ -110,6 +110,10 @@ window.ModernDonutChart.init = function (context) {
 
         var cutout = $canvas.attr("data-cutout") || "60%";
 
+        // set up again (ShankhNaad partial page loads): free the old chart on this id / canvas first
+        if (chartInstances[id]) { try { chartInstances[id].destroy(); } catch (e) { } }
+        var existing = Chart.getChart && Chart.getChart($canvas[0]);
+        if (existing) { try { existing.destroy(); } catch (e) { } }
         chartInstances[id] = new Chart($canvas[0], buildConfig(labels, values, customColors, cutout));
 
         var finalColors = (customColors && customColors.length > 0) ? customColors : generatePalette(labels.length);
