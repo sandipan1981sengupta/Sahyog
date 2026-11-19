@@ -98,7 +98,11 @@ public sealed class ChatHub : Hub
                 await CallEvent(callTenant, meetingId, Context.User.UserGuid(), 2);
         // closing the meeting tab ends "on a call"
         if (wasBusy && !_rooms.IsBusy(userId!) && Context.User?.TenantId() is Guid tid)
+        {
             await Clients.Group(TenantGroup(tid)).SendAsync("BusyChanged", userId, false);
+            _presence.SetCall(userId!, null);
+            await BroadcastStatus(tid, userId!);
+        }
         if (userId is not null && Context.User?.TenantId() is Guid tenantId && _presence.Disconnect(userId, Context.ConnectionId))
             await Clients.Group(TenantGroup(tenantId)).SendAsync("PresenceChanged", userId, false);
 
@@ -158,6 +162,46 @@ public sealed class ChatHub : Hub
     {
         var (tenantId, _) = Caller();
         return _presence.OnlineUsers(tenantId);
+    }
+
+    // ---------- status, like Teams: Available, Busy, Do not disturb, Be right back, Away, Appear offline ----------
+
+    private Task BroadcastStatus(Guid tenantId, string userId) =>
+        Clients.Group(TenantGroup(tenantId)).SendAsync("StatusChanged", userId, _presence.Status(userId));
+
+    /// <summary>Everyone online in this workspace who has a status (picked, away, in a call, presenting).</summary>
+    public Dictionary<string, UserStatusDto> Statuses()
+    {
+        var (tenantId, _) = Caller();
+        return _presence.Statuses(tenantId);
+    }
+
+    /// <summary>Picks a status ("available", "busy", "dnd", "brb", "away", "offline"), or "auto" to reset it.</summary>
+    public async Task SetStatus(string? status)
+    {
+        var (tenantId, _) = Caller();
+        if (!_presence.SetManual(Context.UserIdentifier!, status)) throw new HubException("Unknown status.");
+        await BroadcastStatus(tenantId, Context.UserIdentifier!);
+    }
+
+    /// <summary>The browser reports no activity for a while (shown as Away unless a status is picked).</summary>
+    public async Task SetIdle(bool idle)
+    {
+        var (tenantId, _) = Caller();
+        var me = Context.UserIdentifier!;
+        if (_presence.Status(me).Idle == idle) return;
+        _presence.SetIdle(me, idle);
+        await BroadcastStatus(tenantId, me);
+    }
+
+    /// <summary>The call page reports screen sharing (shown as Presenting).</summary>
+    public async Task SetPresenting(Guid meetingId, bool on)
+    {
+        var (tenantId, _) = Caller();
+        var me = Context.UserIdentifier!;
+        if (on && !_rooms.Contains(meetingId, me)) return;
+        _presence.SetPresenting(me, on);
+        await BroadcastStatus(tenantId, me);
     }
 
     /// <summary>People in this workspace who are in a call or meeting right now (shown with a red dot).</summary>
@@ -324,12 +368,16 @@ public sealed class ChatHub : Hub
     public async Task MeetingJoined(Guid meetingId)
     {
         var (tenantId, _) = Caller();
-        if (await _meetings.GetAsync(tenantId, meetingId) is null) return;
+        var joined = await _meetings.GetAsync(tenantId, meetingId);
+        if (joined is null) return;
         var me = Context.UserIdentifier!;
         var wasBusy = _rooms.IsBusy(me);
         _rooms.Join(meetingId, me, Context.ConnectionId);
         await Groups.AddToGroupAsync(Context.ConnectionId, MeetingGroup(meetingId));
         if (!wasBusy) await Clients.Group(TenantGroup(tenantId)).SendAsync("BusyChanged", me, true);   // red "on a call" dot
+        // "In a call" (started from a chat) or "In a meeting" (scheduled)
+        _presence.SetCall(me, joined.IsInstant ? "call" : "meeting");
+        await BroadcastStatus(tenantId, me);
         await CallEvent(tenantId, meetingId, Context.User!.UserGuid(), 1);   // the person called has picked up
     }
 
@@ -350,6 +398,11 @@ public sealed class ChatHub : Hub
             await Clients.Group(MeetingGroup(meetingId)).SendAsync("ParticipantLeft", meetingId, me, Context.User!.DisplayName(), note);
         if (emptied)
             await CallEvent(tenantId, meetingId, Context.User!.UserGuid(), 2);   // last one out: the call has ended
-        if (!_rooms.IsBusy(me)) await Clients.Group(TenantGroup(tenantId)).SendAsync("BusyChanged", me, false);
+        if (!_rooms.IsBusy(me))
+        {
+            await Clients.Group(TenantGroup(tenantId)).SendAsync("BusyChanged", me, false);
+            _presence.SetCall(me, null);
+            await BroadcastStatus(tenantId, me);
+        }
     }
 }

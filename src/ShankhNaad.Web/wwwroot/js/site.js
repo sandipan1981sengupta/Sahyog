@@ -55,25 +55,70 @@
     Sahyog.online = new Set();
 
     Sahyog.busy = new Set();      // people in a call or meeting right now
-    // green = available, red = on a call, grey = offline
+    Sahyog.status = new Map();    // userId → { manual, idle, presenting, call }  (see PresenceTracker.cs)
+
+    // ---------- status, like Microsoft Teams ----------
+    // What to show, most important first: Presenting › Do not disturb › In a call / meeting › Busy › Be right back › Away › Available.
+    // "Appear offline" shows as Offline to everyone else.
+    const STATES = {
+        available: { label: "Available", cls: "st-available" },
+        busy: { label: "Busy", cls: "st-busy" },
+        dnd: { label: "Do not disturb", cls: "st-dnd" },
+        brb: { label: "Be right back", cls: "st-brb" },
+        away: { label: "Away", cls: "st-away" },
+        call: { label: "In a call", cls: "st-call" },
+        meeting: { label: "In a meeting", cls: "st-meeting" },
+        presenting: { label: "Presenting", cls: "st-present" },
+        offline: { label: "Offline", cls: "st-offline" }
+    };
+    Sahyog.STATES = STATES;
+    const ALL_CLS = Object.values(STATES).map((x) => x.cls);
+    const stateOf = (id) => {
+        const st = Sahyog.status.get(id) || {};
+        const busy = Sahyog.busy.has(id);
+        if (!Sahyog.online.has(id) && !busy) return "offline";
+        if (st.manual === "offline") return "offline";
+        if (st.presenting) return "presenting";
+        if (st.manual === "dnd") return "dnd";
+        if (busy || st.call) return st.call === "meeting" ? "meeting" : "call";
+        if (st.manual === "busy") return "busy";
+        if (st.manual === "brb") return "brb";
+        if (st.manual === "away" || st.idle) return "away";
+        return "available";
+    };
+    Sahyog.stateOf = stateOf;
+
     const paintPresence = () => {
         document.querySelectorAll("[data-presence]").forEach((el) => {
             const id = el.dataset.presence, dot = el.querySelector(".dot");
-            const busy = Sahyog.busy.has(id), on = Sahyog.online.has(id) || busy;
+            const state = stateOf(id), info = STATES[state];
+            const inCall = state === "call" || state === "meeting" || state === "presenting";
             if (dot) {
-                dot.classList.toggle("on", on && !busy);
-                dot.classList.toggle("busy", busy);
+                dot.classList.remove(...ALL_CLS);
+                dot.classList.add(info.cls);
+                // the older names still drive the existing green / red looks
+                dot.classList.toggle("on", state === "available");
+                dot.classList.toggle("busy", inCall);
             }
-            el.classList.toggle("is-busy", busy);
-            el.classList.toggle("is-on", on && !busy);
-            el.setAttribute("data-status", busy ? "On a call" : on ? "Available" : "Offline");
+            el.classList.toggle("is-busy", inCall);
+            el.classList.toggle("is-on", state === "available");
+            el.setAttribute("data-state", state);
+            el.setAttribute("data-status", info.label);
         });
-        // "N online" on the Chat page
+        // the little "Online / Offline" words next to names (people pickers, members list)
+        document.querySelectorAll("[data-pp-state-of]").forEach((el) => {
+            const st = stateOf(el.dataset.ppStateOf);
+            el.textContent = STATES[st].label;
+            el.closest("[data-presence-row]")?.setAttribute("data-state", st);
+        });
+        // "N online" on the Chat page (people who appear offline don't count)
         const count = document.getElementById("teamOnline");
         if (count) {
             const me = document.body.dataset.me;
-            count.textContent = new Set([...Sahyog.online, ...Sahyog.busy].filter((id) => id !== me)).size;
+            const ids = new Set([...Sahyog.online, ...Sahyog.busy]);
+            count.textContent = [...ids].filter((id) => id !== me && stateOf(id) !== "offline").length;
         }
+        document.dispatchEvent(new CustomEvent("sahyog:presence"));
     };
     Sahyog.paintPresence = paintPresence;
     hub.on("BusyChanged", (userId, busy) => {
@@ -82,9 +127,53 @@
     });
 
     hub.on("PresenceChanged", (userId, isOnline) => {
-        if (isOnline) Sahyog.online.add(userId); else Sahyog.online.delete(userId);
+        if (isOnline) Sahyog.online.add(userId); else { Sahyog.online.delete(userId); Sahyog.status.delete(userId); }
         paintPresence();
     });
+
+    hub.on("StatusChanged", (userId, st) => {
+        Sahyog.status.set(userId, st || {});
+        // my own status changed in another tab: remember it here too
+        if (userId === document.body.dataset.me) {
+            try { if (st && st.manual) localStorage.setItem("sn-status", st.manual); else localStorage.removeItem("sn-status"); } catch { }
+        }
+        paintPresence();
+    });
+
+    const loadStatuses = async () => {
+        try {
+            const all = await hub.invoke("Statuses");
+            Sahyog.status = new Map(Object.entries(all || {}));
+        } catch { /* older server */ }
+    };
+    // after (re)connecting, tell the server the status I picked last time (it only keeps it while I'm connected)
+    const restoreMyStatus = () => {
+        let mine = null;
+        try { mine = localStorage.getItem("sn-status"); } catch { }
+        if (mine && document.body.dataset.me) hub.invoke("SetStatus", mine).catch(() => { });
+    };
+    /** Picks a status ("available", "busy", "dnd", "brb", "away", "offline") or "auto" to reset. */
+    Sahyog.setStatus = async (status) => {
+        try { if (status && status !== "auto") localStorage.setItem("sn-status", status); else localStorage.removeItem("sn-status"); } catch { }
+        try { await hub.invoke("SetStatus", status || "auto"); }
+        catch { Sahyog.toast?.("Couldn't change your status. Check your connection.", { kind: "warn" }); }
+    };
+
+    // Away after 10 minutes without mouse, keyboard or touch (like Teams); back to normal on the next move.
+    (() => {
+        const IDLE_MS = 10 * 60 * 1000;
+        let idle = false, last = Date.now();
+        const wake = () => {
+            last = Date.now();
+            if (idle && hub.state === "Connected") { idle = false; hub.invoke("SetIdle", false).catch(() => { }); }
+        };
+        ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"].forEach((ev) => window.addEventListener(ev, wake, { passive: true }));
+        document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") wake(); });
+        setInterval(() => {
+            if (!idle && Date.now() - last > IDLE_MS && hub.state === "Connected") { idle = true; hub.invoke("SetIdle", true).catch(() => { }); }
+        }, 30 * 1000);
+        document.addEventListener("sahyog:connected", () => { if (idle) hub.invoke("SetIdle", true).catch(() => { }); });
+    })();
 
     // ---------- incoming call: ring (Teams-like tune) until answered, declined or 30 s ----------
     let ringTimer = null;
@@ -291,6 +380,9 @@
             const u = readUnread(); u[m.channelId] = (u[m.channelId] || 0) + 1; saveUnread(u);
             Sahyog.paintUnread();
         }
+        // Do not disturb or Presenting: the unread count still goes up, but no sound, pop-up or desktop notification
+        const quiet = me && Sahyog.stateOf && ["dnd", "presenting"].includes(Sahyog.stateOf(me));
+        if (quiet) return;
         ding();
 
         const preview = m.body ? (m.body.length > 90 ? m.body.slice(0, 90) + "…" : m.body) : "Sent a file";
@@ -397,6 +489,8 @@
             await hub.start();
             (await hub.invoke("OnlineUsers")).forEach((id) => Sahyog.online.add(id));
             try { Sahyog.busy = new Set(await hub.invoke("BusyUsers")); } catch { /* older server */ }
+            restoreMyStatus();
+            await loadStatuses();
             paintPresence();
             document.dispatchEvent(new CustomEvent("sahyog:connected"));
             checkPending();
@@ -415,6 +509,8 @@
     hub.onreconnected(async () => {
         Sahyog.online = new Set(await hub.invoke("OnlineUsers"));
         try { Sahyog.busy = new Set(await hub.invoke("BusyUsers")); } catch { /* older server */ }
+        restoreMyStatus();
+        await loadStatuses();
         paintPresence();
         document.dispatchEvent(new CustomEvent("sahyog:connected"));
         checkPending();

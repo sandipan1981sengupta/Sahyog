@@ -3051,3 +3051,78 @@ html[data-theme="dark"] .sn-pp-pill { background: rgba(167, 139, 250, .26); box-
 .sn-pp.sn-pp-compact .sn-pp-chips { max-height: 72px; min-height: 38px; }
 .sn-pp.sn-pp-compact .sn-pp-search input::placeholder { font-size: 13px; }
 @media (max-width: 760px) { .sn-pp.sn-pp-compact .sn-pp-list { max-height: 34dvh; } }
+
+/* =====================================================================
+   Status, like Microsoft Teams (js/site.js works it out; PresenceTracker.cs keeps it)
+     Available  green          Busy        red
+     Do not disturb  red with a white bar     Be right back / Away  amber with a clock
+     In a call  red with a phone   In a meeting  red with a camera   Presenting  red with a screen
+     Offline    grey ring
+   ===================================================================== */
+.sn-body .dot.st-busy, .sn-body .dot.st-dnd { background: radial-gradient(circle at 35% 30%, #FCA5A5 0%, #EF4444 45%, #B91C1C 100%); animation: none; transform: none; }
+.sn-body .dot.st-dnd::after { content: ""; position: absolute; left: 22%; right: 22%; top: 50%; height: 2px; margin-top: -1px; border-radius: 2px; background: #fff; }
+.sn-body .dot.st-brb, .sn-body .dot.st-away { background: radial-gradient(circle at 35% 30%, #FDE68A 0%, #F59E0B 50%, #B45309 100%); animation: none; transform: none; }
+.sn-body .dot.st-brb::after, .sn-body .dot.st-away::after {
+    content: "\f017"; font-family: FontAwesome; position: absolute; inset: 0; display: grid; place-items: center; font-size: 7px; color: #fff; line-height: 1; }
+.sn-body .dot.st-brb::after { content: "\f0e2"; }            /* "back" arrow */
+.sn-body .dot.st-offline { background: var(--sn-dot-ring) !important; box-shadow: inset 0 0 0 2px #94A3B8; animation: none; transform: none; }
+.sn-body .dot.busy.st-meeting::after { content: "\f03d"; transform: none; font-size: 6px; }   /* camera */
+.sn-body .dot.busy.st-present::after { content: "\f108"; transform: none; font-size: 6px; }   /* screen */
+.sn-body .dot.busy.st-present { background: radial-gradient(circle at 35% 30%, #FDA4AF 0%, #E11D48 45%, #9F1239 100%); }
+.sn-body .av-44 .dot.st-brb::after, .sn-body .av-44 .dot.st-away::after, .sn-body .av-56 .dot.st-brb::after, .sn-body .av-56 .dot.st-away::after { font-size: 8px; }
+
+/* the hover label takes the status colour */
+.sn-body .avatar[data-state="busy"][data-status]:hover::after,
+.sn-body .avatar[data-state="dnd"][data-status]:hover::after { background: #B91C1C; }
+.sn-body .avatar[data-state="brb"][data-status]:hover::after,
+.sn-body .avatar[data-state="away"][data-status]:hover::after { background: #B45309; }
+.sn-body .avatar[data-state="presenting"][data-status]:hover::after { background: #9F1239; }
+.sn-body .avatar[data-state="offline"][data-status]:hover::after { background: #475569; }
+
+/* status words next to names (people pickers, Members list) */
+.sn-pp-row[data-state="available"] .sn-pp-state { color: #16A34A; }
+.sn-pp-row[data-state="busy"] .sn-pp-state, .sn-pp-row[data-state="dnd"] .sn-pp-state,
+.sn-pp-row[data-state="call"] .sn-pp-state, .sn-pp-row[data-state="meeting"] .sn-pp-state { color: #DC2626; }
+.sn-pp-row[data-state="presenting"] .sn-pp-state { color: #E11D48; font-weight: 600; }
+.sn-pp-row[data-state="brb"] .sn-pp-state, .sn-pp-row[data-state="away"] .sn-pp-state { color: #D97706; }
+.sn-pp-row[data-state="offline"] .sn-pp-state { color: #94A3B8; }
+html[data-theme="dark"] .sn-pp-row[data-state="available"] .sn-pp-state { color: #4ADE80; }
+html[data-theme="dark"] .sn-pp-row[data-state="busy"] .sn-pp-state, html[data-theme="dark"] .sn-pp-row[data-state="dnd"] .sn-pp-state,
+html[data-theme="dark"] .sn-pp-row[data-state="call"] .sn-pp-state, html[data-theme="dark"] .sn-pp-row[data-state="meeting"] .sn-pp-state { color: #F87171; }
+html[data-theme="dark"] .sn-pp-row[data-state="brb"] .sn-pp-state, html[data-theme="dark"] .sn-pp-row[data-state="away"] .sn-pp-state { color: #FBBF24; }
+/* (the old "Online" green for the picker is replaced by the rules above) */
+
+/* my own dot in the top bar, on the edge of my picture */
+.sn-topbar [data-strip-user-panel] { position: relative; }
+.sn-topbar .sn-my-dot { position: absolute; left: 34px; top: calc(50% + 7px); width: 15px; height: 15px; border-radius: 50%;
+    border: 3px solid var(--sn-dot-ring); box-sizing: border-box; background: #94A3B8; z-index: 3; pointer-events: none;
+    transition: background .3s ease, transform .3s cubic-bezier(.34, 1.56, .64, 1); }
+.sn-topbar .sn-my-dot.on { background: radial-gradient(circle at 35% 30%, #86EFAC 0%, #22C55E 45%, #15803D 100%); }
+.sn-topbar .sn-my-dot.busy { background: radial-gradient(circle at 35% 30%, #FCA5A5 0%, #EF4444 45%, #B91C1C 100%); }
+.sn-topbar .sn-my-dot.busy::after { content: "\f095"; font-family: FontAwesome; position: absolute; inset: 0; display: grid; place-items: center; font-size: 7px; color: #fff; }
+
+/* ---------- the status choices at the top of the user menu ---------- */
+.sn-status-menu { padding: 2px 0 0; }
+.sn-status-menu .dot { position: relative; display: inline-block; flex: none; width: 14px; height: 14px; border-radius: 50%; border: 0; box-sizing: border-box;
+    background: #94A3B8; }
+.sn-status-menu .dot.st-available { background: radial-gradient(circle at 35% 30%, #86EFAC 0%, #22C55E 45%, #15803D 100%); }
+.sn-status-menu .dot.st-call, .sn-status-menu .dot.st-meeting, .sn-status-menu .dot.st-present { background: radial-gradient(circle at 35% 30%, #FCA5A5 0%, #EF4444 45%, #B91C1C 100%); }
+.sn-status-menu .dot.st-offline { background: transparent !important; box-shadow: inset 0 0 0 2px #94A3B8; }
+.sn-status-now { display: flex; align-items: center; gap: 10px; margin: 2px 4px 6px; padding: 10px 12px; border-radius: 14px;
+    background: rgba(37, 99, 235, .06); border: 1px solid rgba(37, 99, 235, .12); }
+.sn-status-now .dot { width: 16px; height: 16px; }
+.sn-status-now b { display: block; font-size: 13.5px; }
+.sn-status-now small { display: block; font-size: 11px; color: #64748B; margin-top: 1px; }
+.sn-status-item { display: flex !important; align-items: center; gap: 10px; }
+.sn-status-item > span { flex: 1; }
+.sn-status-tick { opacity: 0; color: #7C3AED; font-size: 12px; transform: scale(.5); transition: opacity .15s ease, transform .2s cubic-bezier(.34, 1.56, .64, 1); }
+.sn-status-item.on .sn-status-tick { opacity: 1; transform: none; }
+.sn-status-item.on { font-weight: 700; }
+.sn-status-reset i { width: 14px; text-align: center; color: #2563EB; }
+.sn-status-reset small { font-size: 10.5px; color: #94A3B8; }
+.sn-status-reset.on { font-weight: 600; }
+.sn-status-sep { height: 1px; margin: 6px 8px; background: rgba(100, 116, 139, .2); }
+html[data-theme="dark"] .sn-status-now { background: rgba(96, 165, 250, .08); border-color: rgba(96, 165, 250, .18); }
+html[data-theme="dark"] .sn-status-now small { color: #94A3B8; }
+html[data-theme="dark"] .sn-status-tick { color: #C4B5FD; }
+@media (prefers-reduced-motion: reduce) { .sn-topbar .sn-my-dot, .sn-status-tick { transition: none; } }

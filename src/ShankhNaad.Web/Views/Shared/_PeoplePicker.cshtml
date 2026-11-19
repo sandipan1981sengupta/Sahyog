@@ -44,12 +44,12 @@
                 last = letter;
                 <div class="sn-pp-letter" data-letter="@letter">@letter</div>
             }
-            <label class="sn-pp-row" data-name="@person.Name.ToLowerInvariant()" data-letter="@letter" data-online="@(person.Online ? "1" : "0")">
+            <label class="sn-pp-row" data-name="@person.Name.ToLowerInvariant()" data-letter="@letter" data-online="@(person.Online ? "1" : "0")" data-state="@(person.Online ? "available" : "offline")">
                 <input type="checkbox" name="@Model.FieldName" value="@person.Id" checked="@picked.Contains(person.Id)" />
                 <span class="avatar av-34 tone-@(person.Tone)" data-presence="@person.Id" data-user="@person.Id">@person.Initials<i class="dot @(person.Online ? "on" : "")"></i></span>
                 <span class="sn-pp-who">
                     <span class="sn-pp-name">@person.Name</span>
-                    <span class="sn-pp-state">@(person.Online ? "Online" : "Offline")</span>
+                    <span class="sn-pp-state">@(person.Online ? "Available" : "Offline")</span>
                 </span>
                 <span class="sn-pp-tick" aria-hidden="true"><i class="fa fa-check"></i></span>
             </label>

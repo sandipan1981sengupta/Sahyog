@@ -92,6 +92,18 @@
         search.addEventListener("focus", lockHeight);
         q("[data-pp-all]").addEventListener("click", function () { visible().forEach(function (r) { r.querySelector("input").checked = true; }); render(); });
         q("[data-pp-clear]").addEventListener("click", function () { rows.forEach(function (r) { r.querySelector("input").checked = false; }); render(); });
+        // live status from the app (Available, Busy, In a call…); "Online" = anyone not offline
+        document.addEventListener("sahyog:presence", function () {
+            if (!window.Sahyog || !Sahyog.stateOf) return;
+            rows.forEach(function (r) {
+                var st = Sahyog.stateOf(r.querySelector("input").value);
+                r.dataset.online = st === "offline" ? "0" : "1";
+                r.dataset.state = st;
+                var label = r.querySelector(".sn-pp-state");
+                if (label) label.textContent = Sahyog.STATES[st].label;
+            });
+            if (show === "online") filter();
+        });
         var form = root.closest("form");
         if (form) form.addEventListener("reset", function () { setTimeout(render, 0); });
         filter(); render();

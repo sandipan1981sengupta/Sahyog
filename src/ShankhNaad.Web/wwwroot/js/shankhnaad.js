@@ -281,6 +281,65 @@
         SN.toggleTheme();
     });
 
+    // ---------- my status (like Teams): a dot on my picture in the top bar + choices at the top of the user menu ----------
+    document.addEventListener("DOMContentLoaded", () => {
+        const me = document.body.dataset.me;
+        const dd = document.querySelector(".strip-user-dropdown[data-strip-user-dropdown]");
+        const panel = document.querySelector(".sn-topbar [data-strip-user-panel]");
+        if (!me || !dd || dd.querySelector(".sn-status-menu")) return;
+
+        // the dot on my own picture (it reads my status like everyone else's)
+        if (panel) {
+            panel.setAttribute("data-presence", me);
+            const dot = document.createElement("i");
+            dot.className = "dot sn-my-dot";
+            dot.setAttribute("aria-hidden", "true");
+            panel.appendChild(dot);
+        }
+
+        const CHOICES = [
+            ["available", "Available", "st-available"],
+            ["busy", "Busy", "st-busy"],
+            ["dnd", "Do not disturb", "st-dnd"],
+            ["brb", "Be right back", "st-brb"],
+            ["away", "Appear away", "st-away"],
+            ["offline", "Appear offline", "st-offline"]
+        ];
+        const box = document.createElement("div");
+        box.className = "sn-status-menu";
+        box.innerHTML = `<div class="sn-status-now"><i class="dot" aria-hidden="true"></i><span><b class="sn-status-label">Available</b><small class="sn-status-why"></small></span></div>`
+            + CHOICES.map(([v, label, cls]) => `<div class="strip-user-dropdown-item sn-status-item" data-strip-action="status" data-sn-status="${v}" role="menuitemradio">
+                    <i class="dot ${cls}" aria-hidden="true"></i><span>${label}</span><i class="fa fa-check sn-status-tick" aria-hidden="true"></i></div>`).join("")
+            + `<div class="strip-user-dropdown-item sn-status-item sn-status-reset" data-strip-action="status" data-sn-status="auto" role="menuitem">
+                    <i class="fa fa-refresh" aria-hidden="true"></i><span>Reset status</span><small>automatic</small></div>
+               <div class="sn-status-sep" role="separator"></div>`;
+        dd.prepend(box);
+        // the menu's own handler closes it; this runs first and changes the status
+        box.addEventListener("click", (e) => {
+            const item = e.target.closest("[data-sn-status]");
+            if (item && window.Sahyog?.setStatus) Sahyog.setStatus(item.dataset.snStatus);
+        });
+
+        const paint = () => {
+            if (!window.Sahyog?.stateOf) return;
+            const state = Sahyog.stateOf(me), st = Sahyog.status.get(me) || {};
+            const info = Sahyog.STATES[state];
+            const now = box.querySelector(".sn-status-now .dot");
+            now.className = "dot " + info.cls;
+            box.querySelector(".sn-status-label").textContent = info.label;
+            // why it shows that: picked by me, or set automatically
+            const why = st.presenting ? "while you share your screen"
+                : (state === "call" || state === "meeting") && st.manual !== "dnd" ? "set automatically"
+                : st.manual ? "you set this · Reset to go back to automatic"
+                : st.idle ? "no activity for 10 minutes" : "automatic";
+            box.querySelector(".sn-status-why").textContent = why;
+            box.querySelectorAll(".sn-status-item[data-sn-status]").forEach((i) =>
+                i.classList.toggle("on", i.dataset.snStatus === (st.manual || "auto")));
+        };
+        document.addEventListener("sahyog:presence", paint);
+        paint();
+    });
+
     // Follow the computer's setting until the person picks one.
     try {
         if (!localStorage.getItem("sn-theme") && window.matchMedia) {

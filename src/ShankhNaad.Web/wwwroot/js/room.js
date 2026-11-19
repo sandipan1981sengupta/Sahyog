@@ -665,8 +665,11 @@
         setBtn("micBtn", muted, "off", muted ? "Unmute microphone" : "Mute microphone", "micLabel", muted ? "Unmute" : "Mute"));
     api.addListener("videoMuteStatusChanged", ({ muted }) =>
         setBtn("camBtn", muted, "off", muted ? "Turn camera on" : "Turn camera off", "camLabel", muted ? "Start video" : "Stop video"));
-    api.addListener("screenSharingStatusChanged", ({ on }) =>
-        setBtn("shareBtn", on, "sharing", on ? "Stop sharing your screen" : "Share your screen", "shareLabel", on ? "Stop share" : "Share"));
+    api.addListener("screenSharingStatusChanged", ({ on }) => {
+        setBtn("shareBtn", on, "sharing", on ? "Stop sharing your screen" : "Share your screen", "shareLabel", on ? "Stop share" : "Share");
+        // teammates see "Presenting" on your picture while you share
+        if (hub && hub.state === "Connected") hub.invoke("SetPresenting", cfg.meetingId, !!on).catch(() => { });
+    });
     api.addListener("tileViewChanged", ({ enabled }) => setBtn("tileBtn", enabled, "active"));
     // who is talking: their row lights up with moving sound bars, and a chip on the video shows their name
     api.addListener("dominantSpeakerChanged", ({ id }) => {

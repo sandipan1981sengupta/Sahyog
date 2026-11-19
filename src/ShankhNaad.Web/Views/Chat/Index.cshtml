@@ -402,11 +402,11 @@
                     var isMe = m.Id == meId;
                     var isCreator = Model.CurrentCreatedBy is not null && string.Equals(m.Id, Model.CurrentCreatedBy, StringComparison.OrdinalIgnoreCase);
                     var canRemove = Model.CanManageMembers && !isMe && (!isCreator || isAdminHere);
-                    <div class="sn-pp-row sn-mem-row" data-name="@m.Name.ToLowerInvariant()">
+                    <div class="sn-pp-row sn-mem-row" data-name="@m.Name.ToLowerInvariant()" data-presence-row="@m.Id">
                         <span class="avatar av-34 tone-@(m.Tone)" data-presence="@m.Id" data-user="@m.Id">@m.Initials<i class="dot @(m.Online ? "on" : "")"></i></span>
                         <span class="sn-pp-who">
                             <span class="sn-pp-name">@m.Name @if (isMe) {<span class="sn-mem-tag">You</span>} @if (isCreator) {<span class="sn-mem-tag owner">Created the group</span>}</span>
-                            <span class="sn-pp-state">@(m.Online ? "Online" : "Offline")</span>
+                            <span class="sn-pp-state" data-pp-state-of="@m.Id">@(m.Online ? "Available" : "Offline")</span>
                         </span>
                         @if (canRemove)
                         {
