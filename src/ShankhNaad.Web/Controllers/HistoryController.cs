@@ -65,6 +65,55 @@ public sealed class HistoryController : Controller
         return Redirect("/files");
     }
 
+    // ---------- workspace admins: free up space (everyone's chat files in this workspace) ----------
+
+    private static DateTime? OlderThan(string? age) => age switch
+    {
+        "30" => DateTime.UtcNow.AddDays(-30),
+        "90" => DateTime.UtcNow.AddDays(-90),
+        "180" => DateTime.UtcNow.AddDays(-180),
+        "365" => DateTime.UtcNow.AddDays(-365),
+        "all" => null,
+        _ => DateTime.UtcNow.AddDays(-90)
+    };
+
+    /// <summary>Preview for "Free up space": how many of the workspace's chat files (and how much space) each choice removes.</summary>
+    [HttpGet("/files/free-up"), Authorize(Roles = AppRoles.TenantAdmin)]
+    public async Task<IActionResult> FreeUpPreview(string? age, [FromServices] ITenantService tenants)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var all = await tenants.FilesSummaryAsync(tenantId, null);
+        var picked = await tenants.FilesSummaryAsync(tenantId, OlderThan(age));
+        return Json(new
+        {
+            totalFiles = all.Files, totalBytes = all.Bytes, totalText = UserExtensions.FormatBytes(all.Bytes),
+            files = picked.Files, bytes = picked.Bytes, text = UserExtensions.FormatBytes(picked.Bytes)
+        });
+    }
+
+    /// <summary>
+    /// Removes everyone's chat files in this workspace (all, or older than the chosen age) and gives the space back.
+    /// Each chat message stays and says the file was removed. Same as the super admin's "Free up space", for one's own workspace.
+    /// </summary>
+    [HttpPost("/files/free-up"), Authorize(Roles = AppRoles.TenantAdmin)]
+    public async Task<IActionResult> FreeUp(string? age, [FromServices] ITenantService tenants, [FromServices] ILogger<HistoryController> log)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var gone = await tenants.PurgeFilesAsync(tenantId, OlderThan(age));
+        var failed = 0;
+        foreach (var (path, _) in gone)
+        {
+            try { _files.Delete(path); }
+            catch (Exception ex) { failed++; log.LogWarning(ex, "Could not delete file {Path} for workspace {TenantId}.", path, tenantId); }
+        }
+        log.LogInformation("Workspace admin {UserId} freed space in {TenantId}: {Count} files, age {Age}.", User.UserGuid(), tenantId, gone.Count, age);
+        TempData[gone.Count == 0 ? "HistoryError" : "HistoryMsg"] = gone.Count == 0
+            ? "No files matched, so nothing was removed."
+            : $"Removed {Plural(gone.Count, "file")} and freed {UserExtensions.FormatBytes(gone.Sum(g => g.Bytes))}. The chat messages now say the file was removed."
+              + (failed > 0 ? $" {failed} could not be deleted from disk; see the log." : "");
+        return Redirect("/files");
+    }
+
     /// <summary>Deletes a file you shared for everyone: it disappears from the chat and from storage.</summary>
     [HttpPost("/files/{id:guid}/delete-everyone")]
     public async Task<IActionResult> DeleteFileForEveryone(Guid id)

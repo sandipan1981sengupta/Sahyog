@@ -6,6 +6,13 @@
     var n = Model.NewTenant;
     var inv = CultureInfo.InvariantCulture;
 
+    // storage: exact %, readable text ("less than 0.1%"), a bar that shows a sliver for small use, and a colour level
+    (double Pct, string Text, double Bar, string Level) Use(long used, long quota)
+    {
+        var pct = quota <= 0 ? 0d : Math.Min(100d, used * 100d / quota);
+        var text = used <= 0 ? "0%" : pct < 0.1 ? "less than 0.1%" : pct < 10 ? pct.ToString("0.0", inv) + "%" : Math.Round(pct).ToString(inv) + "%";
+        return (pct, text, used <= 0 ? 0d : Math.Round(Math.Max(3d, pct), 2), pct >= 90 ? "full" : pct >= 75 ? "warn" : "");
+    }
     var rows = Model.Tenants.Select(t => new Dictionary<string, object>
     {
         ["Id"] = t.Id.ToString(),
@@ -22,7 +29,12 @@
         // used by the details panel only (no column)
         ["UsersText"] = $"{t.Users} of {t.MaxUsers}",
         ["UsersPct"] = t.MaxUsers > 0 ? Math.Min(100, (int)Math.Round(t.Users * 100.0 / t.MaxUsers)) : 0,
-        ["StoragePct"] = t.StorageQuota > 0 ? Math.Min(100, (int)Math.Round(t.StorageUsed * 100.0 / t.StorageQuota)) : 0
+        ["StoragePct"] = Use(t.StorageUsed, t.StorageQuota).Bar,
+        ["StoragePctText"] = Use(t.StorageUsed, t.StorageQuota).Text,
+        ["StorageLevel"] = Use(t.StorageUsed, t.StorageQuota).Level,
+        ["StorageUsedText"] = UserExtensions.FormatBytes(t.StorageUsed),
+        ["StorageFreeText"] = UserExtensions.FormatBytes(Math.Max(0L, t.StorageQuota - t.StorageUsed)),
+        ["StorageQuotaText"] = UserExtensions.FormatBytes(t.StorageQuota)
     }).ToList();
 
     var planItems = Model.Plans.Select(p => (p.PlanId.ToString(inv), $"{p.Name} · {p.MaxUsers} users · {UserExtensions.FormatBytes(p.StorageQuotaMb * 1024L * 1024L)}")).ToList();
@@ -33,7 +45,7 @@
     var totalQuota = Model.Tenants.Sum(t => t.StorageQuota);
     var totalSeats = Model.Tenants.Sum(t => t.MaxUsers);
     var activeCount = Model.Tenants.Count(t => t.IsActive);
-    var storagePct = totalQuota > 0 ? Math.Min(100, (int)Math.Round(totalStorage * 100.0 / totalQuota)) : 0;
+    var totalUse = Use(totalStorage, totalQuota);
 }
 
 <main class="sn-page sn-admin">
@@ -81,8 +93,9 @@
         <div class="sn-kpi">
             <span class="sn-kpi-ic pink"><i class="fa fa-hdd-o" aria-hidden="true"></i></span>
             <div class="sn-kpi-grow"><div class="sn-kpi-label">Storage</div><div class="sn-kpi-val">@UserExtensions.FormatBytes(totalStorage)</div>
-                <div class="sn-meter" title="@storagePct% used"><i style="width:@(storagePct)%"></i></div>
-                <div class="sn-kpi-sub">@storagePct% of @UserExtensions.FormatBytes(totalQuota)</div></div>
+                <div class="sn-store-bar sn-kpi-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@totalUse.Pct.ToString("0.#", inv)"
+                     title="@UserExtensions.FormatBytes(totalStorage) of @UserExtensions.FormatBytes(totalQuota) used"><i class="@totalUse.Level" style="width:@(totalUse.Bar.ToString("0.##", inv))%"></i></div>
+                <div class="sn-kpi-sub"><span class="sn-store-pct @totalUse.Level">@totalUse.Text</span> of @UserExtensions.FormatBytes(totalQuota) · @UserExtensions.FormatBytes(Math.Max(0L, totalQuota - totalStorage)) free</div></div>
         </div>
         <div class="sn-kpi">
             <span class="sn-kpi-ic green"><i class="fa fa-sliders" aria-hidden="true"></i></span>
@@ -155,8 +168,9 @@
                         <div class="sn-insp-label">Usage</div>
                         <div class="sn-use"><span>Users</span><b id="selUsers">-</b></div>
                         <div class="sn-meter"><i id="selUsersBar" style="width:0%"></i></div>
-                        <div class="sn-use"><span>Storage</span><b id="selStorage">-</b></div>
-                        <div class="sn-meter"><i id="selStorageBar" style="width:0%"></i></div>
+                        <div class="sn-use"><span>Storage</span><span class="sn-store-pct" id="selStoragePct">-</span></div>
+                        <div class="sn-store-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><i id="selStorageBar" style="width:0%"></i></div>
+                        <div class="sn-store-foot sn-insp-store"><span><b id="selStorage">-</b> used</span><span><b id="selStorageFree">-</b> free of <span id="selStorageQuota">-</span></span></div>
                         <button type="button" class="sn-link sn-free-btn" onclick="snFreeUpSpace()"><i class="fa fa-eraser" aria-hidden="true"></i> Free up space</button>
                     </div>
 
@@ -492,8 +506,11 @@
                 $("#selStatus").text(row.Status).attr("data-status", row.Status);
                 $("#selUsers").text(row.UsersText);
                 $("#selUsersBar").css("width", (row.UsersPct || 0) + "%");
-                $("#selStorage").text(row.Storage);
-                $("#selStorageBar").css("width", (row.StoragePct || 0) + "%");
+                $("#selStorage").text(row.StorageUsedText || row.Storage);
+                $("#selStorageFree").text(row.StorageFreeText || "-");
+                $("#selStorageQuota").text(row.StorageQuotaText || "-");
+                $("#selStoragePct").text(row.StoragePctText || "0%").attr("class", "sn-store-pct " + (row.StorageLevel || ""));
+                $("#selStorageBar").css("width", (row.StoragePct || 0) + "%").attr("class", row.StorageLevel || "");
                 $("#selPlanName").text(row.Plan);
                 $("#selVideo").text(row.Video);
                 $("#selSince").text(row.Since);

@@ -26,6 +26,7 @@
     var kinds = Model.Files.Select(Kind).GroupBy(k => k.Key).Select(g => (Key: g.Key, Label: g.First().Label, Count: g.Count())).OrderByDescending(g => g.Count).ToList();
 }
 
+@{ var isAdmin = User.IsInRole(AppRoles.TenantAdmin); }
 <main class="sn-page sn-page-fixed">
     <div class="sn-head glass">
         <action-header id="FilesHeader"
@@ -75,9 +76,13 @@
                 <input type="search" placeholder="Search file, person or group" aria-label="Search files" data-hist-search />
             </label>
             <div class="sn-hist-tools">
-                <button type="button" class="sn-tool" data-select-toggle title="Pick the ones to delete"><i class="fa fa-check-square-o" aria-hidden="true"></i> <span>Select</span></button>
-                <button type="button" class="sn-tool danger" data-delete-selected hidden><i class="fa fa-trash-o" aria-hidden="true"></i> Delete selected (<span data-pick-count>0</span>)</button>
-                <button type="button" class="sn-tool danger" data-delete-all><i class="fa fa-trash" aria-hidden="true"></i> Delete all</button>
+                <button type="button" class="sn-tool" data-select-toggle title="Pick files to remove from your list"><i class="fa fa-check-square-o" aria-hidden="true"></i> <span>Select</span></button>
+                <button type="button" class="sn-tool danger" data-delete-selected hidden title="They stay in the chat"><i class="fa fa-eye-slash" aria-hidden="true"></i> Remove from my list (<span data-pick-count>0</span>)</button>
+                <button type="button" class="sn-tool danger" data-delete-all title="Hides every file from your list. They stay in the chat and still use storage."><i class="fa fa-eye-slash" aria-hidden="true"></i> Clear my list</button>
+                @if (isAdmin)
+                {
+                    <button type="button" class="sn-tool sn-tool-free" onclick="snFreeUpSpace()" title="Delete everyone's chat files in this workspace and free storage"><i class="fa fa-eraser" aria-hidden="true"></i> Free up space</button>
+                }
             </div>
         </div>
         @if (kinds.Count > 1)
@@ -120,7 +125,7 @@
                     <div class="sn-hact">
                         <a class="sn-hbtn call" href="/chat/file/@f.AttachmentId" title="Download"><i class="fa fa-download" aria-hidden="true"></i><span>Download</span></a>
                         <a class="sn-hbtn chat" href="/chat/@f.ChannelId" title="Open the chat it was shared in"><i class="fa fa-comment" aria-hidden="true"></i><span>Chat</span></a>
-                        <button type="button" class="sn-hbtn del" data-del-one title="@(mine ? "Delete" : "Remove from your list")" aria-label="@(mine ? "Delete" : "Remove from your list")"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
+                        <button type="button" class="sn-hbtn del" data-del-one title="@(mine ? "Delete" : "Remove from my list")" aria-label="@(mine ? "Delete" : "Remove from my list")"><i class="fa @(mine ? "fa-trash-o" : "fa-eye-slash")" aria-hidden="true"></i></button>
                     </div>
                 </div>
             }
@@ -135,6 +140,77 @@
     </section>
 </main>
 
+@if (isAdmin)
+{
+    @* ---- workspace admin: free up space (everyone's chat files in this workspace) ---- *@
+    <dialog id="freeSpaceDialog" class="sn-dialog glass-strong">
+        <form method="post" asp-antiforgery="true" id="freeSpaceForm" action="/files/free-up" novalidate>
+            <div class="sn-dlg-head">
+                <div class="sn-dlg-title"><span class="sn-dlg-icon sn-dlg-icon-danger"><i class="fa fa-eraser" aria-hidden="true"></i></span><div><h2>Free up space</h2><p>Delete chat files for everyone in @User.TenantName()</p></div></div>
+                <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+            </div>
+            <div class="sn-dlg-body">
+                <div class="sn-fs-now"><span>Chat files now</span><b id="fsTotal">-</b></div>
+                <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> This deletes the files from every chat and group, for everyone, not just your list. Messages, meetings and recordings stay.</span>
+                <div style="margin-top:14px">
+                    <modern-radio-group id="fsAge" name="age" label="Delete files sent" selected-value="90" label-font-size="13.5px">
+                        <modern-radio value="30" label="Over 30 days ago"></modern-radio>
+                        <modern-radio value="90" label="Over 3 months ago"></modern-radio>
+                        <modern-radio value="180" label="Over 6 months ago"></modern-radio>
+                        <modern-radio value="365" label="Over a year ago"></modern-radio>
+                        <modern-radio value="all" label="All files"></modern-radio>
+                    </modern-radio-group>
+                </div>
+                <div class="sn-fs-result" id="fsResult" aria-live="polite">Checking…</div>
+                <label class="sn-fs-agree"><input type="checkbox" id="fsAgree" /> I understand these files are deleted for everyone and can't be recovered.</label>
+                <span class="sn-hint">Each chat message stays and says the file was removed.</span>
+            </div>
+            <div class="sn-dlg-foot">
+                <span></span>
+                <span style="display:flex;gap:10px">
+                    <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                    <button type="submit" class="cee-btn sn-btn-danger" id="fsSubmit" disabled><i class="fa fa-eraser" aria-hidden="true"></i> <span>Delete files</span></button>
+                </span>
+            </div>
+        </form>
+    </dialog>
+}
+
 @section Scripts {
     <script src="~/js/history.js" asp-append-version="true"></script>
+    @if (isAdmin)
+    {
+        <script>
+            (function () {
+                var seq = 0, ready = false;
+                function age() { return $('#freeSpaceForm input[name="age"]:checked').val() || "90"; }
+                function paintSubmit() { $("#fsSubmit").prop("disabled", !(ready && $("#fsAgree").prop("checked"))); }
+                function preview() {
+                    var s = ++seq; ready = false; paintSubmit();
+                    $("#fsResult").removeClass("none").text("Checking…");
+                    $.getJSON("/files/free-up", { age: age() }).done(function (d) {
+                        if (s !== seq) return;
+                        $("#fsTotal").text(d.totalText + " in " + d.totalFiles + " file" + (d.totalFiles === 1 ? "" : "s"));
+                        if (d.files === 0) { $("#fsResult").addClass("none").text("No files match. Nothing to delete."); return; }
+                        $("#fsResult").text("This deletes " + d.files + " file" + (d.files === 1 ? "" : "s") + " for everyone and frees " + d.text + ".");
+                        $("#fsSubmit").find("span").text("Delete " + d.files + " file" + (d.files === 1 ? "" : "s"));
+                        ready = true; paintSubmit();
+                    }).fail(function () { if (s === seq) $("#fsResult").addClass("none").text("Couldn't check the files. Try again."); });
+                }
+                window.snFreeUpSpace = function () {
+                    $("#fsAgree").prop("checked", false);
+                    $("#fsTotal").text("-");
+                    $("#fsSubmit").find("span").text("Delete files");
+                    SN.open("freeSpaceDialog");
+                    preview();
+                };
+                $(document).on("change", '#freeSpaceForm input[name="age"]', preview);
+                $("#fsAgree").on("change", paintSubmit);
+                $("#freeSpaceForm").on("submit", function (e) {
+                    if ($("#fsSubmit").prop("disabled")) { e.preventDefault(); return; }
+                    $("#fsSubmit").prop("disabled", true).html('<i class="fa fa-spinner fa-spin" aria-hidden="true"></i> Deleting…');
+                });
+            })();
+        </script>
+    }
 }

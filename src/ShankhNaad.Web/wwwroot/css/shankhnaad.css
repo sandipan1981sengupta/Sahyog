@@ -2874,3 +2874,17 @@ html[data-theme="dark"] .sn-store-bar { background: rgba(255, 255, 255, .1); box
 html[data-theme="dark"] .sn-store-pct { color: #86EFAC; background: rgba(34, 197, 94, .18); }
 html[data-theme="dark"] .sn-store-pct.warn { color: #FCD34D; }
 html[data-theme="dark"] .sn-store-pct.full { color: #FCA5A5; }
+
+/* Files page: workspace admin "Free up space" */
+.sn-tool.sn-tool-free { color: #fff !important; background: linear-gradient(135deg, #F97316, #DC2626) !important; border-color: transparent !important; }
+.sn-tool.sn-tool-free:hover { filter: brightness(1.08); }
+.sn-fs-agree { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.sn-fs-agree input { margin-top: 2px; accent-color: #DC2626; }
+html[data-theme="dark"] .sn-fs-result { color: #FCA5A5; background: rgba(239, 68, 68, .1); }
+html[data-theme="dark"] .sn-fs-now { background: rgba(96, 165, 250, .1); }
+
+/* Admin page: the storage bars use the same look as Chat → Details → Storage */
+.sn-kpi-bar { margin: 8px 0 6px; height: 8px; }
+.sn-kpi-sub .sn-store-pct { padding: 1px 7px; font-size: 11px; }
+.sn-insp-store { margin-top: 2px; }
+.sn-use .sn-store-pct { font-size: 11px; }

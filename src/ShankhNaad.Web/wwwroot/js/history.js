@@ -70,7 +70,7 @@
             document.body.appendChild(f); f.submit();
         }
     };
-    const listNote = isFiles ? " They stay in the chat; this only cleans up your Files list." : " The other person keeps theirs.";
+    const listNote = isFiles ? " They stay in the chat and still use storage; this only cleans up your Files list." : " The other person keeps theirs.";
 
     // pick mode
     const toggle = box.querySelector("[data-select-toggle]");
@@ -104,16 +104,18 @@
         const ids = picked().map((r) => r.dataset.id);
         if (!ids.length) return;
         confirmPost(url, { ids: ids.join(","), all: "false" },
-            `Delete ${ids.length} ${ids.length === 1 ? noun : nouns}`,
+            isFiles ? "Remove from my list" : `Delete ${ids.length} ${ids.length === 1 ? noun : nouns}`,
             `Remove ${ids.length === 1 ? `this ${noun}` : `these ${ids.length} ${nouns}`} from your list?${listNote}`,
-            "Delete");
+            isFiles ? "Remove" : "Delete");
     });
     box.querySelector("[data-delete-all]")?.addEventListener("click", () => {
-        if (!rows.length) { window.Sahyog?.toast?.(`There are no ${nouns} to delete.`, { kind: "info" }); return; }
+        if (!rows.length) { window.Sahyog?.toast?.(`There are no ${nouns} in your list.`, { kind: "info" }); return; }
         confirmPost(url, { all: "true", ids: "" },
-            `Delete all ${nouns}`,
-            `Remove all ${rows.length} ${rows.length === 1 ? noun : nouns} from your list?${listNote} This can't be undone.`,
-            "Delete all");
+            isFiles ? "Clear my list" : `Delete all ${nouns}`,
+            isFiles
+                ? `Hide all ${rows.length} ${rows.length === 1 ? noun : nouns} from your Files list? They stay in the chat, others still see them, and they still use storage. To really delete files, use "Delete for everyone" on your own files${document.getElementById("freeSpaceDialog") ? ', or "Free up space"' : ""}.`
+                : `Remove all ${rows.length} ${rows.length === 1 ? noun : nouns} from your list?${listNote} This can't be undone.`,
+            isFiles ? "Clear my list" : "Delete all");
     });
 
     // one row: calls and other people's files are removed from your list;
