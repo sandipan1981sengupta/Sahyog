@@ -13,13 +13,17 @@
         setTimeout(() => el.remove(), 4500);
     };
     // a richer notice: "Sandy left the call" + their note, with a coloured icon
-    const notice = (title, note, kind) => {
+    const notice = (title, note, kind, action) => {
         const el = document.createElement("div");
         el.className = `toast room-notice ${kind || "left"}`;
-        el.innerHTML = `<span class="rn-ic">${kind === "declined" ? "&#128222;" : kind === "ring" ? "&#128276;" : kind === "chat" ? "&#128172;" : "&#128075;"}</span>`
-            + `<span class="rn-txt"><b>${esc(title)}</b>${note ? `<q>${esc(note)}</q>` : ""}</span>`;
+        el.innerHTML = `<span class="rn-ic">${kind === "declined" ? "&#128222;" : kind === "ring" ? "&#128276;" : kind === "chat" || kind === "msg" ? "&#128172;" : kind === "hand" ? "&#9995;" : kind === "joined" ? "&#128994;" : kind === "hold" ? "&#9208;&#65039;" : "&#128075;"}</span>`
+            + `<span class="rn-txt"><b>${esc(title)}</b>${note ? `<q>${esc(note)}</q>` : ""}`
+            + (action ? `<span class="rn-acts"><button type="button" class="rn-btn ok">${esc(action.text)}</button></span>` : "") + `</span>`;
+        const close = () => { el.classList.add("out"); setTimeout(() => el.remove(), 350); };
+        if (action) el.querySelector(".rn-btn").onclick = () => { close(); action.onClick(); };
         $("toasts").appendChild(el);
-        setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 350); }, note ? 9000 : 5000);
+        setTimeout(close, action ? 12000 : note ? 9000 : 5000);
+        return el;
     };
 
     if (typeof JitsiMeetExternalAPI === "undefined") {
@@ -57,7 +61,11 @@
             resolution: cfg.maxHeight,
             constraints: { video: { height: { ideal: cfg.maxHeight, max: cfg.maxHeight, min: 180 } } },
             disableShortcuts: false,
-            enableNoisyMicDetection: true
+            enableNoisyMicDetection: true,
+            // Jitsi's own pop-ups ("Sandy would like to participate", "… joined", lobby requests …) are off.
+            // The room shows its own instead: raised hands, lobby Admit / Deny, joined / left (see below).
+            notifications: [],
+            disableJoinLeaveNotifications: true
         },
         interfaceConfigOverwrite: {
             SHOW_JITSI_WATERMARK: false,
@@ -65,7 +73,8 @@
             SHOW_BRAND_WATERMARK: false,
             SHOW_POWERED_BY: false,
             TILE_VIEW_MAX_COLUMNS: 4,
-            DISABLE_VIDEO_BACKGROUND: true
+            DISABLE_VIDEO_BACKGROUND: true,
+            DISABLE_JOIN_LEAVE_NOTIFICATIONS: true
         }
     });
 
@@ -85,6 +94,9 @@
     const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
     let speakerId = null, peopleById = new Map(), speakerT = null;
+    const hands = new Map();          // participant id → when the hand went up
+    const heldNames = new Set();      // names of people who have put this call on hold
+    let myId = null;                  // my participant id in the video call
     async function refreshPeople() {
         let people = [];
         try {
@@ -93,6 +105,9 @@
         } catch {
             people = (api.getParticipantsInfo?.() || []).map((p) => ({ displayName: p.displayName || p.formattedDisplayName, id: p.participantId }));
         }
+        // raised hands first (in the order they went up), like Teams
+        people = people.map((p, i) => ({ ...p, _i: i }))
+            .sort((a, b) => (hands.get(a.id) || Infinity) - (hands.get(b.id) || Infinity) || a._i - b._i);
         $("peopleCount").textContent = people.length || 1;
         $("peopleCount2").textContent = people.length || 1;
         const me = String(cfg.displayName || "").trim().toLowerCase();
@@ -102,10 +117,14 @@
             const clean = name.replace(/\s*\(guest\)/i, "");
             const isMe = clean.trim().toLowerCase() === me;
             const role = p.role === "moderator" ? '<span class="role host">Host</span>' : guest ? '<span class="role guest">Guest</span>' : "";
-            return `<div class="people-row ${speakerId && p.id === speakerId ? "speaking" : ""}" data-pid="${esc(p.id || "")}" style="--i:${i}">
+            const hand = hands.has(p.id) ? '<span class="pr-hand" title="Raised a hand" aria-label="Raised a hand">&#9995;</span>' : "";
+            const canShow = p.id && !isMe;
+            return `<div class="people-row ${speakerId && p.id === speakerId ? "speaking" : ""} ${hands.has(p.id) ? "hand-up" : ""} ${canShow ? "can-show" : ""}" data-pid="${esc(p.id || "")}" style="--i:${i}"${canShow ? ` role="button" tabindex="0" title="Show ${esc(clean)} on the big video"` : ""}>
                         <span class="pr-av"><span class="avatar av-36 tone-${guest ? 3 : i % 6}">${esc(initials(clean))}</span></span>
                         <span class="pr-name"><span class="pr-n">${esc(clean)}</span>${isMe ? '<small class="pr-you">You</small>' : ""}</span>
+                        ${hand}
                         <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+                        ${heldNames.has(clean.trim().toLowerCase()) ? '<span class="role hold" title="On hold: can\'t hear or see the call right now">On hold</span>' : ""}
                         ${role}
                     </div>`;
         }).join("");
@@ -191,21 +210,22 @@
     });
 
     let handUp = false;
+    const paintHand = () => setBtn("handBtn", handUp, "hand", handUp ? "Lower hand" : "Raise hand", "handLabel", handUp ? "Lower" : "Raise");
     $("handBtn").onclick = () => {
         api.executeCommand("toggleRaiseHand");
         handUp = !handUp;
-        setBtn("handBtn", handUp, "hand", handUp ? "Lower hand" : "Raise hand", "handLabel", handUp ? "Lower" : "Raise");
+        paintHand();
     };
 
     let leaving = false;
-    const leave = (note) => {
+    const leave = (note, goTo) => {
         if (leaving) return;
         leaving = true;
         if (typeof note === "string" && note.trim() && hub && hub.state === "Connected")
             hub.invoke("LeaveCall", cfg.meetingId, note.trim()).catch(() => { });
         else report("MeetingLeft");
         try { api.executeCommand("hangup"); } catch { }
-        setTimeout(() => (location.href = cfg.leaveUrl), 900);
+        setTimeout(() => (location.href = goTo || cfg.leaveUrl), 900);   // goTo: "End & answer" another call
     };
 
     // ---------- Leave: straight away, or with a short note for the others ----------
@@ -317,10 +337,12 @@
         pane = name;
         $("panePeople").hidden = name !== "people";
         $("paneChat").hidden = name !== "chat";
+        if ($("paneMsgs")) $("paneMsgs").hidden = name !== "msgs";
         tabsEl?.querySelectorAll("[data-pane]").forEach((b) => { const on = b.dataset.pane === name; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); });
         setBtn("chatBtn", name === "chat" && panelOpen, "active");
         movePill();
         if (name === "chat") { unread = 0; paintUnread(); scrollChat(true); setTimeout(() => $("ccInput")?.focus(), 60); }
+        if (name === "msgs") window.__snMsgsShown?.();
     };
     tabsEl?.querySelectorAll("[data-pane]").forEach((b) => b.addEventListener("click", () => showPane(b.dataset.pane)));
     requestAnimationFrame(movePill);
@@ -640,7 +662,11 @@
             if (String(meetingId).toLowerCase() !== String(cfg.meetingId).toLowerCase()) return;
             // a one-to-one call ends for both — unless more people were added, then it's a small group call
             if (cfg.oneToOne && maxPeople <= 2) endScreen(`${name} ended the call`, note);
-            else notice(`${name} left the call`, note, "left");
+            else {
+                if (Date.now() - (window.__snLeftShown?.get(name) || 0) < 8000) return;
+                window.__snLeftShown?.set(name, Date.now());
+                notice(`${name} left the call`, note, "left");
+            }
         });
         // nobody picked up in time
         hub.on("CallUpdated", (c) => {
@@ -650,8 +676,10 @@
     }
 
     // ---------- JaaS events keep the dock in sync ----------
-    api.addListener("videoConferenceJoined", () => {
+    api.addListener("videoConferenceJoined", ({ id }) => {
+        myId = id || null;
         joinedAt = Date.now();
+        hideFilmstrip();
         $("stageLoading").hidden = true;
         report("MeetingJoined");
         if (hub) hub.onreconnected(() => report("MeetingJoined"));
@@ -698,11 +726,374 @@
         .observe($("peopleCount"), { childList: true, characterData: true, subtree: true });
     ["participantJoined", "participantLeft", "displayNameChange", "participantRoleChanged"].forEach((ev) =>
         api.addListener(ev, refreshPeople));
-    api.addListener("participantJoined", ({ displayName }) => displayName && toast(`${displayName} joined`));
-    api.addListener("knockingParticipant", ({ participant }) =>
-        toast(`${participant?.name || "A guest"} is waiting in the lobby`));
+    // ---------- joined / left (Jitsi's own pop-ups are off) ----------
+    api.addListener("participantJoined", ({ displayName }) => displayName && notice(`${displayName.replace(/\s*\(guest\)/i, "")} joined`, null, "joined"));
+    const leftShown = new Map();      // name → when "left the call" was shown (the server also says it, with a note)
+    api.addListener("participantLeft", ({ id }) => {
+        const name = peopleById.get(id);
+        hands.delete(id);
+        if (!name || (cfg.oneToOne && maxPeople <= 2)) return;      // a one-to-one call shows "… ended the call"
+        setTimeout(() => {
+            if (Date.now() - (leftShown.get(name) || 0) < 8000) return;
+            leftShown.set(name, Date.now());
+            notice(`${name} left the call`, null, "left");
+        }, 1500);
+    });
+    window.__snLeftShown = leftShown;
+
+    // ---------- raised hands: a notice, ✋ in the People list (hands first), and my own button ----------
+    api.addListener("raiseHandUpdated", ({ id, handRaised }) => {
+        const up = !!handRaised;
+        const was = hands.has(id);
+        if (up) hands.set(id, typeof handRaised === "number" && handRaised > 1 ? handRaised : Date.now()); else hands.delete(id);
+        if (myId && id === myId) { handUp = up; paintHand(); }
+        else if (up && !was) {
+            notice(`${peopleById.get(id) || "Someone"} raised a hand`, null, "hand");
+            if (!panelOpen) $("panelPeek")?.classList.add("has-hand");
+        }
+        if (!hands.size) $("panelPeek")?.classList.remove("has-hand");
+        refreshPeople();
+    });
+
+    // ---------- lobby: Admit / Deny right in the room (only the host gets these) ----------
+    api.addListener("knockingParticipant", ({ participant }) => {
+        const p = participant || {};
+        const el = document.createElement("div");
+        el.className = "toast room-notice lobby";
+        el.innerHTML = `<span class="rn-ic">&#128682;</span><span class="rn-txt"><b>${esc(p.name || "A guest")} is waiting in the lobby</b>`
+            + `<span class="rn-acts"><button type="button" class="rn-btn ok">Admit</button><button type="button" class="rn-btn no">Deny</button></span></span>`;
+        const close = () => { el.classList.add("out"); setTimeout(() => el.remove(), 350); };
+        const answer = (ok) => {
+            try { api.executeCommand("answerKnockingParticipant", p.id, ok); } catch { }
+            close();
+            toast(ok ? `${p.name || "The guest"} is joining` : `${p.name || "The guest"} was not let in`);
+        };
+        el.querySelector(".ok").onclick = () => answer(true);
+        el.querySelector(".no").onclick = () => answer(false);
+        $("toasts").appendChild(el);
+        setTimeout(close, 3 * 60 * 1000);   // they've probably given up by then
+    });
+
+    // ---------- Jitsi's column of video thumbnails: kept hidden ----------
+    // Everyone is in the People list (a name there puts that person on the big video), and Grid shows all videos.
+    let filmVisible = true;           // Jitsi starts with it showing
+    function hideFilmstrip() {
+        if (!filmVisible) return;
+        filmVisible = false;           // (set first: the change event below then confirms it)
+        try { api.executeCommand("toggleFilmStrip"); } catch { filmVisible = true; }
+    }
+    api.addListener("filmstripDisplayChanged", ({ visible }) => {
+        filmVisible = !!visible;
+        if (visible) setTimeout(hideFilmstrip, 50);   // it came back (e.g. after Grid): hide it again
+    });
+
+    // ---------- People list: a name puts that person on the big video ----------
+    const showOnStage = (row) => {
+        const id = row?.dataset.pid;
+        if (!id) return;
+        try { api.executeCommand("setTileView", false); } catch { }
+        try { api.executeCommand("setLargeVideoParticipant", id); } catch { }
+        document.querySelectorAll(".people-row.on-stage").forEach((r) => r.classList.remove("on-stage"));
+        row.classList.add("on-stage");
+    };
+    $("peopleList").addEventListener("click", (e) => { const row = e.target.closest(".people-row.can-show"); if (row) showOnStage(row); });
+    $("peopleList").addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        const row = e.target.closest(".people-row.can-show");
+        if (row) { e.preventDefault(); showOnStage(row); }
+    });
     api.addListener("readyToClose", () => { if (!ended) leave(); });
     api.addListener("videoConferenceLeft", () => { if (!leaving && !ended) leave(); });
+
+
+    // =====================================================================
+    // Hold: mic, camera and this call's sound off for a moment (e.g. to take another call).
+    // The others see "Sandy put the call on hold" and "On hold" next to the name.
+    // =====================================================================
+    let held = false, beforeHold = null, otherCall = null, micOff = false, camOff = false;
+    api.addListener("audioMuteStatusChanged", ({ muted }) => { micOff = !!muted; });
+    api.addListener("videoMuteStatusChanged", ({ muted }) => { camOff = !!muted; });
+    const HOLD_TEXT = "Your microphone, camera and this call's sound are off. The others see that you're on hold.";
+    const holdBox = document.createElement("div");
+    holdBox.className = "hold-screen";
+    holdBox.hidden = true;
+    holdBox.innerHTML = `<div class="hs-card"><span class="hs-ic" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6v12M15 6v12" /></svg></span>`
+        + `<h2>Call on hold</h2><p id="holdText">${HOLD_TEXT}</p><button type="button" class="hs-resume" id="holdResume">Resume the call</button></div>`;
+    ($("jaas")?.parentElement || document.body).appendChild(holdBox);
+    // everyone else's sound in this call: 0 = silent while on hold
+    const volumeAll = (v) => peopleById.forEach((_, id) => {
+        if (id && id !== myId) { try { api.executeCommand("setParticipantVolume", id, v); } catch { } }
+    });
+    function setHold(on, why) {
+        if (on === held) return;
+        held = on;
+        if (on) {
+            beforeHold = { mic: micOff, cam: camOff };
+            if (!micOff) api.executeCommand("toggleAudio");
+            if (!camOff) api.executeCommand("toggleVideo");
+            volumeAll(0);
+        } else {
+            volumeAll(1);
+            // back to how it was: only what was on before is switched on again
+            if (beforeHold && !beforeHold.mic && micOff) api.executeCommand("toggleAudio");
+            if (beforeHold && !beforeHold.cam && camOff) api.executeCommand("toggleVideo");
+            otherCall = null;
+        }
+        $("holdText").textContent = why || HOLD_TEXT;
+        holdBox.hidden = !on;
+        document.body.classList.toggle("on-hold", on);
+        if ($("holdBtn")) setBtn("holdBtn", on, "active", on ? "Resume the call" : "Put the call on hold", "holdLabel", on ? "Resume" : "Hold");
+        if ($("holdBtn")) $("holdBtn").title = on ? "Resume the call" : "Put the call on hold";
+        if (hub && hub.state === "Connected") hub.invoke("SetOnHold", cfg.meetingId, on).catch(() => { });
+    }
+    if ($("holdBtn")) $("holdBtn").onclick = () => setHold(!held);
+    $("holdResume").onclick = () => setHold(false);
+    // someone joins while I'm on hold: they're silent for me too
+    api.addListener("participantJoined", ({ id }) => {
+        if (held && id) setTimeout(() => { try { api.executeCommand("setParticipantVolume", id, 0); } catch { } }, 600);
+    });
+    if (hub) hub.on("ParticipantOnHold", (meetingId, _userId, name, on) => {
+        if (String(meetingId).toLowerCase() !== String(cfg.meetingId).toLowerCase()) return;
+        const key = String(name || "").trim().toLowerCase();
+        if (on) heldNames.add(key); else heldNames.delete(key);
+        notice(on ? `${name} put the call on hold` : `${name} is back`, null, on ? "hold" : "joined");
+        refreshPeople();
+    });
+
+    // the meeting pages of this browser tell each other when they open and close
+    // (the call I put this one on hold for has ended → offer to resume; the workspace tab doesn't ring a second card)
+    const calls = "BroadcastChannel" in window ? new BroadcastChannel("sn-calls") : null;
+    if (calls) {
+        const hello = () => { if (!leaving) calls.postMessage({ type: "in-call", meetingId: cfg.meetingId }); };
+        hello();
+        setInterval(hello, 20000);       // (a tab that crashed stops saying so, and the workspace rings normally again)
+        calls.onmessage = (e) => {
+            const d = e.data || {};
+            if (d.type === "who") hello();
+            // a meeting reminder from the workspace tab (js/meeting-alerts.js), shown here instead
+            if (d.type === "ring" && d.call) window.__snRoomRing?.(d.call);
+            if (d.type === "left" && held && otherCall && String(d.meetingId).toLowerCase() === String(otherCall.meetingId).toLowerCase()) {
+                $("holdText").textContent = "Your other call has ended. Resume this one when you're ready.";
+                notice("Your other call has ended", null, "hold", { text: "Resume this call", onClick: () => setHold(false) });
+            }
+        };
+        window.addEventListener("pagehide", () => calls.postMessage({ type: "left", meetingId: cfg.meetingId }));
+    }
+
+    // =====================================================================
+    // Another call (or a meeting starting) while I'm in this one:
+    // Hold & answer (this call waits; the new one opens in a new tab), End & answer, or Decline.
+    // =====================================================================
+    if (hub) {
+        let ringing = null, ringTimer = 0, ringEnd = 0, audio = null;
+        const card = document.createElement("div");
+        card.className = "room-ring";
+        card.hidden = true;
+        card.setAttribute("role", "alertdialog");
+        card.setAttribute("aria-live", "assertive");
+        document.body.appendChild(card);
+        const beep = () => {
+            try {
+                audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+                if (audio.state === "suspended") audio.resume();
+                const t = audio.currentTime + 0.02;
+                [659.25, 880].forEach((f, i) => {
+                    const o = audio.createOscillator(), g = audio.createGain(), at = t + i * 0.18;
+                    o.type = "sine"; o.frequency.value = f;
+                    g.gain.setValueAtTime(0.0001, at);
+                    g.gain.exponentialRampToValueAtTime(0.12, at + 0.01);
+                    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.5);
+                    o.connect(g).connect(audio.destination); o.start(at); o.stop(at + 0.55);
+                });
+            } catch { }
+        };
+        const stopRing = () => { clearInterval(ringTimer); clearTimeout(ringEnd); ringing = null; card.hidden = true; };
+        const isThis = (id) => String(id).toLowerCase() === String(cfg.meetingId).toLowerCase();
+        const answer = (call, keep) => {
+            stopRing();
+            const label = call.kind === "meeting" ? `“${call.title}”` : call.callerName;
+            if (!keep) { leave(null, call.roomUrl); return; }                // End & answer
+            setHold(true, `You're in another call with ${label}. Your microphone, camera and this call's sound are off.`);
+            otherCall = call;
+            const w = window.open(call.roomUrl, "_blank");
+            if (!w) notice("Your browser blocked the new window", "Allow pop-ups for this site, or open the call with the button.", "ring",
+                { text: "Open the call", onClick: () => window.open(call.roomUrl, "_blank") });
+        };
+        const showRing = (call) => {
+            if (!call || leaving || isThis(call.meetingId)) return;
+            stopRing();
+            ringing = call;
+            const isCall = call.kind !== "meeting" && call.kind !== "reminder";
+            const reminder = call.kind === "reminder";
+            const verb = isCall ? "answer" : "join";
+            const head = isCall ? "Incoming call" : reminder ? "Meeting reminder" : "Meeting started";
+            const who = reminder ? call.title : call.callerName;
+            const what = isCall ? "is calling you" : reminder ? [call.note, call.callerName ? `hosted by ${call.callerName}` : ""].filter(Boolean).join(" · ") : `started “${call.title}”`;
+            card.innerHTML = `<div class="rr-top"><span>${head}</span><small>while you're in this call</small></div>`
+                + `<div class="rr-who"><span class="avatar av-44 tone-${Number(call.callerTone) || 1}">${esc(call.callerInitials || "?")}</span>`
+                + `<span><b>${esc(who || "")}</b><small>${esc(what)}</small></span></div>`
+                + `<div class="rr-acts"><button type="button" class="rr-btn hold" title="This call waits (you can come back); the new one opens in a new tab">Hold &amp; ${verb}</button>`
+                + `<button type="button" class="rr-btn end" title="Leave this call and go to the new one">End &amp; ${verb}</button>`
+                + `<button type="button" class="rr-btn no">${isCall ? "Decline" : "Not now"}</button></div>`;
+            card.querySelector(".hold").onclick = () => answer(call, true);
+            card.querySelector(".end").onclick = () => answer(call, false);
+            card.querySelector(".no").onclick = () => {
+                stopRing();
+                if (isCall) hub.invoke("DeclineCall", call.meetingId, null).catch(() => { });
+            };
+            card.hidden = false;
+            beep();
+            if (call.ring !== false) ringTimer = setInterval(beep, 2800);      // a "starts in 5 minutes" reminder chimes once
+            ringEnd = setTimeout(() => {
+                stopRing();
+                if (!isCall) return;
+                // not answered: it counts as a missed call (the Calls page and the red count on Calls)
+                hub.invoke("CallNotAnswered", call.meetingId).catch(() => { });
+                try { localStorage.setItem("sn-missed", String(Number(localStorage.getItem("sn-missed") || 0) + 1)); } catch { }
+                notice(`You missed a call from ${call.callerName}`, null, "declined");
+            }, reminder ? 60000 : 30000);
+        };
+        hub.on("IncomingCall", showRing);
+        window.__snRoomRing = showRing;
+        // answered on another device, or the caller gave up: the card goes
+        hub.on("CallUpdated", (c) => {
+            if (!ringing || !c || String(c.meetingId).toLowerCase() !== String(ringing.meetingId).toLowerCase() || c.outcome === 0) return;
+            const who = ringing.callerName;
+            stopRing();
+            if (c.outcome === 5) {          // the caller gave up before you answered
+                try { localStorage.setItem("sn-missed", String(Number(localStorage.getItem("sn-missed") || 0) + 1)); } catch { }
+                notice(`You missed a call from ${who}`, null, "declined");
+            }
+        });
+    }
+
+    // =====================================================================
+    // Messages: your other chats, without leaving the call (signed-in people only).
+    // The list (unread counts), one chat opened to read and reply, live updates, and a pop-up for new messages.
+    // =====================================================================
+    if (hub && $("paneMsgs")) {
+        const me = String(cfg.userId || "").toLowerCase();
+        let chats = [], open = null, loaded = false;
+        const shown = new Set();            // message ids on screen (my reply also comes back over the live connection)
+        const isCallCard = (b) => /^\[\[call:/.test(b || "");
+        const when = (iso) => {
+            const d = new Date(iso);
+            if (isNaN(d)) return "";
+            return d.toDateString() === new Date().toDateString()
+                ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : d.toLocaleDateString([], { day: "numeric", month: "short" });
+        };
+        const sameId = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+        const paintCounts = () => {
+            const n = chats.reduce((a, c) => a + (c.unread || 0), 0);
+            [$("msgsUnread"), $("msgsBadge")].forEach((x) => { if (x) { x.textContent = n > 99 ? "99+" : String(n); x.hidden = n === 0; } });
+            if ($("msgsBadge") && panelOpen && pane === "msgs") $("msgsBadge").hidden = true;    // you're looking at them
+        };
+        const paintList = () => {
+            const el = $("mxList");
+            el.innerHTML = !chats.length
+                ? `<div class="mx-empty">${loaded ? "No chats yet." : "Loading your chats…"}</div>`
+                : chats.map((c) => `<button type="button" class="mx-row ${c.unread ? "unread" : ""} ${open && sameId(open.id, c.id) ? "on" : ""}" data-id="${esc(c.id)}">`
+                    + `<span class="avatar av-36 tone-${Number(c.tone) || 0}">${esc(c.initials)}</span>`
+                    + `<span class="mx-n"><b>${esc(c.name)}</b><small>${c.isDirect ? (c.online ? "Online" : "Offline") : "Group"}</small></span>`
+                    + `<span class="mx-t"><small>${when(c.lastUtc)}</small>${c.unread ? `<em>${c.unread > 99 ? "99+" : c.unread}</em>` : ""}</span></button>`).join("");
+            paintCounts();
+        };
+        async function loadChats() {
+            try {
+                const r = await fetch("/chat/inbox", { headers: { Accept: "application/json" }, credentials: "same-origin" });
+                if (r.ok) chats = await r.json();
+            } catch { }
+            loaded = true;
+            paintList();
+        }
+        const msgHtml = (m) => {
+            const mine = String(m.senderId).toLowerCase() === me;
+            const body = isCallCard(m.body) ? "&#128222; Call" : esc(m.body || "").replace(/\n/g, "<br>");
+            const file = m.attachment ? `<a class="mx-file" href="${esc(m.attachment.url)}" target="_blank" rel="noopener">&#128206; ${esc(m.attachment.fileName)}</a>` : "";
+            const who = !mine && open && !open.isDirect ? `<small class="mx-who">${esc(m.senderName)}</small>` : "";
+            const where = m.fromGroup && open && open.isDirect ? `<small class="mx-who">in ${esc(m.fromGroup)}</small>` : "";
+            return `<div class="mx-m ${mine ? "mine" : ""}" data-mid="${esc(m.id)}">${who}${where}${body ? `<span class="mx-b">${body}</span>` : ""}${file}<small class="mx-time">${when(m.sentUtc)}</small></div>`;
+        };
+        const append = (m) => {
+            if (shown.has(m.id)) return;
+            shown.add(m.id);
+            const box = $("mxMsgs");
+            box.querySelector(".mx-empty")?.remove();
+            box.insertAdjacentHTML("beforeend", msgHtml(m));
+            box.scrollTop = box.scrollHeight;
+        };
+        const visible = () => panelOpen && pane === "msgs" && !document.hidden;
+        const markRead = (c) => {
+            if (c.unread) { c.unread = 0; paintList(); }
+            if (hub.state === "Connected") hub.invoke("MarkRead", c.id).catch(() => { });
+        };
+        const toTop = (c) => { chats = [c, ...chats.filter((x) => x !== c)]; };
+        async function openChat(id) {
+            if (!chats.length) await loadChats();
+            const c = chats.find((x) => sameId(x.id, id));
+            if (!c) return;
+            open = c;
+            shown.clear();
+            $("mxList").hidden = true;
+            $("mxChat").hidden = false;
+            $("mxName").textContent = c.name;
+            const av = $("mxAv");
+            av.textContent = c.initials;
+            av.className = `avatar av-32 tone-${Number(c.tone) || 0}`;
+            $("mxOpen").href = `/chat/${c.id}`;
+            $("mxMsgs").innerHTML = `<div class="mx-empty">Loading…</div>`;
+            try {
+                const r = await fetch(`/chat/${c.id}/recent`, { headers: { Accept: "application/json" }, credentials: "same-origin" });
+                const d = r.ok ? await r.json() : null;
+                if (open !== c) return;
+                $("mxMsgs").innerHTML = d && d.messages.length ? "" : `<div class="mx-empty">${d ? "No messages yet. Say hello!" : "Couldn't load the messages."}</div>`;
+                (d?.messages || []).forEach(append);
+            } catch { $("mxMsgs").innerHTML = `<div class="mx-empty">Couldn't load the messages.</div>`; }
+            markRead(c);
+            setTimeout(() => $("mxInput").focus(), 50);
+        }
+        const backToList = () => { open = null; $("mxChat").hidden = true; $("mxList").hidden = false; paintList(); };
+        $("mxBack").onclick = backToList;
+        $("mxList").addEventListener("click", (e) => { const b = e.target.closest(".mx-row"); if (b) openChat(b.dataset.id); });
+        $("mxForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const input = $("mxInput"), text = input.value.trim();
+            if (!text || !open) return;
+            input.value = "";
+            try {
+                const m = await hub.invoke("SendMessage", open.id, text, null);
+                append(m);
+                open.lastUtc = m.sentUtc;
+                toTop(open);
+            } catch { input.value = text; toast("Couldn't send. Check your connection and try again."); }
+        });
+        const openMessages = (id) => { setPanel(true); showPane("msgs"); if (id) openChat(id); };
+        window.__snMsgsShown = () => { if (!loaded) loadChats(); else paintList(); if (open) markRead(open); };
+        hub.on("MessageReceived", (m) => {
+            if (!m || isCallCard(m.body)) return;
+            const mine = String(m.senderId).toLowerCase() === me;
+            const c = chats.find((x) => sameId(x.id, m.channelId));
+            if (open && sameId(open.id, m.channelId)) {
+                append(m);
+                if (visible()) markRead(open); else if (!mine) open.unread = (open.unread || 0) + 1;
+            } else if (c && !mine) c.unread = (c.unread || 0) + 1;
+            if (c) { c.lastUtc = m.sentUtc; toTop(c); paintList(); }
+            else if (loaded) loadChats();                                       // a chat that's new to the list
+            if (!mine && !(open && sameId(open.id, m.channelId) && visible())) {
+                const preview = m.body ? (m.body.length > 80 ? m.body.slice(0, 80) + "…" : m.body) : "Sent a file";
+                notice(m.fromGroup ? `${m.senderName} · ${m.fromGroup}` : m.senderName, preview, "msg",
+                    { text: "Open", onClick: () => openMessages(m.channelId) });
+            }
+        });
+        // M opens Messages (when the page, not the video, has the keyboard)
+        document.addEventListener("keydown", (e) => {
+            if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, textarea, [contenteditable]")) return;
+            if (e.key === "m" || e.key === "M") { e.preventDefault(); openMessages(); }
+        });
+        document.addEventListener("visibilitychange", () => { if (!document.hidden) loadChats(); });
+        loadChats();
+    }
 
     window.addEventListener("beforeunload", () => report("MeetingLeft"));
 })();

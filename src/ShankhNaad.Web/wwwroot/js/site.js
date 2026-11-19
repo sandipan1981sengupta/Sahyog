@@ -258,11 +258,30 @@
     };
     // a meeting that has rung recently (its start reminder then stays quiet)
     const meetingRangAt = new Map();
+    // Meeting pages open in this browser (js/room.js says so every 20 s). While you're in a call there,
+    // that page shows calls and reminders itself (with "Hold & answer"), so this tab doesn't ring a second card.
+    const roomsOpen = new Map();     // meetingId → last heard
+    const callsChannel = "BroadcastChannel" in window ? new BroadcastChannel("sn-calls") : null;
+    if (callsChannel) {
+        callsChannel.onmessage = (e) => {
+            const d = e.data || {};
+            if (d.type === "in-call") roomsOpen.set(String(d.meetingId).toLowerCase(), Date.now());
+            if (d.type === "left") roomsOpen.delete(String(d.meetingId).toLowerCase());
+        };
+        callsChannel.postMessage({ type: "who" });
+    }
+    const inCallElsewhere = () => [...roomsOpen.values()].some((t) => Date.now() - t < 45000);
     const showIncoming = (call) => {
         const box = callBox();
         if (!box || !call) return;
         const kind = KINDS[call.kind] ? call.kind : "video";
         const isCall = kind === "video";
+        // you're in a call in another tab: it rings there (its own server connection got this too),
+        // and a reminder is handed over to it
+        if (inCallElsewhere()) {
+            if (kind === "reminder" && callsChannel) callsChannel.postMessage({ type: "ring", call });
+            return;
+        }
         const K = KINDS[kind];
         const key = (isCall ? "" : kind + ":") + String(call.meetingId).toLowerCase() + (call.occurrence ? "@" + call.occurrence : "");
         if (handledCalls.has(key)) return;

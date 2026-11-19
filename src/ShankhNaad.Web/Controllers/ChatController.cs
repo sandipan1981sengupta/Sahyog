@@ -149,6 +149,57 @@ public sealed partial class ChatController : Controller
         });
     }
 
+    /// <summary>
+    /// My chats for the Messages tab of the meeting room (js/room.js): same list and order as the Chat page
+    /// ("Everyone" left out), newest first, with unread counts.
+    /// </summary>
+    [HttpGet("inbox")]
+    public async Task<IActionResult> Inbox()
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var online = _presence.OnlineUsers(tenantId);
+        var sidebar = await _chat.GetSidebarAsync(tenantId, Me);
+        var list = sidebar
+            .Where(s => s.IsDirect ? s.OtherUserId is not null : s.IsPrivate)
+            .OrderByDescending(s => s.IsPinned).ThenByDescending(s => s.LastMessageUtc)
+            .Take(80)
+            .Select(s =>
+            {
+                var name = s.IsDirect ? s.OtherName ?? "" : s.Name;
+                return new
+                {
+                    id = s.ChannelId,
+                    name,
+                    isDirect = s.IsDirect,
+                    unread = s.UnreadCount,
+                    lastUtc = DateTime.SpecifyKind(s.LastMessageUtc, DateTimeKind.Utc),
+                    initials = Names.Initials(name),
+                    tone = s.IsDirect ? s.OtherTone ?? 0 : 4,
+                    userId = s.OtherUserId,
+                    online = s.OtherUserId is Guid u && online.Contains(u.ToString()),
+                    pinned = s.IsPinned
+                };
+            });
+        Response.Headers.CacheControl = "no-store";
+        return Json(list);
+    }
+
+    /// <summary>The latest messages of one chat (oldest first), for the meeting room's Messages tab.</summary>
+    [HttpGet("{id:guid}/recent")]
+    public async Task<IActionResult> Recent(Guid id)
+    {
+        if (User.TenantId() is not Guid tenantId || !await _chat.IsMemberAsync(tenantId, id, Me)) return Forbid();
+        var channel = await _chat.GetChannelAsync(tenantId, id);
+        Guid? other = null;
+        if (channel is { IsDirect: true })
+            other = (await _chat.GetMembersAsync(tenantId, id)).FirstOrDefault(m => m.UserId != Me)?.UserId;
+        var page = other is Guid o
+            ? await _chat.GetPersonTimelineAsync(tenantId, id, Me, o, null, PageSize + 1)
+            : await _chat.GetMessagesAsync(tenantId, id, null, PageSize + 1);
+        Response.Headers.CacheControl = "no-store";
+        return Json(new { hasOlder = page.Count > PageSize, messages = page.Take(PageSize).Reverse() });
+    }
+
     /// <summary>Older messages, 50 at a time, for "load older messages".</summary>
     [HttpGet("{id:guid}/messages")]
     public async Task<IActionResult> Messages(Guid id, long before)

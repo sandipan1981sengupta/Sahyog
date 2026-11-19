@@ -230,6 +230,18 @@ public sealed class ChatHub : Hub
         await CallEvent(tenantId, meetingId, userId, 4);
     }
 
+    /// <summary>
+    /// "On hold" in a call (e.g. to answer another call): the others see "Sandy put the call on hold" and
+    /// "On hold" next to the name, until "Sandy is back". The meeting page itself mutes mic, camera and sound.
+    /// </summary>
+    public async Task SetOnHold(Guid meetingId, bool on)
+    {
+        Caller();
+        var me = Context.UserIdentifier!;
+        if (!_rooms.Contains(meetingId, me)) return;
+        await Clients.OthersInGroup(MeetingGroup(meetingId)).SendAsync("ParticipantOnHold", meetingId, me, Context.User!.DisplayName(), on);
+    }
+
     /// <summary>Leave a call, optionally with a note for the others ("Have to drop, will catch up later").</summary>
     public async Task LeaveCall(Guid meetingId, string? note)
     {
