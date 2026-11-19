@@ -91,6 +91,25 @@ html.sn-webkit .sn-body .sn-dialog.sn-closing { animation: snSfWinOut .2s cubic-
 /* ---------- 6. Chat → Details panel: same smooth slide as Edge ----------
    (it uses the normal rules in shankhnaad.css; Safari only gets help keeping the slide on the graphics card) */
 html.sn-webkit .sn-body .chat-info { will-change: transform, opacity; }
+/* The chat narrowing/widening a little every frame makes Safari re-arrange every message on every
+   frame, which an Intel Mac with Safari 16 cannot keep up with. In Safari the panel itself slides and
+   fades (graphics card only) and the chat changes width in one step:
+   opening = make room, then slide in;  closing = slide out, then give the room back. */
+html.sn-webkit .sn-body .chat-info {
+    transition: opacity .26s ease .02s, transform .34s cubic-bezier(.22, 1, .36, 1) .02s,
+                flex-basis 0s, max-width 0s, margin 0s !important;
+}
+html.sn-webkit .sn-hide-info .chat-info,
+html.sn-webkit .sn-body.sn-hide-info .chat-info {
+    transition: opacity .18s ease, transform .22s cubic-bezier(.4, 0, 1, 1),
+                flex-basis 0s .22s, max-width 0s .22s, margin 0s .22s !important;
+}
+html.sn-webkit.sn-still .sn-body .chat-info { transition: none !important; }
+
+/* page arrival: put the sliding page on the graphics card only while it moves */
+html.sn-webkit.sn-arriving .sn-body-row,
+html.sn-webkit.sn-arriving .sn-kpis > *,
+html.sn-webkit.sn-arriving .sn-grid-4 > * { will-change: transform, opacity; }
 html.sn-webkit .msg-more-panel,
 html.sn-webkit .sn-sheet { will-change: transform, opacity; }
 
