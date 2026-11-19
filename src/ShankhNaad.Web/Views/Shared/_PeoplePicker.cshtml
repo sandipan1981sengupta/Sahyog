@@ -1,0 +1,67 @@
+@model PeoplePickerVm
+@*
+    Shared people picker: slim rows A–Z with letter headings, search (Enter picks the first match),
+    All / Online, "Select shown" / "Clear", picked people as chips. Same for 2 or 500 people.
+    The script is wwwroot/js/people-picker.js:  snPicker(document.getElementById(Model.Id))
+*@
+@{
+    var people = Model.People.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    var picked = new HashSet<string>(Model.Picked, StringComparer.OrdinalIgnoreCase);
+    string? last = null;
+}
+<div id="@Model.Id" class="sn-pp @Model.CssClass" data-pp>
+    <div class="sn-pp-head">
+        <span class="sn-pp-title"><b>@Model.Title</b> <span class="sn-pp-count" data-pp-count>0 picked</span></span>
+        <span class="sn-pp-total muted tiny">@people.Count to pick from · @people.Count(x => x.Online) online</span>
+    </div>
+    <div class="sn-pp-chips" data-pp-chips aria-live="polite">
+        <span class="sn-pp-chips-empty">No one picked yet. Search or tick people below.</span>
+    </div>
+    <div class="sn-pp-tools">
+        <label class="sn-pp-search">
+            <i class="fa fa-search" aria-hidden="true"></i>
+            <input type="search" data-pp-search placeholder="Search by name, then press Enter to pick" aria-label="Search people" autocomplete="off" />
+        </label>
+        <span class="sn-pp-seg" role="group" aria-label="Show">
+            <i class="sn-pp-pill" aria-hidden="true"></i>
+            <button type="button" class="on" data-pp-show="all">All</button>
+            <button type="button" data-pp-show="online"><i class="dot-on" aria-hidden="true"></i> Online</button>
+        </span>
+    </div>
+    <div class="sn-pp-bar">
+        <span class="muted tiny" data-pp-shown></span>
+        <span class="sn-pp-acts">
+            <button type="button" class="sn-link" data-pp-all>Select shown</button>
+            <button type="button" class="sn-link sn-pp-clear" data-pp-clear>Clear</button>
+        </span>
+    </div>
+    <div class="sn-pp-list" data-pp-list>
+        @foreach (var person in people)
+        {
+            var letter = string.IsNullOrEmpty(person.Name) || !char.IsLetter(person.Name[0]) ? "#" : char.ToUpperInvariant(person.Name[0]).ToString();
+            if (letter != last)
+            {
+                last = letter;
+                <div class="sn-pp-letter" data-letter="@letter">@letter</div>
+            }
+            <label class="sn-pp-row" data-name="@person.Name.ToLowerInvariant()" data-letter="@letter" data-online="@(person.Online ? "1" : "0")">
+                <input type="checkbox" name="@Model.FieldName" value="@person.Id" checked="@picked.Contains(person.Id)" />
+                <span class="avatar av-34 tone-@(person.Tone)" data-presence="@person.Id" data-user="@person.Id">@person.Initials<i class="dot @(person.Online ? "on" : "")"></i></span>
+                <span class="sn-pp-who">
+                    <span class="sn-pp-name">@person.Name</span>
+                    <span class="sn-pp-state">@(person.Online ? "Online" : "Offline")</span>
+                </span>
+                <span class="sn-pp-tick" aria-hidden="true"><i class="fa fa-check"></i></span>
+            </label>
+        }
+        <div class="sn-pp-none" data-pp-none hidden>No one matches “<span></span>”.</div>
+        @if (people.Count == 0)
+        {
+            <p class="muted small" style="padding:10px">@Model.EmptyText</p>
+        }
+    </div>
+    @if (Model.Hint is string hint)
+    {
+        <span class="sn-hint"><i class="fa fa-lock" aria-hidden="true"></i> @hint</span>
+    }
+</div>

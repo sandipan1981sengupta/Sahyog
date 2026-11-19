@@ -22,6 +22,13 @@
             if (t !== "dark" && t !== "light") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
             root.setAttribute("data-theme", t);
 
+            // Safari (Mac) and every browser on iPhone / iPad use WebKit: it redraws frosted glass far more slowly,
+            // so css/safari.css gives it a lighter, still-glassy setup (see that file).
+            var ua = navigator.userAgent || "";
+            var touchMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;          // iPad asking for the desktop site
+            if ((/AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg|OPR|Android/.test(ua)) || /iPhone|iPad|iPod/.test(ua) || touchMac)
+                root.classList.add("sn-webkit");
+
             // Background spheres keep moving from where they were on the last page (no jump on every page change).
             root.style.setProperty("--sn-orb-t", "-" + ((Date.now() / 1000) % 600).toFixed(2) + "s");
 
@@ -109,6 +116,7 @@
     <link rel="stylesheet" href="~/css/shankhnaad.css" asp-append-version="true" />
     @await RenderSectionAsync("Head", required: false)
     <link rel="stylesheet" href="~/css/responsive.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/safari.css" asp-append-version="true" />
 </head>
 <body class="sn-body" data-me="@(isSuperAdmin ? "" : User.UserId())">
     <div class="sn-backdrop" aria-hidden="true">
@@ -327,6 +335,7 @@
     <script src="~/js/mobile.js" asp-append-version="true" defer></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     <script src="~/js/shankhnaad.js" asp-append-version="true"></script>
+    <script src="~/js/people-picker.js" asp-append-version="true"></script>
     <script src="~/js/pwa-install.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
     <span id="sn-ready" hidden></span>

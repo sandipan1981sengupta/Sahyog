@@ -22,6 +22,15 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/shankhnaad.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/shankhnaad-auth.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/safari.css" asp-append-version="true" />
+    @* Safari / iPhone / iPad: a lighter glass setup (css/safari.css) *@
+    <script>
+        (function () {
+            var ua = navigator.userAgent || "", touchMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+            if ((/AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg|OPR|Android/.test(ua)) || /iPhone|iPad|iPod/.test(ua) || touchMac)
+                document.documentElement.classList.add("sn-webkit");
+        })();
+    </script>
 </head>
 <body class="auth-body sn-body">
     <div class="sn-backdrop" aria-hidden="true">

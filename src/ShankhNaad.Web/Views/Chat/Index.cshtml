@@ -73,71 +73,6 @@
 </div>
 <div class="sn-chat-row">
 
-@* ---------- people picker (New group, Add people): slim rows A–Z, search, All / Online, picked people as chips.
-   Looks and works the same for 2 or 500 people: the list scrolls, search and chips stay in view. ---------- *@
-@{
-    void PeoplePicker(string ppId, IEnumerable<PersonVm> people, string emptyText, bool newGroupHint)
-    {
-        var ppList = people.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
-        string? ppLast = null;
-        <div id="@ppId" class="sn-pp" data-pp>
-            <div class="sn-pp-head">
-                <span class="sn-pp-title"><b>People</b> <span class="sn-pp-count" data-pp-count>0 picked</span></span>
-                <span class="sn-pp-total muted tiny">@ppList.Count to pick from · @ppList.Count(x => x.Online) online</span>
-            </div>
-            <div class="sn-pp-chips" data-pp-chips aria-live="polite">
-                <span class="sn-pp-chips-empty">No one picked yet. Search or tick people below.</span>
-            </div>
-            <div class="sn-pp-tools">
-                <label class="sn-pp-search">
-                    <i class="fa fa-search" aria-hidden="true"></i>
-                    <input type="search" data-pp-search placeholder="Search by name, then press Enter to pick" aria-label="Search people" autocomplete="off" />
-                </label>
-                <span class="sn-pp-seg" role="group" aria-label="Show">
-                    <button type="button" class="on" data-pp-show="all">All</button>
-                    <button type="button" data-pp-show="online"><i class="dot-on" aria-hidden="true"></i> Online</button>
-                </span>
-            </div>
-            <div class="sn-pp-bar">
-                <span class="muted tiny" data-pp-shown></span>
-                <span class="sn-pp-acts">
-                    <button type="button" class="sn-link" data-pp-all>Select shown</button>
-                    <button type="button" class="sn-link sn-pp-clear" data-pp-clear>Clear</button>
-                </span>
-            </div>
-            <div class="sn-pp-list" data-pp-list>
-                @foreach (var ppT in ppList)
-                {
-                    var ppLetter = string.IsNullOrEmpty(ppT.Name) || !char.IsLetter(ppT.Name[0]) ? "#" : char.ToUpperInvariant(ppT.Name[0]).ToString();
-                    if (ppLetter != ppLast)
-                    {
-                        ppLast = ppLetter;
-                        <div class="sn-pp-letter" data-letter="@ppLetter">@ppLetter</div>
-                    }
-                    <label class="sn-pp-row" data-name="@ppT.Name.ToLowerInvariant()" data-letter="@ppLetter" data-online="@(ppT.Online ? "1" : "0")">
-                        <input type="checkbox" name="members" value="@ppT.Id" />
-                        <span class="avatar av-34 tone-@(ppT.Tone)" data-presence="@ppT.Id" data-user="@ppT.Id">@ppT.Initials<i class="dot @(ppT.Online ? "on" : "")"></i></span>
-                        <span class="sn-pp-who">
-                            <span class="sn-pp-name">@ppT.Name</span>
-                            <span class="sn-pp-state">@(ppT.Online ? "Online" : "Offline")</span>
-                        </span>
-                        <span class="sn-pp-tick" aria-hidden="true"><i class="fa fa-check"></i></span>
-                    </label>
-                }
-                <div class="sn-pp-none" data-pp-none hidden>No one matches “<span></span>”.</div>
-                @if (ppList.Count == 0)
-                {
-                    <p class="muted small" style="padding:10px">@emptyText</p>
-                }
-            </div>
-            @if (newGroupHint)
-            {
-                <span class="sn-hint"><i class="fa fa-lock" aria-hidden="true"></i> New teammates aren't added automatically. Everybody is always in "Everyone".</span>
-            }
-        </div>
-    }
-}
-
 @* ---------- one chat row (group or person) with its hover buttons ---------- *@
 @{
     async Task ChatRow(ChannelVm ch)
@@ -397,7 +332,15 @@
                     </div>
                 </div>
             }
-            @{ PeoplePicker("groupPeople", Model.Team, "No one else is in this workspace yet. Add people on the Team page first.", true); }
+            @{
+                var groupPicker = new PeoplePickerVm
+                {
+                    Id = "groupPeople", People = Model.Team,
+                    EmptyText = "No one else is in this workspace yet. Add people on the Team page first.",
+                    Hint = "New teammates aren't added automatically. Everybody is always in \"Everyone\"."
+                };
+            }
+            <partial name="_PeoplePicker" model="groupPicker" />
         </div>
         <div class="sn-dlg-foot">
             <span></span>
@@ -419,7 +362,8 @@
                 <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
             </div>
             <div class="sn-dlg-body">
-                @{ PeoplePicker("addPeople", notIn, "Everyone in the workspace is already in this group.", false); }
+                @{ var addPicker = new PeoplePickerVm { Id = "addPeople", People = notIn, EmptyText = "Everyone in the workspace is already in this group." }; }
+                <partial name="_PeoplePicker" model="addPicker" />
             </div>
             <div class="sn-dlg-foot">
                 <span></span>
@@ -581,87 +525,6 @@
             });
         });
 
-        // ---- people picker (New group and Add people): search, All / Online, chips; fine for 2 or 500 people ----
-        function snPicker(root) {
-            if (!root) return null;
-            var q = function (sel) { return root.querySelector(sel); };
-            var rows = Array.prototype.slice.call(root.querySelectorAll(".sn-pp-row"));
-            var letters = Array.prototype.slice.call(root.querySelectorAll(".sn-pp-letter"));
-            var search = q("[data-pp-search]"), chips = q("[data-pp-chips]"), none = q("[data-pp-none]"), counter = q("[data-pp-count]");
-            var show = "all";
-            var esc = function (t) { return String(t).replace(/[&<>"]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]; }); };
-            function visible() { return rows.filter(function (r) { return !r.hidden; }); }
-            function filter() {
-                var text = search.value.trim().toLowerCase(), shown = 0;
-                rows.forEach(function (r) {
-                    var ok = (!text || r.dataset.name.indexOf(text) >= 0) && (show === "all" || r.dataset.online === "1");
-                    r.hidden = !ok; if (ok) shown++;
-                });
-                letters.forEach(function (h) { h.hidden = !rows.some(function (r) { return !r.hidden && r.dataset.letter === h.dataset.letter; }); });
-                if (none) { none.hidden = shown > 0 || rows.length === 0; none.querySelector("span").textContent = text || (show === "online" ? "online" : ""); }
-                q("[data-pp-shown]").textContent = (text || show !== "all") ? ("Showing " + shown + " of " + rows.length) : (rows.length + (rows.length === 1 ? " person" : " people"));
-            }
-            function render() {
-                var picked = rows.filter(function (r) { return r.querySelector("input").checked; });
-                counter.textContent = picked.length + " picked";
-                counter.classList.toggle("has", picked.length > 0);
-                chips.querySelectorAll(".sn-pp-chip").forEach(function (x) { x.remove(); });
-                chips.querySelector(".sn-pp-chips-empty").hidden = picked.length > 0;
-                picked.forEach(function (r) {
-                    var name = r.querySelector(".sn-pp-name").textContent;
-                    var av = r.querySelector(".avatar").cloneNode(true);
-                    av.className = av.className.replace("av-34", "av-22");
-                    if (av.querySelector(".dot")) av.querySelector(".dot").remove();
-                    var chip = document.createElement("span");
-                    chip.className = "sn-pp-chip";
-                    chip.innerHTML = '<span class="sn-pp-chip-name">' + esc(name) + '</span><button type="button" aria-label="Remove ' + esc(name) + '" data-unpick="' + esc(r.querySelector("input").value) + '">&times;</button>';
-                    chip.prepend(av);
-                    chips.appendChild(chip);
-                });
-                return picked.length;
-            }
-            root.addEventListener("change", function (e) { if (e.target.name === "members") render(); });
-            search.addEventListener("input", filter);
-            search.addEventListener("keydown", function (e) {
-                if (e.key !== "Enter") return;
-                e.preventDefault();
-                var first = visible()[0];
-                if (!first || !search.value.trim()) return;
-                first.querySelector("input").checked = true;
-                search.value = ""; filter(); render();
-                Sahyog.toast(first.querySelector(".sn-pp-name").textContent + " added", { kind: "success" });
-            });
-            chips.addEventListener("click", function (e) {
-                var b = e.target.closest("[data-unpick]");
-                if (!b) return;
-                rows.forEach(function (r) { var i = r.querySelector("input"); if (i.value === b.dataset.unpick) i.checked = false; });
-                render();
-            });
-            root.querySelectorAll("[data-pp-show]").forEach(function (b) {
-                b.addEventListener("click", function () {
-                    show = b.dataset.ppShow;
-                    root.querySelectorAll("[data-pp-show]").forEach(function (x) { x.classList.toggle("on", x === b); });
-                    filter();
-                });
-            });
-            q("[data-pp-all]").addEventListener("click", function () { visible().forEach(function (r) { r.querySelector("input").checked = true; }); render(); });
-            q("[data-pp-clear]").addEventListener("click", function () { rows.forEach(function (r) { r.querySelector("input").checked = false; }); render(); });
-            filter(); render();
-            return {
-                count: render,
-                focus: function () { search.focus(); },
-                reset: function () {
-                    search.value = ""; show = "all";
-                    root.querySelectorAll("[data-pp-show]").forEach(function (x) { x.classList.toggle("on", x.dataset.ppShow === "all"); });
-                    filter();
-                },
-                pickOnly: function (ids) {
-                    rows.forEach(function (r) { var i = r.querySelector("input"); i.checked = ids.indexOf(i.value) >= 0; });
-                    render();
-                }
-            };
-        }
-
         // ---- New group ----
         var newPicker = null;
         (function () {
@@ -669,12 +532,18 @@
             if (!form) return;
             newPicker = snPicker(document.getElementById("groupPeople"));
             var share = document.getElementById("historyShare");
+            function paintShare() {
+                if (!share) return;
+                share.querySelectorAll(".sn-hs-opts label").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); });
+            }
             function shareOn(on) {
                 if (!share) return;
                 share.hidden = !on;
                 share.querySelectorAll("input").forEach(function (i) { i.disabled = !on; });
                 if (!on) share.querySelector('input[value="none"]').checked = true;
+                paintShare();
             }
+            if (share) share.addEventListener("change", paintShare);
             form.addEventListener("submit", function (e) {
                 if (!$.trim($("#channelName").val())) { e.preventDefault(); Sahyog.toast("Give the group a name, for example Project Alpha.", { kind: "warn", title: "Name needed" }); return; }
                 if (newPicker && newPicker.count() === 0) { e.preventDefault(); Sahyog.toast("Pick at least one person for the group.", { kind: "warn", title: "Who's in it?" }); newPicker.focus(); }
@@ -701,7 +570,9 @@
             var dlg = document.getElementById("membersDialog");
             if (!dlg) return;
             var rows = Array.prototype.slice.call(dlg.querySelectorAll(".sn-mem-row"));
+            var memList = document.getElementById("memList");
             document.getElementById("memSearch").addEventListener("input", function () {
+                if (!memList.dataset.locked && memList.offsetHeight) { memList.style.minHeight = memList.offsetHeight + "px"; memList.dataset.locked = "1"; }
                 var t = this.value.trim().toLowerCase(), n = 0;
                 rows.forEach(function (r) { r.hidden = t && r.dataset.name.indexOf(t) < 0; if (!r.hidden) n++; });
                 document.getElementById("memNone").hidden = n > 0;

@@ -1,0 +1,105 @@
+/* =====================================================================
+   ShankhNaad · Safari (Mac) and every browser on iPhone / iPad (they all use WebKit).
+   Only applies when <html class="sn-webkit"> (set at the top of _Layout and _AuthLayout).
+
+   Why: frosted glass (backdrop-filter) has to be redrawn whenever anything behind it moves.
+   Chrome/Edge do that on the graphics card cheaply; Safari does far more work per frame. With
+   shapes drifting behind every panel, page changes, dialogs and scrolling stutter on a Mac.
+
+   What changes in Safari (same look, much less work):
+     1. the background shapes stay still (same colours, same place)
+     2. glass uses a lighter blur (24–28px instead of 40–44px; side by side it looks the same)
+     3. page changes, panels and dialogs move only with transform + opacity (the two things
+        Safari animates on the graphics card), slightly shorter
+     4. crisper text, momentum scrolling on iPhone / iPad
+   ===================================================================== */
+
+/* ---------- 1. a still background ---------- */
+html.sn-webkit .sn-backdrop { transform: translateZ(0); contain: strict; }
+html.sn-webkit .sn-backdrop .orb,
+html.sn-webkit .sn-backdrop .blob,
+html.sn-webkit .bg-blobs span,
+html.sn-webkit .studio-bg i { animation: none !important; will-change: auto !important; }
+
+/* ---------- 2. lighter glass ---------- */
+html.sn-webkit .sn-body .glass,
+html.sn-webkit .sn-glass,
+html.sn-webkit .sn-body .cee-group-box,
+html.sn-webkit .sn-body .modern-table-wrapper,
+html.sn-webkit .sn-body .composer {
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+}
+html.sn-webkit .sn-body .glass-strong {
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+}
+/* a pop-up over the page: the page behind is dimmed anyway, so no blur behind the dim layer */
+html.sn-webkit .sn-body .sn-dialog::backdrop,
+html.sn-webkit .sn-del-choose::backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* (glass panels are deliberately NOT forced onto their own layer with transform: that would make
+   drop-down menus inside them position against the panel instead of the window) */
+
+/* ---------- 3. smooth movement ---------- */
+/* page changes (Safari 18.2+ has page transitions like Chrome): transform + opacity only, a little shorter */
+html.sn-webkit::view-transition-group(*) { animation-duration: .34s; animation-timing-function: cubic-bezier(.22, 1, .36, 1); }
+html.sn-webkit::view-transition-old(root), html.sn-webkit::view-transition-new(root) { animation-duration: .24s; }
+html.sn-webkit::view-transition-old(sn-main) { animation: snSfOut .16s cubic-bezier(.4, 0, 1, 1) both; }
+html.sn-webkit::view-transition-new(sn-main) { animation: snSfIn .34s cubic-bezier(.22, 1, .36, 1) .03s both; }
+html.sn-webkit:active-view-transition-type(next)::view-transition-old(sn-main) { animation: snSfOutLeft .18s cubic-bezier(.4, 0, 1, 1) both; }
+html.sn-webkit:active-view-transition-type(next)::view-transition-new(sn-main) { animation: snSfInRight .34s cubic-bezier(.22, 1, .36, 1) both; }
+html.sn-webkit:active-view-transition-type(prev)::view-transition-old(sn-main) { animation: snSfOutRight .18s cubic-bezier(.4, 0, 1, 1) both; }
+html.sn-webkit:active-view-transition-type(prev)::view-transition-new(sn-main) { animation: snSfInLeft .34s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes snSfOut { to { opacity: 0; } }
+@keyframes snSfIn { from { opacity: 0; transform: translate3d(0, 8px, 0); } to { opacity: 1; transform: none; } }
+@keyframes snSfOutLeft { to { opacity: 0; transform: translate3d(-24px, 0, 0); } }
+@keyframes snSfOutRight { to { opacity: 0; transform: translate3d(24px, 0, 0); } }
+@keyframes snSfInRight { from { opacity: 0; transform: translate3d(32px, 0, 0); } to { opacity: 1; transform: none; } }
+@keyframes snSfInLeft { from { opacity: 0; transform: translate3d(-32px, 0, 0); } to { opacity: 1; transform: none; } }
+/* older Safari (before 18.2, no page transitions): the new page rises in the same way */
+html.sn-webkit.sn-no-vt .sn-body-row { animation: snSfIn .34s cubic-bezier(.22, 1, .36, 1) both; will-change: transform, opacity; }
+
+/* pop-ups and panels: rise in on the graphics card */
+html.sn-webkit .sn-body .sn-dialog[open],
+html.sn-webkit .sn-body .mb-dialog { animation: snSfWinIn .3s cubic-bezier(.22, 1, .36, 1) both; }
+html.sn-webkit .sn-body .sn-dialog.sn-closing { animation: snSfWinOut .18s cubic-bezier(.4, 0, 1, 1) both !important; }
+@keyframes snSfWinIn { from { opacity: 0; transform: translate3d(0, 14px, 0) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes snSfWinOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translate3d(0, 10px, 0) scale(.985); } }
+@media (max-width: 640px) {
+    @keyframes snSfWinIn { from { transform: translate3d(0, 100%, 0); } to { transform: none; } }
+    @keyframes snSfWinOut { from { transform: none; } to { transform: translate3d(0, 100%, 0); } }
+}
+/* Chat → Details panel: in Chrome it smoothly changes width, which makes Safari re-lay out the whole chat
+   every frame. In Safari it slides and fades instead, and the width changes in one step:
+   opening = make room, then slide in;  closing = slide out, then give the room back. */
+html.sn-webkit .sn-body .chat-info {
+    will-change: transform, opacity;
+    transition: opacity .26s ease .02s, transform .34s cubic-bezier(.22, 1, .36, 1) .02s,
+                flex-basis 0s, max-width 0s, margin 0s !important;
+}
+html.sn-webkit .sn-hide-info .chat-info,
+html.sn-webkit .sn-body.sn-hide-info .chat-info {
+    transition: opacity .18s ease, transform .22s cubic-bezier(.4, 0, 1, 1),
+                flex-basis 0s .22s, max-width 0s .22s, margin 0s .22s !important;
+}
+html.sn-webkit.sn-still .sn-body .chat-info { transition: none !important; }
+/* small menus, the emoji panel, the "⋯" pop-up */
+html.sn-webkit .msg-more-panel,
+html.sn-webkit .sn-sheet { will-change: transform, opacity; }
+
+/* ---------- 4. text and scrolling ---------- */
+html.sn-webkit body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+html.sn-webkit .messages,
+html.sn-webkit .side-scroll,
+html.sn-webkit .sn-pp-list,
+html.sn-webkit .msg-more-panel,
+html.sn-webkit .sn-dialog { -webkit-overflow-scrolling: touch; }
+/* the scroll bar sits inside the rounded corners of a list instead of over them */
+html.sn-webkit .sn-pp-list::-webkit-scrollbar-track,
+.sn-body .sn-pp-list::-webkit-scrollbar-track,
+.sn-body .msg-more-panel::-webkit-scrollbar-track { margin: 10px 0; }
+
+@media (prefers-reduced-motion: reduce) {
+    html.sn-webkit::view-transition-group(*), html.sn-webkit::view-transition-old(*), html.sn-webkit::view-transition-new(*) { animation: none !important; }
+    html.sn-webkit .sn-body .sn-dialog[open], html.sn-webkit .sn-body .mb-dialog, html.sn-webkit.sn-no-vt .sn-body-row { animation: none !important; }
+}

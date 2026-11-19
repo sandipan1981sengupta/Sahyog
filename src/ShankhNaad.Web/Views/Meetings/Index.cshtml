@@ -639,21 +639,12 @@
                     <modern-group-box title="People | invited" css-class="sn-fill" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
                         @if (Model.Team.Count > 0)
                         {
-                            <div class="sn-pick-tools">
-                                <label class="sn-pick-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" id="peopleSearch" placeholder="Search people" autocomplete="off" /></label>
-                                <button type="button" class="sn-link" id="peopleAll">Select all</button>
-                            </div>
-                            <div class="sn-pick" id="peopleList">
-                                @foreach (var p in Model.Team)
-                                {
-                                    <div class="sn-pick-row" data-name="@p.Name.ToLowerInvariant()">
-                                        <modern-checkbox id="@($"inv_{p.Id}")" name="Form.InviteeIds" value="@p.Id" label="@p.Name"
-                                                         desc-text="@(p.Online ? "Online" : "Offline")" checked="@f.InviteeIds.Contains(p.Id)" label-font-size="13.5px"></modern-checkbox>
-                                    </div>
-                                }
-                                <p class="muted small sn-pick-none" hidden>No one matches that name.</p>
-                            </div>
-                            <div class="sn-pick-count" id="peopleCount"></div>
+                            var invitePicker = new PeoplePickerVm
+                            {
+                                Id = "invitePeople", People = Model.Team, FieldName = "Form.InviteeIds",
+                                Picked = f.InviteeIds, Title = "Invite", CssClass = "sn-pp-compact"
+                            };
+                            <partial name="_PeoplePicker" model="invitePicker" />
                         }
                         else
                         {

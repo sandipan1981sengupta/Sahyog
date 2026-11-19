@@ -61,37 +61,9 @@
     document.querySelectorAll('input[name="Form.ShowAs"]').forEach((r) => r.addEventListener("change", () => { last = ""; check(); }));
     applyAllDay();
 
-    // ---- people: search, select all, count ----
-    const people = document.getElementById("peopleList");
-    if (people) {
-        const search = document.getElementById("peopleSearch");
-        const none = people.querySelector(".sn-pick-none");
-        const count = document.getElementById("peopleCount");
-        const boxes = () => Array.from(people.querySelectorAll('input[type="checkbox"][name="Form.InviteeIds"]'));
-        const update = () => {
-            const n = boxes().filter((b) => b.checked).length;
-            count.textContent = n === 0 ? "No one picked yet" : `${n} ${n === 1 ? "person" : "people"} invited`;
-        };
-        search?.addEventListener("input", () => {
-            const q = search.value.trim().toLowerCase();
-            let shown = 0;
-            people.querySelectorAll(".sn-pick-row").forEach((row) => {
-                const hit = !q || row.dataset.name.includes(q);
-                row.hidden = !hit;
-                if (hit) shown++;
-            });
-            if (none) none.hidden = shown > 0;
-        });
-        document.getElementById("peopleAll")?.addEventListener("click", (e) => {
-            const visible = boxes().filter((b) => !b.closest(".sn-pick-row").hidden);
-            const all = visible.every((b) => b.checked);
-            visible.forEach((b) => { if (b.checked === all) b.click(); });
-            e.currentTarget.textContent = all ? "Select all" : "Clear";
-            update();
-        });
-        people.addEventListener("change", update);
-        update();
-    }
+    // ---- people: the shared picker (search, Enter to pick, All / Online, chips) — js/people-picker.js ----
+    const invite = window.snPicker ? snPicker(document.getElementById("invitePeople")) : null;
+    if (invite) document.getElementById("scheduleDialog")?.addEventListener("close", () => invite.reset());
 
     // ---- guests: email chips (posted as one comma list in Form.GuestEmails) ----
     const guestBox = document.getElementById("guestBox");

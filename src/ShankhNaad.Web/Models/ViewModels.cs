@@ -61,6 +61,25 @@ public sealed record ChannelVm(Guid Id, string Name, bool IsDirect, int Unread, 
     public bool IsEveryone => !IsDirect && !IsPrivate;
 }
 
+/// <summary>The shared people picker (Views/Shared/_PeoplePicker.cshtml + wwwroot/js/people-picker.js):
+/// New group, Add people to a group, and Schedule a meeting.</summary>
+public sealed class PeoplePickerVm
+{
+    /// <summary>Element id of the picker (the script finds it by this).</summary>
+    public required string Id { get; init; }
+    public required IReadOnlyList<PersonVm> People { get; init; }
+    /// <summary>Name the ticked ids are posted as ("members", "Form.InviteeIds", …).</summary>
+    public string FieldName { get; init; } = "members";
+    /// <summary>Ids that start ticked (e.g. a meeting being edited, or a form shown again after an error).</summary>
+    public IReadOnlyCollection<string> Picked { get; init; } = Array.Empty<string>();
+    public string Title { get; init; } = "People";
+    public string EmptyText { get; init; } = "No one to pick yet.";
+    /// <summary>A small note under the list (null = none).</summary>
+    public string? Hint { get; init; }
+    /// <summary>Extra class on the picker, e.g. "sn-pp-compact" for a shorter list.</summary>
+    public string? CssClass { get; init; }
+}
+
 public sealed class ChatViewModel
 {
     public required TenantLimitsDto Limits { get; init; }
