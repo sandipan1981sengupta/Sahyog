@@ -340,6 +340,16 @@ public sealed class ChatHub : Hub
                                  targets.Where(id => !online.Contains(id.ToString())).Select(id => team[id].DisplayName).ToList());
     }
 
+    /// <summary>"Ring again" in the meeting room: rings the people of the call's chat who aren't in the call yet.</summary>
+    public async Task<RingResultDto> RingCallAgain(Guid meetingId)
+    {
+        var (tenantId, _) = Caller();
+        var meeting = await _meetings.GetAsync(tenantId, meetingId);
+        if (meeting?.ChannelId is not Guid channelId) return new RingResultDto(new(), new());
+        var members = await _chat.GetMembersAsync(tenantId, channelId);
+        return await RingIntoCall(meetingId, members.Select(m => m.UserId).ToList());
+    }
+
     /// <summary>Calls ringing for me right now (a page that was asleep or reconnecting asks on wake-up).</summary>
     public async Task<List<IncomingCallDto>> PendingCalls()
     {

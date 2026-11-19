@@ -1024,9 +1024,6 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0 !important; height: 
 /* =====================================================================
    Meeting: Messages tab (your other chats), Hold, and calls that come in during the call
    ===================================================================== */
-.pane-tabs:has(#tabMsgs) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.pane-tabs:has(#tabMsgs) button { min-width: 0; font-size: 12.5px; gap: 4px; padding: 0 4px; white-space: nowrap; overflow: hidden; }
-.pane-tabs:has(#tabMsgs) .pt-n { min-width: 18px; height: 18px; padding: 0 4px; font-size: 10.5px; }
 #panelBtn { position: relative; }
 
 .pane-msgs { position: relative; }
@@ -1105,3 +1102,88 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0 !important; height: 
     .rr-acts { grid-template-columns: 1fr; }
     .mx-compose input[type=text] { font-size: 16px; }
 }
+
+/* =====================================================================
+   Meeting room, refined (Nov 2026): panel opened from the dock, connection bars,
+   speaker tag, your own camera, waiting screen
+   ===================================================================== */
+/* the panel: a heading for the open view (People / Chat / Inbox); no tab row, no › button */
+.panel-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 2px 4px 4px; }
+.panel-head .ph-t { margin: 0; display: inline-flex; align-items: center; gap: 8px; font: 800 17px Inter, sans-serif; color: #fff; letter-spacing: -.01em; text-transform: none; }
+.panel-head .ph-t[hidden] { display: none; }
+.panel-head .ph-sub { flex-basis: 100%; font-size: 12px; color: #A9B4C8; }
+
+/* connection bars in the top bar (0–4 lit) */
+.signal { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.signal i { width: 3px; border-radius: 1px; background: rgba(255, 255, 255, .22); transition: background .3s ease; }
+.signal i:nth-child(1) { height: 5px; } .signal i:nth-child(2) { height: 8px; } .signal i:nth-child(3) { height: 11px; } .signal i:nth-child(4) { height: 14px; }
+.signal[data-level="1"] i:nth-child(-n+1) { background: #F87171; }
+.signal[data-level="2"] i:nth-child(-n+2) { background: #FBBF24; }
+.signal[data-level="3"] i:nth-child(-n+3), .signal[data-level="4"] i { background: #4ADE80; }
+
+/* Mute: a green ring while your microphone is on, pulsing while you talk */
+#micBtn:not(.off) { box-shadow: inset 0 0 0 2px #22C55E, 0 0 0 4px rgba(34, 197, 94, .16); }
+#micBtn.talking:not(.off) { animation: micTalk 1.2s ease-out infinite; }
+@keyframes micTalk { 0% { box-shadow: inset 0 0 0 2px #22C55E, 0 0 0 0 rgba(34, 197, 94, .55); } 100% { box-shadow: inset 0 0 0 2px #22C55E, 0 0 0 12px rgba(34, 197, 94, 0); } }
+
+/* who is talking: a tag with their face, bottom left of the video */
+.stage-chip { height: 42px; padding: 0 14px 0 6px; gap: 10px; border-radius: 14px; background: rgba(4, 6, 14, .66); font-size: 13.5px; font-weight: 700; }
+.stage-chip .avatar.av-28 { width: 30px; height: 30px; font-size: 11px; box-shadow: 0 0 0 2px #22C55E; }
+.stage-chip .eq { height: 14px; }
+.alone .stage-chip, .tile-on .stage-chip { display: none; }
+
+/* your own camera: small, in a corner of the video, drag it anywhere */
+.self-view { position: absolute; z-index: 5; width: 208px; aspect-ratio: 16 / 10; border-radius: 18px; overflow: hidden; cursor: grab; touch-action: none;
+    background: #1E2236; border: 2px solid rgba(255, 255, 255, .24); box-shadow: 0 16px 34px -12px rgba(0, 0, 0, .8);
+    transition: left .35s cubic-bezier(.22, 1, .36, 1), top .35s cubic-bezier(.22, 1, .36, 1), opacity .25s ease; }
+.self-view[hidden] { display: none; }
+.self-view[data-corner="br"] { right: 18px; bottom: 18px; }
+.self-view[data-corner="bl"] { left: 18px; bottom: 70px; }
+.self-view[data-corner="tr"] { right: 18px; top: 18px; }
+.self-view[data-corner="tl"] { left: 18px; top: 18px; }
+.self-view.dragging { cursor: grabbing; transition: none; right: auto; bottom: auto; opacity: .92; }
+.self-view video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
+.sv-name { position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 8px;
+    background: rgba(4, 6, 14, .72); color: #fff; font-size: 11.5px; font-weight: 700; }
+.sv-name svg { color: #4ADE80; }
+.sv-hide { position: absolute; right: 6px; top: 6px; width: 26px; height: 26px; border-radius: 8px; border: 0; display: grid; place-items: center; cursor: pointer;
+    color: #fff; background: rgba(4, 6, 14, .7); opacity: 0; transition: opacity .2s ease; }
+.self-view:hover .sv-hide, .sv-hide:focus-visible { opacity: 1; }
+.self-show { position: absolute; z-index: 5; right: 18px; bottom: 18px; height: 32px; padding: 0 12px; border-radius: 10px; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, .16); background: rgba(4, 6, 14, .66); color: #E2E8F0; font: 600 12px Inter, sans-serif; }
+.self-show[hidden] { display: none; }
+
+/* alone in the call: who is being rung, and what you can do */
+.stage-wait { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 24px;
+    background: radial-gradient(ellipse at 50% 42%, rgba(15, 20, 48, .55), rgba(4, 6, 14, .9)); animation: swIn .4s ease; }
+.stage-wait[hidden] { display: none; }
+@keyframes swIn { from { opacity: 0; } to { opacity: 1; } }
+.sw-card { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; max-width: 520px; }
+.sw-card h2 { margin: 6px 0 0; font: 800 26px Inter, sans-serif; color: #fff; letter-spacing: -.01em; }
+.sw-card p { margin: 0; font-size: 14.5px; color: #CBD5E1; line-height: 1.5; }
+.sw-rings { position: relative; width: 170px; height: 170px; display: grid; place-items: center; }
+.sw-rings i { position: absolute; inset: 30px; border-radius: 50%; border: 2px solid rgba(165, 180, 252, .7); animation: swPulse 2.4s ease-out infinite; }
+.sw-rings i:nth-child(2) { animation-delay: .8s; } .sw-rings i:nth-child(3) { animation-delay: 1.6s; }
+@keyframes swPulse { 0% { transform: scale(.75); opacity: .75; } 100% { transform: scale(1.45); opacity: 0; } }
+.sw-rings .avatar { position: relative; width: 100px; height: 100px; font-size: 32px; box-shadow: 0 20px 50px -14px rgba(0, 0, 0, .8); }
+.sw-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 4px; }
+.sw-btn { height: 44px; padding: 0 18px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .18); background: rgba(255, 255, 255, .08); color: #F1F5F9;
+    font: 600 14px Inter, sans-serif; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; transition: transform .15s ease, filter .15s ease; }
+.sw-btn:hover { transform: translateY(-1px); filter: brightness(1.12); }
+.sw-btn[hidden] { display: none; }
+.sw-btn:disabled { opacity: .55; cursor: default; transform: none; }
+.sw-btn.primary { border-color: transparent; color: #fff; background: linear-gradient(135deg, #3B82F6, #8B5CF6); box-shadow: 0 12px 26px -12px rgba(139, 92, 246, .95); }
+.sw-check { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 16px; padding: 10px 16px; border-radius: 16px;
+    background: rgba(4, 6, 14, .6); border: 1px solid rgba(255, 255, 255, .12); font-size: 12.5px; color: #CBD5E1; }
+.sw-check b { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #E2E8F0; }
+.sw-check b::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #22C55E; }
+.sw-check b.bad::before { background: #F87171; }
+@media (max-width: 900px) {
+    .self-view { width: 120px; border-radius: 14px; }
+    .self-view[data-corner="bl"] { bottom: 58px; }
+    .sw-rings { width: 130px; height: 130px; } .sw-rings .avatar { width: 76px; height: 76px; font-size: 24px; }
+    .sw-card h2 { font-size: 20px; }
+    .sw-check { display: none; }
+    .stage-wait { gap: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .sw-rings i, #micBtn.talking:not(.off) { animation: none; } }

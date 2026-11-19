@@ -317,6 +317,8 @@ public sealed class MeetingsController : Controller
         var join = provider.CreateJoin(new VideoJoinRequest(meeting.RoomName, Me.ToString(), User.DisplayName(), email, isModerator, limits.RecordingEnabled));
         var oneToOne = meeting.IsInstant && meeting.ChannelId is Guid callChat
             && await _chat.GetChannelAsync(tenantId, callChat) is { IsDirect: true };
+        // who the one-to-one call is with (for "Ringing Sandy…" while you wait)
+        var other = oneToOne ? (await _chat.GetMembersAsync(tenantId, meeting.ChannelId!.Value)).FirstOrDefault(m => m.UserId != Me) : null;
 
         return View(new RoomViewModel
         {
@@ -336,7 +338,10 @@ public sealed class MeetingsController : Controller
             OfflineNote = TempData["CallOffline"] as string,
             LeaveUrl = meeting.ChannelId is Guid ch ? Url.Action("Index", "Chat", new { id = ch })! : Url.Action(nameof(Index))!,
             GuestUrl = meeting.GuestLinkEnabled ? _meetings.GuestUrl(meeting.GuestCode) : null,
-            ChannelName = meeting.ChannelId is not null && !meeting.ChannelIsDirect ? meeting.ChannelName : null
+            ChannelName = meeting.ChannelId is not null && !meeting.ChannelIsDirect ? meeting.ChannelName : null,
+            CallWithName = other?.DisplayName,
+            CallWithInitials = other?.Initials,
+            CallWithTone = other?.AvatarTone ?? 0
         });
     }
 

@@ -238,6 +238,10 @@ public sealed class RoomViewModel
     public string? OfflineNote { get; init; }
     public string? GuestUrl { get; init; }
     public string? ChannelName { get; init; }
+    /// <summary>A one-to-one call: the other person (the room shows "Ringing Sandy…" until they join).</summary>
+    public string? CallWithName { get; init; }
+    public string? CallWithInitials { get; init; }
+    public int CallWithTone { get; init; }
 }
 
 public sealed class GuestJoinViewModel

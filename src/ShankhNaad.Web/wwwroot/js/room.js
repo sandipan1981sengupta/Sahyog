@@ -65,7 +65,12 @@
             // Jitsi's own pop-ups ("Sandy would like to participate", "… joined", lobby requests …) are off.
             // The room shows its own instead: raised hands, lobby Admit / Deny, joined / left (see below).
             notifications: [],
-            disableJoinLeaveNotifications: true
+            disableJoinLeaveNotifications: true,
+            // nothing of Jitsi's on top of the video: no info strip (its video-quality gauge) —
+            // the top bar's signal bars replace it — and no thumbnail column, so no "‹" arrow to bring it back.
+            // (Grid switches the column back on while it's showing: see "tileViewChanged".)
+            conferenceInfo: { alwaysVisible: [], autoHide: [] },
+            filmstrip: { disabled: true, disableResizable: true }
         },
         interfaceConfigOverwrite: {
             SHOW_JITSI_WATERMARK: false,
@@ -74,7 +79,8 @@
             SHOW_POWERED_BY: false,
             TILE_VIEW_MAX_COLUMNS: 4,
             DISABLE_VIDEO_BACKGROUND: true,
-            DISABLE_JOIN_LEAVE_NOTIFICATIONS: true
+            DISABLE_JOIN_LEAVE_NOTIFICATIONS: true,
+            VIDEO_QUALITY_LABEL_DISABLED: true
         }
     });
 
@@ -154,19 +160,36 @@
         const on = $("ccBtn").getAttribute("aria-pressed") !== "true";
         setBtn("ccBtn", on, "active");
     };
-    $("tileBtn").onclick = () => api.executeCommand("toggleTileView");
+    // Grid needs Jitsi's tiles: the thumbnail column is allowed while Grid is on, and switched off again after
+    let tileOn = false;
+    $("tileBtn").onclick = () => {
+        if (!tileOn) { try { api.executeCommand("overwriteConfig", { filmstrip: { disabled: false } }); } catch { } }
+        api.executeCommand("toggleTileView");
+    };
     // ---------- side panel: hide / show (button, the arrow on the panel, the "in call" tab, or the P key) ----------
     const panel = $("roomPanel"), peek = $("panelPeek");
     let panelOpen = true, autoHidden = false;
     try { if (localStorage.getItem("sn-room-panel") === "0") panelOpen = false; } catch { }
     // on a phone or small tablet the panel opens over the video, so it starts closed
     const smallScreen = () => window.matchMedia("(max-width: 900px)").matches;
+    // which view the panel shows (People, Chat, Inbox): its dock button is lit while it's open
+    let pane = "people";
+    const PANE_BTN = { people: "panelBtn", chat: "chatBtn", msgs: "inboxBtn" };
+    const PANE_LABEL = { people: "People in the call", chat: "Chat with everyone in the call", msgs: "Inbox: your other chats" };
+    function paintPaneBtns() {
+        Object.entries(PANE_BTN).forEach(([name, id]) => {
+            if (!$(id)) return;
+            const on = panelOpen && pane === name;
+            $(id).classList.toggle("active", on);
+            $(id).setAttribute("aria-pressed", String(on));
+            $(id).setAttribute("aria-label", on ? `Close ${name === "msgs" ? "Inbox" : name === "chat" ? "Chat" : "People"}` : PANE_LABEL[name]);
+        });
+    }
     if (smallScreen()) panelOpen = false;
     const paintPanel = (animate) => {
         document.body.classList.toggle("panel-off", !panelOpen);
         if (!animate) document.body.classList.add("no-anim"), requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("no-anim")));
-        setBtn("panelBtn", panelOpen, "active", panelOpen ? "Hide the side panel (P)" : "Show the side panel (P)", "panelLabel", panelOpen ? "Hide panel" : "Show panel");
-        $("panelBtn").title = panelOpen ? "Hide the side panel (P)" : "Show the side panel (P)";
+        paintPaneBtns();
         panel.setAttribute("aria-hidden", String(!panelOpen));
         peek.hidden = panelOpen;
     };
@@ -175,8 +198,6 @@
         if (remember) { autoHidden = false; try { localStorage.setItem("sn-room-panel", open ? "1" : "0"); } catch { } }
         paintPanel(true);
     };
-    $("panelBtn").onclick = () => setPanel(!panelOpen);
-    $("panelClose").onclick = () => setPanel(false);
     peek.onclick = () => setPanel(true);
     $("panelScrim")?.addEventListener("click", () => setPanel(false, !smallScreen()));
     paintPanel(false);
@@ -321,13 +342,9 @@
     const myName = String(cfg.displayName || "Guest").replace(/\s*\(guest\)/i, "");
     const myTone = cfg.isGuest ? 3 : 1;
 
-    // ---- tabs ----
-    let pane = "people", unread = 0;
-    const tabsEl = document.querySelector(".pane-tabs");
-    const movePill = () => {
-        const on = tabsEl?.querySelector("button.on"), pill = tabsEl?.querySelector(".pt-pill");
-        if (on && pill) { pill.style.width = on.offsetWidth + "px"; pill.style.transform = `translateX(${on.offsetLeft - 4}px)`; }
-    };
+    // ---- the panel's views ----
+    let unread = 0;
+    const PANE_SUB = { people: "In this call", chat: "Everyone in the call sees these", msgs: "Your other chats" };
     const paintUnread = () => {
         const b = $("chatBadge"), t = $("chatUnread");
         [b, t].forEach((x) => { if (!x) return; x.textContent = unread > 9 ? "9+" : String(unread); x.hidden = unread === 0; });
@@ -338,24 +355,25 @@
         $("panePeople").hidden = name !== "people";
         $("paneChat").hidden = name !== "chat";
         if ($("paneMsgs")) $("paneMsgs").hidden = name !== "msgs";
-        tabsEl?.querySelectorAll("[data-pane]").forEach((b) => { const on = b.dataset.pane === name; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); });
-        setBtn("chatBtn", name === "chat" && panelOpen, "active");
-        movePill();
+        document.querySelectorAll(".panel-head .ph-t").forEach((h) => { h.hidden = h.dataset.for !== name; });
+        if ($("paneSub")) $("paneSub").textContent = PANE_SUB[name] || "";
+        paintPaneBtns();
         if (name === "chat") { unread = 0; paintUnread(); scrollChat(true); setTimeout(() => $("ccInput")?.focus(), 60); }
         if (name === "msgs") window.__snMsgsShown?.();
     };
-    tabsEl?.querySelectorAll("[data-pane]").forEach((b) => b.addEventListener("click", () => showPane(b.dataset.pane)));
-    requestAnimationFrame(movePill);
-    window.addEventListener("resize", movePill);
     const chatVisible = () => panelOpen && pane === "chat" && !document.hidden;
-    $("chatBtn").onclick = () => {
-        if (panelOpen && pane === "chat") { setPanel(false); setBtn("chatBtn", false, "active"); return; }
+    // a dock button opens its view; pressed again (while showing), it closes the panel
+    const togglePane = (name) => {
+        if (panelOpen && pane === name) { setPanel(false); return; }
         if (!panelOpen) setPanel(true);
-        showPane("chat");
+        showPane(name);
     };
-    // keep the Chat button in step when the panel is hidden or shown some other way
-    new MutationObserver(() => setBtn("chatBtn", panelOpen && pane === "chat", "active"))
-        .observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    window.__snTogglePane = togglePane;
+    // Esc while working in the panel closes it (on a phone, tapping outside it does too)
+    panel.addEventListener("keydown", (e) => { if (e.key === "Escape" && panelOpen) { e.stopPropagation(); setPanel(false); } });
+    Object.entries(PANE_BTN).forEach(([name, id]) => { if ($(id)) $(id).onclick = () => togglePane(name); });
+    // keep the buttons in step when the panel is hidden or shown some other way (P, full screen, a shared screen)
+    new MutationObserver(paintPaneBtns).observe(document.body, { attributes: true, attributeFilter: ["class"] });
 
     // ---- the chat list ----
     const list = $("ccList");
@@ -698,19 +716,31 @@
         // teammates see "Presenting" on your picture while you share
         if (hub && hub.state === "Connected") hub.invoke("SetPresenting", cfg.meetingId, !!on).catch(() => { });
     });
-    api.addListener("tileViewChanged", ({ enabled }) => setBtn("tileBtn", enabled, "active"));
+    api.addListener("tileViewChanged", ({ enabled }) => {
+        tileOn = !!enabled;
+        setBtn("tileBtn", tileOn, "active");
+        document.body.classList.toggle("tile-on", tileOn);
+        if (!tileOn) { try { api.executeCommand("overwriteConfig", { filmstrip: { disabled: true } }); } catch { } hideFilmstrip?.(); }
+        window.__snSelfView?.();
+    });
     // who is talking: their row lights up with moving sound bars, and a chip on the video shows their name
     api.addListener("dominantSpeakerChanged", ({ id }) => {
         speakerId = id;
         document.querySelectorAll(".people-row").forEach((r) => r.classList.toggle("speaking", r.dataset.pid === id));
         const name = peopleById.get(id);
         const chip = $("speakerChip");
-        if (chip && name) {
+        const meTalking = !!myId && id === myId;
+        $("micBtn").classList.toggle("talking", meTalking);
+        if (chip && name && !meTalking) {
             $("speakerName").textContent = name;
+            const av = $("speakerAv");
+            if (av) { av.textContent = initials(name); av.className = `avatar av-28 tone-${[...peopleById.keys()].indexOf(id) % 6}`; }
             chip.hidden = false;
-            chip.classList.remove("show"); void chip.offsetWidth; chip.classList.add("show");
+            chip.classList.add("show");
+        } else if (chip && meTalking) {
+            // you: the green ring on Mute shows it; the tag keeps the last other speaker for a moment
             clearTimeout(speakerT);
-            speakerT = setTimeout(() => chip.classList.remove("show"), 4000);
+            speakerT = setTimeout(() => chip.classList.remove("show"), 6000);
         }
         $("jaas")?.parentElement.classList.add("talking");
         clearTimeout(window.__snTalk); window.__snTalk = setTimeout(() => $("jaas")?.parentElement.classList.remove("talking"), 1800);
@@ -718,7 +748,7 @@
     // someone shares a screen: give it the whole width (the panel slides away, and comes back when sharing stops)
     api.addListener("contentSharingParticipantsChanged", ({ data }) => {
         const sharing = Array.isArray(data) && data.length > 0;
-        if (sharing && panelOpen) { panelOpen = false; autoHidden = true; paintPanel(true); toast("Side panel hidden for the shared screen. Press Show panel (or P) to bring it back."); }
+        if (sharing && panelOpen) { panelOpen = false; autoHidden = true; paintPanel(true); toast("Side panel hidden for the shared screen. Press People (or P) to bring it back."); }
         else if (!sharing && autoHidden) { autoHidden = false; panelOpen = true; paintPanel(true); }
     });
     // the small "N in call" tab shown while the panel is hidden
@@ -784,7 +814,7 @@
     }
     api.addListener("filmstripDisplayChanged", ({ visible }) => {
         filmVisible = !!visible;
-        if (visible) setTimeout(hideFilmstrip, 50);   // it came back (e.g. after Grid): hide it again
+        if (visible && !tileOn) setTimeout(hideFilmstrip, 50);   // it came back (e.g. after Grid): hide it again
     });
 
     // ---------- People list: a name puts that person on the big video ----------
@@ -1094,6 +1124,165 @@
         document.addEventListener("visibilitychange", () => { if (!document.hidden) loadChats(); });
         loadChats();
     }
+
+
+    // =====================================================================
+    // Connection bars in the top bar (in place of Jitsi's quality badge):
+    // how quickly this page reaches the server, every 15 s; offline = no bars.
+    // =====================================================================
+    const netLevel = { n: -1, ms: 0 };
+    const paintSignal = () => {
+        const el = $("signal");
+        const words = ["offline", "poor", "fair", "good", "very good"];
+        const text = netLevel.n < 0 ? "checking" : words[netLevel.n] + (netLevel.n > 0 ? ` (${netLevel.ms} ms)` : "");
+        if (el) {
+            el.dataset.level = String(Math.max(0, netLevel.n));
+            el.setAttribute("aria-label", `Connection: ${text}`);
+            el.title = `Connection: ${text}`;
+        }
+        if ($("chkNet")) { $("chkNet").textContent = `Network: ${netLevel.n < 0 ? "checking" : words[netLevel.n]}`; $("chkNet").classList.toggle("bad", netLevel.n >= 0 && netLevel.n < 2); }
+    };
+    async function pingServer() {
+        if (!navigator.onLine) { netLevel.n = 0; paintSignal(); return; }
+        const t = performance.now();
+        try {
+            await fetch(`/favicon.svg?ping=${Date.now()}`, { method: "HEAD", cache: "no-store", credentials: "omit" });
+            const ms = Math.round(performance.now() - t);
+            netLevel.ms = ms;
+            netLevel.n = ms < 150 ? 4 : ms < 300 ? 3 : ms < 700 ? 2 : 1;
+        } catch { netLevel.n = 0; }
+        paintSignal();
+    }
+    pingServer();
+    setInterval(pingServer, 15000);
+    window.addEventListener("online", pingServer);
+    window.addEventListener("offline", pingServer);
+
+    // =====================================================================
+    // Your own camera, small, over the video (Jitsi's thumbnail column is hidden).
+    // Only when the browser has already allowed the camera here (no extra permission question),
+    // only while your camera is on and Grid is off. Drag it to any corner; × hides it.
+    // =====================================================================
+    (function selfView() {
+        const box = $("selfView"), video = $("selfVideo"), showBtn = $("selfShow");
+        if (!box || !navigator.mediaDevices?.getUserMedia) return;
+        let stream = null, starting = false, camIsOff = false, hiddenByUser = false, allowed = false;
+        try { hiddenByUser = localStorage.getItem("sn-self-view") === "0"; } catch { }
+        try { const c = localStorage.getItem("sn-self-corner"); if (c) box.dataset.corner = c; } catch { }
+        if (!box.dataset.corner) box.dataset.corner = "br";
+        const stop = () => { if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; video.srcObject = null; } };
+        const want = () => allowed && joinedAt && !camIsOff && !tileOn && !document.body.classList.contains("on-hold") && !leaving && !hiddenByUser;
+        async function update() {
+            showBtn.hidden = !(hiddenByUser && allowed && joinedAt && !camIsOff && !tileOn);
+            if (!want()) { box.hidden = true; stop(); return; }
+            box.hidden = false;
+            if (stream || starting) return;
+            starting = true;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 320 }, height: { ideal: 180 }, frameRate: { ideal: 15 } }, audio: false });
+                if (!want()) { stop(); box.hidden = true; } else { video.srcObject = stream; video.play?.().catch(() => { }); }
+            } catch { box.hidden = true; allowed = false; }
+            starting = false;
+        }
+        window.__snSelfView = update;
+        // ask the browser whether the camera is already allowed here (it never shows a question for this)
+        (async () => {
+            try { allowed = (await navigator.permissions.query({ name: "camera" })).state === "granted"; } catch { allowed = false; }
+            update();
+        })();
+        api.addListener("videoConferenceJoined", () => setTimeout(update, 300));
+        api.addListener("videoMuteStatusChanged", ({ muted }) => { camIsOff = !!muted; update(); });
+        new MutationObserver(update).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+        $("selfHide").onclick = (e) => { e.stopPropagation(); hiddenByUser = true; try { localStorage.setItem("sn-self-view", "0"); } catch { } update(); };
+        showBtn.onclick = () => { hiddenByUser = false; try { localStorage.setItem("sn-self-view", "1"); } catch { } update(); };
+        window.addEventListener("pagehide", stop);
+        // drag to a corner
+        let drag = null;
+        box.addEventListener("pointerdown", (e) => {
+            if (e.target.closest("button")) return;
+            const r = box.getBoundingClientRect(), stage = box.parentElement.getBoundingClientRect();
+            drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, stage };
+            box.setPointerCapture(e.pointerId);
+            box.classList.add("dragging");
+            box.style.left = `${r.left - stage.left}px`; box.style.top = `${r.top - stage.top}px`;
+        });
+        box.addEventListener("pointermove", (e) => {
+            if (!drag) return;
+            box.style.left = `${e.clientX - drag.stage.left - drag.dx}px`;
+            box.style.top = `${e.clientY - drag.stage.top - drag.dy}px`;
+        });
+        const drop = (e) => {
+            if (!drag) return;
+            const r = box.getBoundingClientRect(), st = drag.stage;
+            const corner = (r.top + r.height / 2 < st.top + st.height / 2 ? "t" : "b") + (r.left + r.width / 2 < st.left + st.width / 2 ? "l" : "r");
+            drag = null;
+            box.classList.remove("dragging");
+            box.style.left = box.style.top = "";
+            box.dataset.corner = corner;
+            try { localStorage.setItem("sn-self-corner", corner); } catch { }
+        };
+        box.addEventListener("pointerup", drop);
+        box.addEventListener("pointercancel", drop);
+    })();
+
+    // =====================================================================
+    // Alone in the call: "Ringing Sandy…" (or "Waiting for others"), Ring again / Add people / Copy guest link,
+    // and a quick check of mic, camera and network. Goes away as soon as someone joins.
+    // =====================================================================
+    (function waiting() {
+        const box = $("stageWait");
+        if (!box) return;
+        const other = cfg.callWith;
+        const av = $("waitAv");
+        if (other) { av.textContent = other.initials || "?"; av.classList.add(`tone-${Number(other.tone) || 0}`); }
+        else { av.innerHTML = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6" /></svg>'; av.classList.add("tone-1"); }
+        $("waitRing").hidden = !(hub && cfg.canRingAgain);
+        $("waitAdd").hidden = !$("addPeopleBtn");
+        $("waitLink").hidden = !document.querySelector(".guest-btn");
+        $("waitAdd").onclick = () => $("addPeopleBtn")?.click();
+        $("waitLink").onclick = () => document.querySelector(".guest-btn")?.click();
+        $("waitRing").onclick = async () => {
+            const b = $("waitRing");
+            b.disabled = true;
+            try {
+                const r = await hub.invoke("RingCallAgain", cfg.meetingId);
+                ringStart = Date.now();
+                if (r.rung && r.rung.length) notice(`Ringing ${r.rung.join(", ")}`, "They'll join as soon as they press Accept.", "ring");
+                else if (r.offline && r.offline.length) notice(`${r.offline.join(", ")} ${r.offline.length === 1 ? "is" : "are"} offline`, "They can't be rung right now.", "declined");
+                else toast("Nobody new to ring.");
+            } catch { toast("Couldn't ring. Try again."); }
+            setTimeout(() => { b.disabled = false; }, 4000);
+        };
+        let ringStart = Date.now(), wasAlone = null;
+        const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+        let mic = true, cam = true;
+        api.addListener("audioMuteStatusChanged", ({ muted }) => { mic = !muted; paint(); });
+        api.addListener("videoMuteStatusChanged", ({ muted }) => { cam = !muted; paint(); });
+        function paint() {
+            const alone = !!joinedAt && !leaving && !ended && othersInCall() === 0;
+            if (alone !== wasAlone) {
+                wasAlone = alone;
+                box.hidden = !alone;
+                document.body.classList.toggle("alone", alone);
+                if (alone) ringStart = Date.now();
+            }
+            if (!alone) return;
+            const t = clock(Date.now() - ringStart);
+            if (other && maxPeople <= 1) {
+                $("waitTitle").textContent = `Ringing ${other.name}…`;
+                $("waitNote").textContent = `Ringing for ${t}. They'll appear here as soon as they answer.`;
+            } else {
+                $("waitTitle").textContent = maxPeople > 1 ? "Everyone else has left" : "Waiting for others to join";
+                $("waitNote").textContent = maxPeople > 1 ? "You're the only one here. Ring them again, or leave the call." : `Waiting for ${t}. They'll appear here as soon as they join.`;
+            }
+            $("chkMic").textContent = mic ? "Mic on" : "Mic off";
+            $("chkMic").classList.toggle("bad", !mic);
+            $("chkCam").textContent = cam ? "Camera on" : "Camera off";
+            $("chkCam").classList.toggle("bad", !cam);
+        }
+        setInterval(paint, 1000);
+        ["videoConferenceJoined", "participantJoined", "participantLeft"].forEach((ev) => api.addListener(ev, () => setTimeout(paint, 250)));
+    })();
 
     window.addEventListener("beforeunload", () => report("MeetingLeft"));
 })();
