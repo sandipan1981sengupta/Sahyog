@@ -40,7 +40,7 @@ public interface IChatService
     /// <summary>Deletes a direct conversation (messages and files) for both people.</summary>
     /// <returns>Deleted = false when it isn't a direct chat this user is in; Files = storage paths to remove.</returns>
     Task<(bool Deleted, List<string> Files)> DeleteDirectAsync(Guid tenantId, Guid channelId, Guid userId);
-    /// <summary>Deletes one message (sender, or a workspace admin). Status 0 ok, 1 not found, 2 not allowed.</summary>
+    /// <summary>Deletes one message. Callers pass isAdmin = false so only the sender can delete it. Status 0 ok, 1 not found, 2 not allowed.</summary>
     Task<(int Status, Guid? ChannelId, string? FilePath)> DeleteMessageAsync(Guid tenantId, long messageId, Guid userId, bool isAdmin);
 }
 
@@ -61,7 +61,12 @@ public sealed class ChatService : IChatService
                 ? new AttachmentDto(id, r.S("FileName"), r.S("ContentType"), r.L("SizeBytes"), $"/chat/file/{id}")
                 : null)
         {
-            FromGroup = r.Has("FromGroup") ? r.SN("FromGroup") : null
+            FromGroup = r.Has("FromGroup") ? r.SN("FromGroup") : null,
+            ReplyToId = r.Has("ReplyToId") && r["ReplyToId"] is not DBNull ? r.L("ReplyToId") : null,
+            ReplyToSender = r.Has("ReplyToSenderName") ? r.SN("ReplyToSenderName") : null,
+            ReplyToText = r.Has("ReplyToBody")
+                ? (string.IsNullOrEmpty(r.SN("ReplyToBody")) ? r.SN("ReplyToFileName") : r.SN("ReplyToBody"))
+                : null
         };
     }
 
@@ -122,14 +127,23 @@ public sealed class ChatService : IChatService
 
     public async Task<SendResultDto> SendMessageAsync(SendMessageRequest request)
     {
-        SqlParameter? result = null;
-        var rows = await _db.QueryAsync("dbo.sahyog_Chat_SendMessage", p =>
+        // a reply needs 27_MessageReplies.sql; before it's run, the message still goes, just without the quote
+        var replyTo = request.ReplyToId;
+        try { return await Send(replyTo); }
+        catch (SqlException ex) when (replyTo is not null && ex.Number is 8144 or 207) { return await Send(null); }
+
+        async Task<SendResultDto> Send(long? reply)
         {
-            p.With("@TenantId", request.TenantId).With("@ChannelId", request.ChannelId).With("@SenderId", request.SenderId)
-             .AddText("@Body", request.Body, 4000);
-            result = p.AddOutput("@Result", SqlDbType.Int);
-        }, MapMessage);
-        return new SendResultDto((SendStatus)result!.OutInt(), rows.FirstOrDefault());
+            SqlParameter? result = null;
+            var rows = await _db.QueryAsync("dbo.sahyog_Chat_SendMessage", p =>
+            {
+                p.With("@TenantId", request.TenantId).With("@ChannelId", request.ChannelId).With("@SenderId", request.SenderId)
+                 .AddText("@Body", request.Body, 4000);
+                result = p.AddOutput("@Result", SqlDbType.Int);
+                if (reply is long id) p.With("@ReplyToId", id);
+            }, MapMessage);
+            return new SendResultDto((SendStatus)result!.OutInt(), rows.FirstOrDefault());
+        }
     }
 
     public async Task<SendResultDto> SendFileAsync(SendFileRequest request)

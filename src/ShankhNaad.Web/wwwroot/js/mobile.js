@@ -50,10 +50,10 @@
         }
     }
 
-    // ---- Chat list: a "⋯" button on each row. Phone: a sheet from the bottom. Bigger screens: a menu next to the button ----
+    // ---- Chat list: a "⋯" button on each row (chats and the Team list). Phone: a sheet from the bottom. Bigger screens: a menu next to the button ----
     const side = document.querySelector(".chat-side");
     if (side) {
-        const addMore = () => side.querySelectorAll(".sn-person-row").forEach((row) => {
+        const addMore = () => side.querySelectorAll(".sn-person-row, .sn-team-row").forEach((row) => {
             if (row.querySelector(".sn-row-more") || !row.querySelector(".sn-team-actions .sn-team-btn")) return;
             const b = document.createElement("button");
             b.type = "button";
@@ -78,16 +78,16 @@
             const more = e.target.closest(".sn-row-more");
             if (!more) return;
             e.preventDefault(); e.stopPropagation();
-            const row = more.closest(".sn-person-row");
-            const name = row.querySelector(".sn-person-open .grow")?.textContent.trim() || "";
-            const avatar = row.querySelector(".sn-person-open .avatar")?.cloneNode(true);
+            const row = more.closest(".sn-person-row, .sn-team-row");
+            const name = row.querySelector(".sn-person-open .grow, .sn-team-open .grow")?.textContent.trim() || "";
+            const avatar = row.querySelector(".sn-person-open .avatar, .sn-team-open .avatar")?.cloneNode(true);
             const scrim = document.createElement("div"); scrim.className = "sn-sheet-scrim";
             const sheet = document.createElement("div"); sheet.className = "sn-sheet"; sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-label", name);
             sheet.innerHTML = '<div class="sn-sheet-grip"></div><div class="sn-sheet-head"><b>' + esc(name) + "</b></div>";
             if (avatar) { avatar.querySelector(".dot")?.remove(); sheet.querySelector(".sn-sheet-head").prepend(avatar); }
             row.querySelectorAll(".sn-team-actions .sn-team-btn").forEach((src) => {
-                const kind = ["pin", "ping", "call", "del"].find((k) => src.classList.contains(k)) || "";
-                const label = kind === "pin" ? (src.getAttribute("aria-label") || "Pin") : kind === "ping" ? "Ping" : kind === "call" ? "Video call" : kind === "del" ? "Delete chat" : (src.getAttribute("aria-label") || "");
+                const kind = ["pin", "ping", "chat", "call", "del"].find((k) => src.classList.contains(k)) || "";
+                const label = kind === "pin" ? (src.getAttribute("aria-label") || "Pin") : kind === "ping" ? "Ping" : kind === "chat" ? "Message" : kind === "call" ? "Video call" : kind === "del" ? "Delete chat" : (src.getAttribute("aria-label") || "");
                 const icon = src.querySelector("i")?.className || "fa fa-circle";
                 const item = document.createElement("button");
                 item.type = "button";

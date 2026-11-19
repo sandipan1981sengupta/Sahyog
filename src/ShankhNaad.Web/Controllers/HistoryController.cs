@@ -73,8 +73,8 @@ public sealed class HistoryController : Controller
         var deleted = 0; var refused = false;
         foreach (var messageId in await _calls.FileMessageIdsAsync(tenantId, id))
         {
-            // the normal message delete: only the sender (or a workspace admin) may, and it frees the storage
-            var (status, channelId, path) = await _chat.DeleteMessageAsync(tenantId, messageId, User.UserGuid(), User.IsInRole(AppRoles.TenantAdmin));
+            // the normal message delete: only the sender may, and it frees the storage
+            var (status, channelId, path) = await _chat.DeleteMessageAsync(tenantId, messageId, User.UserGuid(), isAdmin: false);
             if (status == 2) { refused = true; continue; }
             if (status != 0) continue;
             deleted++;

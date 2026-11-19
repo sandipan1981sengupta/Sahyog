@@ -105,14 +105,15 @@ public sealed class ChatHub : Hub
         await base.OnDisconnectedAsync(exception);
     }
 
-    public async Task<MessageDto> SendMessage(Guid channelId, string body)
+    /// <summary>Sends a message; replyToId (or null) makes it a reply to that message.</summary>
+    public async Task<MessageDto> SendMessage(Guid channelId, string body, long? replyToId)
     {
         var (tenantId, userId) = Caller();
         body = (body ?? "").Trim();
         if (body.Length == 0) throw new HubException("Message is empty.");
         if (body.Length > 4000) throw new HubException("Message is too long (4000 characters max).");
 
-        var (status, message) = await _chat.SendMessageAsync(new SendMessageRequest(tenantId, channelId, userId, body));
+        var (status, message) = await _chat.SendMessageAsync(new SendMessageRequest(tenantId, channelId, userId, body) { ReplyToId = replyToId });
         if (status != SendStatus.Ok || message is null) throw new HubException("You are not a member of this chat.");
 
         // group messages carry the group's name, so a person's chat can show "in Everyone" when it lists them

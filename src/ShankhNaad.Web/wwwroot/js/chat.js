@@ -148,6 +148,14 @@
 
     // ---------- reactions on messages (👍 ❤️ 😂 …), like Teams ----------
     const REACTS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "👏", "🎉"];
+    // the "+" panel and the 😊 button in the message box; keep in step with ReactionEmojis.More in ReactionService.cs
+    const EMOJI_GROUPS = [
+        ["Smileys", "😀 😃 😄 😁 😆 😅 🤣 😂 🙂 😉 😊 😇 🥰 😍 🤩 😘 😋 😜 🤪 😎 🤓 🥳 😏 😌 😴 🤗 🤔 🤭 🤫 😶 😐 😑 😬 🙄 😮 😯 😲 😳 🥺 😢 😭 😤 😡 🤯 😱 🤒 🤧 😷".split(" ")],
+        ["Hands", "👍 👎 👌 ✌️ 🤞 🤟 🤘 👏 🙌 👐 🙏 🤝 💪 👋 ✋ 👊 ✊ 🫡 👀 🧠".split(" ")],
+        ["Hearts & fun", "❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💯 💥 ✨ 🔥 ⭐ 🌟 🎉 🎊 🎁 🏆 🥇".split(" ")],
+        ["Work & more", "✅ ❌ ⚠️ ❓ ❗ 💡 📌 📎 📅 ⏰ 📞 💻 📊 📈 🚀 ☕ 🍕 🍰 🌹 🌞".split(" ")]
+    ];
+    const msgInfo = new Map();      // message id → { name, text } (for replies)
     const reactState = new Map();   // message id → [{ emoji, userId, name }]
     let reactQueue = new Set(), reactTimer = null;
     function queueReactions(id) {
@@ -195,10 +203,116 @@
     }
     document.addEventListener("click", (e) => {
         const b = e.target.closest("[data-react][data-mid]");
-        if (!b || !b.closest(".msg")) return;
+        if (!b || !b.closest(".msg, .msg-more-panel")) return;
         e.preventDefault();
-        react(Number(b.dataset.mid), b.dataset.react, b);
+        const inPanel = b.closest(".msg-more-panel");
+        react(Number(b.dataset.mid), b.dataset.react, inPanel ? null : b);
+        if (inPanel) closeMorePanel();
     });
+
+    // ---------- "+" : all the other reactions in a small panel ----------
+    let morePanel = null;
+    function closeMorePanel() {
+        if (!morePanel) return;
+        morePanel.owner?.closest(".msg")?.classList.remove("acts-open");
+        morePanel.remove(); morePanel = null;
+    }
+    // btn.dataset.more = message id → reacts to that message; btn.dataset.emojiFor = "composer" → types into the box
+    function openMorePanel(btn) {
+        const mid = btn.dataset.more || "";
+        const forBox = !mid;
+        const key = mid || "composer";
+        if (morePanel && morePanel.dataset.key === key) { closeMorePanel(); return; }
+        closeMorePanel();
+        const panel = document.createElement("div");
+        panel.className = "msg-more-panel";
+        panel.dataset.key = key;
+        if (mid) panel.dataset.mid = mid;
+        panel.setAttribute("role", "dialog");
+        panel.setAttribute("aria-label", forBox ? "Emoji" : "More reactions");
+        panel.innerHTML = EMOJI_GROUPS.map(([name, list]) => `<div class="mmp-head">${name}</div>` + list.map((e) => forBox
+            ? `<button type="button" data-insert="${e}" aria-label="${e}">${e}</button>`
+            : `<button type="button" data-react="${e}" data-mid="${mid}" aria-label="React ${e}">${e}</button>`).join("")).join("");
+        document.body.appendChild(panel);
+        panel.owner = btn;
+        btn.closest(".msg")?.classList.add("acts-open");
+        // above the button, kept inside the window; below it if there's no room above
+        const r = btn.getBoundingClientRect(), w = panel.offsetWidth, h = panel.offsetHeight;
+        const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+        let top = r.top - h - 8;
+        if (top < 8) top = Math.min(r.bottom + 8, window.innerHeight - h - 8);
+        panel.style.left = `${left}px`; panel.style.top = `${Math.max(8, top)}px`;
+        morePanel = panel;
+        requestAnimationFrame(() => panel.classList.add("show"));
+    }
+    // an emoji picked for the message box goes where the cursor is; the panel stays open for more
+    document.addEventListener("click", (e) => {
+        const b = e.target.closest(".msg-more-panel [data-insert]");
+        if (!b || !box) return;
+        e.preventDefault();
+        const start = box.selectionStart ?? box.value.length, end = box.selectionEnd ?? box.value.length;
+        box.value = box.value.slice(0, start) + b.dataset.insert + box.value.slice(end);
+        const at = start + b.dataset.insert.length;
+        box.focus(); box.setSelectionRange(at, at);
+        box.dispatchEvent(new Event("input"));
+    });
+    document.addEventListener("click", (e) => {
+        const more = e.target.closest("[data-more], [data-emoji-for]");
+        if (more) { e.preventDefault(); openMorePanel(more); return; }
+        if (morePanel && !e.target.closest(".msg-more-panel")) closeMorePanel();
+    });
+    scroller?.addEventListener("scroll", closeMorePanel);
+    window.addEventListener("resize", closeMorePanel);
+
+    // ---------- reply to a particular message ----------
+    let replyTo = null;   // { id, name, text }
+    const replyBar = document.createElement("div");
+    replyBar.className = "reply-bar";
+    replyBar.hidden = true;
+    replyBar.innerHTML = `<i class="fa fa-reply" aria-hidden="true"></i>
+        <div class="reply-bar-txt"><b></b><span></span></div>
+        <button type="button" class="reply-bar-x" aria-label="Cancel reply" title="Cancel reply">&times;</button>`;
+    form?.parentNode.insertBefore(replyBar, form);
+    function startReply(id) {
+        const info = msgInfo.get(Number(id));
+        if (!info || !box) return;
+        replyTo = { id: Number(id), ...info };
+        replyBar.querySelector("b").textContent = `Replying to ${info.name}`;
+        replyBar.querySelector("span").textContent = info.text;
+        replyBar.hidden = false;
+        box.focus();
+    }
+    function cancelReply() { replyTo = null; replyBar.hidden = true; }
+    replyBar.querySelector(".reply-bar-x").addEventListener("click", () => { cancelReply(); box?.focus(); });
+    document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        if (morePanel) closeMorePanel(); else if (replyTo) cancelReply();
+    });
+    list?.addEventListener("click", (e) => {
+        const rep = e.target.closest("[data-reply]");
+        if (rep) { e.preventDefault(); startReply(rep.dataset.reply); return; }
+        // the quote in a reply: jump to the original and make it glow for a moment
+        const q = e.target.closest(".msg-quote[data-jump]");
+        if (!q) return;
+        const target = list.querySelector(`.msg[data-id="${q.dataset.jump}"]`);
+        if (!target) { S.toast("That message is further up. Press \"Load older messages\" to see it."); return; }
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        target.classList.remove("msg-flash"); void target.offsetWidth; target.classList.add("msg-flash");
+    });
+    const snippet = (m) => {
+        if (/^\[\[call:/i.test(m.body || "")) return "📞 Call";
+        if (m.attachment) return `📎 ${m.attachment.fileName}`;
+        const t = (m.body || "").replace(/\s+/g, " ").trim();
+        return t.length > 120 ? `${t.slice(0, 120)}…` : t;
+    };
+    function quoteHtml(m) {
+        if (!m.replyToId) return "";
+        if (!m.replyToSender) return `<div class="msg-quote gone"><i class="fa fa-reply" aria-hidden="true"></i><span>Original message was deleted</span></div>`;
+        let t = /^\[\[call:/i.test(m.replyToText || "") ? "📞 Call" : (m.replyToText || "").replace(/\s+/g, " ").trim();
+        if (t.length > 120) t = `${t.slice(0, 120)}…`;
+        return `<button type="button" class="msg-quote" data-jump="${m.replyToId}" title="Go to the original message">
+                    <b>${S.escape(m.replyToSender)}</b><span>${S.escape(t)}</span></button>`;
+    }
 
     function messageEl(m, previous) {
         const mine = m.senderId === me;
@@ -216,15 +330,17 @@
             : m.body ? `<p class="bubble">${linkify(S.escape(m.body))}</p>` : "";
         if (call) queueCallState(call[1].toLowerCase());
         const file = m.attachment ? attachmentHtml(m.attachment) : "";
-        const canDelete = mine || isAdmin;
+        // only your own messages can be deleted (an admin can't delete other people's either)
+        const canDelete = mine;
+        msgInfo.set(Number(m.id), { name: mine ? "yourself" : m.senderName, text: snippet(m) });
         // a group message shown in a person's chat
         const fromGroup = m.channelId !== channelId ? (m.fromGroup || "a group") : null;
         el.innerHTML = `
             <span class="avatar av-38 tone-${m.senderTone}" data-user="${S.escape(m.senderId)}">${S.escape(m.senderInitials)}</span>
             <div class="msg-body">
                 <span class="msg-meta">${mine ? "You" : `<strong>${S.escape(m.senderName)}</strong>`} · ${time(m.sentUtc)}${fromGroup ? ` <span class="msg-from" title="Written in the group ${S.escape(fromGroup)}"><i class="fa fa-users" aria-hidden="true"></i> in ${S.escape(fromGroup)}</span>` : ""}</span>
-                <div class="msg-line">${body}${file}${mine && !fromGroup ? ticksHtml(m.sentUtc) : ""}${canDelete ? `<button type="button" class="msg-del" data-del="${m.id}" title="Delete message" aria-label="Delete message"><i class="fa fa-trash-o" aria-hidden="true"></i></button>` : ""}
-                    <span class="msg-quick" role="toolbar" aria-label="React to this message">${REACTS.map((e) => `<button type="button" data-react="${e}" data-mid="${m.id}" aria-label="React ${e}">${e}</button>`).join("")}</span>
+                <div class="msg-line">${quoteHtml(m)}${body}${file}${mine && !fromGroup ? ticksHtml(m.sentUtc) : ""}${canDelete ? `<button type="button" class="msg-del" data-del="${m.id}" title="Delete message" aria-label="Delete message"><i class="fa fa-trash-o" aria-hidden="true"></i></button>` : ""}
+                    <span class="msg-quick" role="toolbar" aria-label="React or reply">${REACTS.map((e) => `<button type="button" data-react="${e}" data-mid="${m.id}" aria-label="React ${e}">${e}</button>`).join("")}<button type="button" class="mq-more" data-more="${m.id}" title="More reactions" aria-label="More reactions"><i class="fa fa-plus" aria-hidden="true"></i></button>${call ? "" : `<span class="mq-sep" aria-hidden="true"></span><button type="button" class="mq-reply" data-reply="${m.id}" title="Reply" aria-label="Reply to this message"><i class="fa fa-reply" aria-hidden="true"></i></button>`}</span>
                 </div>
                 <div class="msg-reacts" data-mid="${m.id}"></div>
             </div>`;
@@ -267,6 +383,11 @@
 
     // ---------- delete a message ----------
     function removeMessage(id) {
+        list.querySelectorAll(`.msg-quote[data-jump="${id}"]`).forEach((q) => {
+            q.outerHTML = `<div class="msg-quote gone"><i class="fa fa-reply" aria-hidden="true"></i><span>Original message was deleted</span></div>`;
+        });
+        if (replyTo && replyTo.id === Number(id)) cancelReply();
+        msgInfo.delete(Number(id));
         const el = list.querySelector(`.msg[data-id="${id}"]`);
         if (!el) return;
         el.classList.add("msg-removing");
@@ -481,13 +602,16 @@
             S.toast("Reconnecting… your message was not sent yet.");
             return;
         }
+        const reply = replyTo;
         box.value = "";
         autosize();
+        cancelReply();
         try {
-            const sent = await hub.invoke("SendMessage", channelId, text);
+            const sent = await hub.invoke("SendMessage", channelId, text, reply ? reply.id : null);
             append(sent);
         } catch (err) {
             box.value = text;
+            if (reply) startReply(reply.id);
             S.toast(err?.message?.replace(/^.*HubException: /, "") || "Message not sent.");
         }
     });

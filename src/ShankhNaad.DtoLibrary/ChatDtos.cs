@@ -46,9 +46,20 @@ public sealed record MessageDto(
 {
     /// <summary>In a person's chat: the group this message was written in (null = your private chat).</summary>
     public string? FromGroup { get; init; }
+
+    /// <summary>The message this one replies to (needs 27_MessageReplies.sql). Null = not a reply.</summary>
+    public long? ReplyToId { get; init; }
+    /// <summary>Who wrote the original. Null while ReplyToId is set means the original was deleted.</summary>
+    public string? ReplyToSender { get; init; }
+    /// <summary>The start of the original's text (or its file name, for a file).</summary>
+    public string? ReplyToText { get; init; }
 }
 
-public sealed record SendMessageRequest(Guid TenantId, Guid ChannelId, Guid SenderId, string Body);
+public sealed record SendMessageRequest(Guid TenantId, Guid ChannelId, Guid SenderId, string Body)
+{
+    /// <summary>Send as a reply to this message (needs 27_MessageReplies.sql).</summary>
+    public long? ReplyToId { get; init; }
+}
 
 public sealed record SendFileRequest(
     Guid TenantId, Guid ChannelId, Guid SenderId, Guid AttachmentId,

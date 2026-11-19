@@ -137,6 +137,9 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     .msg-quick { display: flex !important; opacity: 0; pointer-events: none; }
     .msg.show-acts .msg-quick { opacity: 1; transform: none; pointer-events: auto; }
     .msg.show-acts .msg-del { opacity: 1; transform: none; }
+    /* the bar now also has "+" and Reply: smaller buttons so it fits a phone screen */
+    .msg-quick { max-width: calc(100vw - 40px); }
+    .msg-quick button { width: 27px !important; height: 30px !important; font-size: 15px !important; }
 }
 
 /* very small phones */
@@ -440,20 +443,24 @@ html[data-theme="dark"] .sn-info-close { background: rgba(255, 255, 255, .1); }
 
 /* Chat list (every screen size): one neat "⋯" button per row. On a phone it opens a sheet from the bottom;
    on tablets and computers a small menu opens right next to the button. */
-.sn-body .sn-person-row .sn-team-actions { display: none !important; }
-.sn-body .sn-person-row .sn-person-open { padding-right: 46px !important; }
-.sn-body .sn-person-row .sn-row-more {
+.sn-body .sn-person-row .sn-team-actions, .sn-body .sn-team-row .sn-team-actions { display: none !important; }
+.sn-body .sn-person-row .sn-person-open, .sn-body .sn-team-row .sn-team-open button { padding-right: 46px !important; }
+.sn-body .sn-team-row .sn-team-open { flex: 1 1 auto; min-width: 0; }
+.sn-body .sn-person-row .sn-row-more, .sn-body .sn-team-row .sn-row-more {
     display: grid; place-items: center; position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
     width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(124, 58, 237, .18); cursor: pointer; padding: 0;
     background: rgba(255, 255, 255, .55); color: #4C1D95; transition: transform .18s ease, background .18s ease, box-shadow .18s ease, opacity .18s ease;
 }
-.sn-body .sn-person-row .sn-row-more:hover, .sn-body .sn-person-row .sn-row-more.on { background: linear-gradient(135deg, #6366F1, #A855F7); color: #fff; border-color: transparent;
+.sn-body .sn-person-row .sn-row-more:hover, .sn-body .sn-person-row .sn-row-more.on,
+.sn-body .sn-team-row .sn-row-more:hover, .sn-body .sn-team-row .sn-row-more.on { background: linear-gradient(135deg, #6366F1, #A855F7); color: #fff; border-color: transparent;
     box-shadow: 0 8px 18px -8px rgba(124, 58, 237, .8); }
-.sn-body .sn-person-row .sn-row-more:active { transform: translateY(-50%) scale(.9); }
-html[data-theme="dark"] .sn-body .sn-person-row .sn-row-more:not(:hover):not(.on) { background: rgba(255, 255, 255, .07); border-color: rgba(255, 255, 255, .12); color: #E2E8F0; }
+.sn-body .sn-person-row .sn-row-more:active, .sn-body .sn-team-row .sn-row-more:active { transform: translateY(-50%) scale(.9); }
+html[data-theme="dark"] .sn-body .sn-person-row .sn-row-more:not(:hover):not(.on),
+html[data-theme="dark"] .sn-body .sn-team-row .sn-row-more:not(:hover):not(.on) { background: rgba(255, 255, 255, .07); border-color: rgba(255, 255, 255, .12); color: #E2E8F0; }
 @media (hover: hover) and (min-width: 761px) {
-    .sn-body .sn-person-row .sn-row-more { opacity: .55; }
-    .sn-body .sn-person-row:hover .sn-row-more, .sn-body .sn-person-row .sn-row-more.on, .sn-body .sn-person-row .sn-row-more:focus-visible { opacity: 1; }
+    .sn-body .sn-person-row .sn-row-more, .sn-body .sn-team-row .sn-row-more { opacity: .55; }
+    .sn-body .sn-person-row:hover .sn-row-more, .sn-body .sn-person-row .sn-row-more.on, .sn-body .sn-person-row .sn-row-more:focus-visible,
+    .sn-body .sn-team-row:hover .sn-row-more, .sn-body .sn-team-row .sn-row-more.on, .sn-body .sn-team-row .sn-row-more:focus-visible { opacity: 1; }
 }
 
 /* the action sheet */
@@ -477,6 +484,7 @@ html[data-theme="dark"] .sn-sheet { color: #F1F5F9; background: linear-gradient(
 .sn-sheet-ic { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; flex: none; color: #fff; font-size: 14px; }
 .sn-sheet-ic.pin { background: linear-gradient(135deg, #F59E0B, #D97706); }
 .sn-sheet-ic.ping { background: linear-gradient(135deg, #FACC15, #EAB308); }
+.sn-sheet-ic.chat { background: linear-gradient(135deg, #3B82F6, #1D4ED8); }
 .sn-sheet-ic.call { background: linear-gradient(135deg, #22C55E, #15803D); }
 .sn-sheet-ic.del { background: linear-gradient(135deg, #EF4444, #B91C1C); }
 .sn-sheet-item.del { color: #DC2626; }

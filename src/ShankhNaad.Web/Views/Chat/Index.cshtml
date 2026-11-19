@@ -215,6 +215,9 @@
             <button type="button" class="btn-icon soft" id="attachBtn" aria-label="Attach a file" title="Attach a file">
                 <i class="fa fa-paperclip" style="font-size:18px" aria-hidden="true"></i>
             </button>
+            <button type="button" class="btn-icon soft" id="emojiBtn" data-emoji-for="composer" aria-label="Add an emoji" title="Emoji">
+                <i class="fa fa-smile-o" style="font-size:19px" aria-hidden="true"></i>
+            </button>
             <label for="messageBox" class="sr-only">Message</label>
             <textarea id="messageBox" rows="1" maxlength="4000" placeholder="Message @c.Name"></textarea>
             <button type="submit" class="cee-btn cee-btn-gradient sn-send-btn" aria-label="Send" title="Send"><i class="fa fa-paper-plane" aria-hidden="true"></i></button>
@@ -253,10 +256,31 @@
         </div>
     </modern-group-box>
 
-    <modern-group-box title="Storage | @Model.Limits.PlanName plan" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="24px" content-layout="block">
-        <div class="row between small"><strong>@UserExtensions.FormatBytes(Model.Limits.StorageUsedBytes)</strong><span class="muted">of @UserExtensions.FormatBytes(Model.Limits.StorageQuotaBytes)</span></div>
-        <div class="meter" role="img" aria-label="@Model.Limits.StoragePercent percent of storage used"><i style="width:@(Model.Limits.StoragePercent)%" class="@(Model.Limits.StoragePercent >= 80 ? "warn" : "")"></i></div>
-        <span class="muted tiny">Your admin can upgrade the plan.</span>
+    @{
+        var used = Model.Limits.StorageUsedBytes;
+        var quota = Model.Limits.StorageQuotaBytes;
+        var pct = quota <= 0 ? 0d : Math.Min(100d, used * 100d / quota);
+        var free = Math.Max(0L, quota - used);
+        // a tiny amount still shows a sliver, so the bar never looks empty or "full"
+        var barWidth = used <= 0 ? 0d : Math.Max(3d, pct);
+        var pctText = used <= 0 ? "0%" : pct < 0.1 ? "less than 0.1%" : pct < 10 ? pct.ToString("0.0") + "%" : Math.Round(pct) + "%";
+        var level = pct >= 90 ? "full" : pct >= 75 ? "warn" : "";
+    }
+    <modern-group-box title="Storage" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="24px" content-layout="block">
+        <div class="sn-store">
+            <div class="sn-store-top">
+                <span class="sn-store-used">@UserExtensions.FormatBytes(used) <small>used</small></span>
+                <span class="sn-store-pct @level">@pctText</span>
+            </div>
+            <div class="sn-store-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@Math.Round(pct, 1)"
+                 aria-label="@pctText of storage used" title="@UserExtensions.FormatBytes(used) of @UserExtensions.FormatBytes(quota) used">
+                <i class="@level" style="width:@(barWidth.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></i>
+            </div>
+            <div class="sn-store-foot">
+                <span><b>@UserExtensions.FormatBytes(free)</b> free</span>
+                <span>of @UserExtensions.FormatBytes(quota)</span>
+            </div>
+        </div>
     </modern-group-box>
 </aside>
 </div>

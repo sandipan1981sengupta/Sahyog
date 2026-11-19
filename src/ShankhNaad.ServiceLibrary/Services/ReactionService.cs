@@ -8,7 +8,21 @@ namespace ShankhNaad.ServiceLibrary;
 /// <summary>The emojis people can react to a message with.</summary>
 public static class ReactionEmojis
 {
-    public static readonly string[] Allowed = { "👍", "❤️", "😂", "😮", "😢", "🙏", "👏", "🎉" };
+    /// <summary>Shown on the quick bar when you point at a message.</summary>
+    public static readonly string[] Quick = { "👍", "❤️", "😂", "😮", "😢", "🙏", "👏", "🎉" };
+    /// <summary>Everything in the "+" panel (and the 😊 button in the message box). Keep in step with EMOJI_GROUPS in wwwroot/js/chat.js.</summary>
+    public static readonly string[] More =
+    {
+        // Smileys
+        "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "😉", "😊", "😇", "🥰", "😍", "🤩", "😘", "😋", "😜", "🤪", "😎", "🤓", "🥳", "😏", "😌", "😴", "🤗", "🤔", "🤭", "🤫", "😶", "😐", "😑", "😬", "🙄", "😮", "😯", "😲", "😳", "🥺", "😢", "😭", "😤", "😡", "🤯", "😱", "🤒", "🤧", "😷",
+        // Hands
+        "👍", "👎", "👌", "✌️", "🤞", "🤟", "🤘", "👏", "🙌", "👐", "🙏", "🤝", "💪", "👋", "✋", "👊", "✊", "🫡", "👀", "🧠",
+        // Hearts & fun
+        "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "💯", "💥", "✨", "🔥", "⭐", "🌟", "🎉", "🎊", "🎁", "🏆", "🥇",
+        // Work & more
+        "✅", "❌", "⚠️", "❓", "❗", "💡", "📌", "📎", "📅", "⏰", "📞", "💻", "📊", "📈", "🚀", "☕", "🍕", "🍰", "🌹", "🌞",
+    };
+    public static readonly HashSet<string> Allowed = new(Quick.Concat(More));
 }
 
 /// <summary>Reactions on chat messages (needs 26_MessageReactions.sql).</summary>

@@ -2758,6 +2758,68 @@ html[data-theme="dark"] .msg-quick { background: rgba(22, 28, 48, .96); border-c
 html[data-theme="dark"] .msg-quick button:hover { background: rgba(255, 255, 255, .08); }
 @media (hover: none) { .msg-quick { display: none; } }
 
+/* The bar floats 4px above the message. From the 2nd message of a run (".grouped") that gap lies over the
+   previous message, so moving the mouse up to the bar ended the hover and the bar vanished. An invisible
+   bridge fills the gap, and the message you point at sits on top of its neighbours. */
+.msg { position: relative; }
+.msg:hover, .msg:focus-within, .msg.acts-open { z-index: 8; }
+.msg-quick::before { content: ""; position: absolute; left: -6px; right: -6px; top: 100%; height: 12px; }
+.msg.acts-open .msg-quick { opacity: 1; transform: none; pointer-events: auto; }
+.msg-quick { align-items: center; }
+.msg-quick .mq-more, .msg-quick .mq-reply { font-size: 13px; color: #6D28D9; }
+.msg-quick .mq-more { background: rgba(124, 58, 237, .08); }
+.msg-quick .mq-reply { color: #1D4ED8; }
+.msg-quick .mq-more:hover, .msg-quick .mq-reply:hover { transform: translateY(-2px) scale(1.12); background: rgba(124, 58, 237, .14); }
+.mq-sep { width: 1px; height: 20px; margin: 0 3px; background: rgba(100, 116, 139, .25); }
+html[data-theme="dark"] .msg-quick .mq-more, html[data-theme="dark"] .msg-quick .mq-reply { color: #C4B5FD; }
+
+/* "+" : every reaction in a small panel */
+.msg-more-panel { position: fixed; z-index: 2100; display: grid; grid-template-columns: repeat(8, 36px); gap: 2px; padding: 4px 8px 8px; border-radius: 16px;
+    max-height: min(320px, calc(100vh - 32px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+    background: rgba(255, 255, 255, .98); border: 1px solid rgba(15, 23, 42, .08); box-shadow: 0 22px 46px -16px rgba(2, 6, 23, .55);
+    opacity: 0; transform: scale(.94); transition: opacity .14s ease, transform .2s cubic-bezier(.34, 1.4, .64, 1); }
+.msg-more-panel.show { opacity: 1; transform: none; }
+.msg-more-panel button { width: 36px; height: 36px; border: 0; border-radius: 10px; background: transparent; font-size: 20px; line-height: 1; cursor: pointer;
+    transition: transform .18s cubic-bezier(.34, 1.56, .64, 1), background .15s ease; }
+.msg-more-panel button:hover, .msg-more-panel button:focus-visible { transform: scale(1.25); background: rgba(124, 58, 237, .1); }
+html[data-theme="dark"] .msg-more-panel { background: rgba(22, 28, 48, .98); border-color: rgba(255, 255, 255, .1); }
+.msg-more-panel .mmp-head { grid-column: 1 / -1; position: sticky; top: -4px; z-index: 1; padding: 8px 4px 4px; font: 700 11px Roboto, sans-serif;
+    letter-spacing: .06em; text-transform: uppercase; color: #64748B; background: inherit; }
+html[data-theme="dark"] .msg-more-panel .mmp-head { color: #94A3B8; background: rgb(22, 28, 48); }
+.msg-more-panel .mmp-head { background: #fff; }
+html[data-theme="dark"] .msg-more-panel .mmp-head { background: rgb(22, 28, 48); }
+@media (max-width: 400px) { .msg-more-panel { grid-template-columns: repeat(6, 36px); } }
+
+/* Reply: the quote inside a reply, and the "Replying to…" bar above the message box */
+.msg-quote { display: flex; flex-direction: column; gap: 1px; max-width: 360px; min-width: 120px; padding: 6px 10px; margin: 0;
+    border: 0; border-left: 3px solid #7C3AED; border-radius: 10px; background: rgba(124, 58, 237, .08); color: inherit;
+    font: inherit; text-align: left; cursor: pointer; }
+.msg-quote b { font-size: 12px; color: #6D28D9; }
+.msg-quote span { font-size: 12.5px; color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-quote:hover { background: rgba(124, 58, 237, .14); }
+.msg-quote.gone { flex-direction: row; align-items: center; gap: 6px; cursor: default; border-left-color: #94A3B8; background: rgba(148, 163, 184, .12); }
+.msg-quote.gone span { font-style: italic; color: #64748B; }
+.msg.mine .msg-quote { border-left: 0; border-right: 3px solid #7C3AED; text-align: right; }
+html[data-theme="dark"] .msg-quote { background: rgba(167, 139, 250, .14); }
+html[data-theme="dark"] .msg-quote b { color: #C4B5FD; }
+html[data-theme="dark"] .msg-quote span { color: #CBD5E1; }
+.msg.msg-flash .bubble, .msg.msg-flash .file-card { animation: snMsgFlash 1.4s ease; }
+@keyframes snMsgFlash { 0%, 40% { box-shadow: 0 0 0 3px rgba(124, 58, 237, .55); } 100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); } }
+
+.reply-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; padding: 8px 10px 8px 12px; border-radius: 14px;
+    border-left: 3px solid #7C3AED; background: rgba(124, 58, 237, .08); }
+.reply-bar[hidden] { display: none; }
+.reply-bar > i { color: #7C3AED; }
+.reply-bar-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.reply-bar-txt b { font-size: 12px; color: #6D28D9; }
+.reply-bar-txt span { font-size: 12.5px; color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-bar-x { flex: none; width: 28px; height: 28px; border: 0; border-radius: 50%; background: rgba(100, 116, 139, .15); color: inherit;
+    font-size: 18px; line-height: 1; cursor: pointer; }
+.reply-bar-x:hover { background: rgba(239, 68, 68, .18); color: #DC2626; }
+html[data-theme="dark"] .reply-bar { background: rgba(167, 139, 250, .12); }
+html[data-theme="dark"] .reply-bar-txt b { color: #C4B5FD; }
+html[data-theme="dark"] .reply-bar-txt span { color: #CBD5E1; }
+
 .msg-reacts { display: none; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .msg-reacts.has { display: flex; }
 .msg.mine .msg-reacts { justify-content: flex-end; }
@@ -2790,3 +2852,25 @@ html[data-theme="dark"] .sn-cstat-link { color: #C4B5FD; }
 .sn-cstat-note { margin: 4px 0 0; font-size: 12px; color: #B45309; }
 /* the side column scrolls by itself when the three cards don't fit */
 @media (min-width: 1101px) { .sn-side { overflow-y: auto; min-height: 0; padding-right: 2px; } }
+
+/* Chat → Details → Storage: clear numbers, and a bar you can read in light and dark */
+.sn-store { display: flex; flex-direction: column; gap: 8px; }
+.sn-store-top, .sn-store-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sn-store-used { font-size: 17px; font-weight: 800; color: #0F172A; }
+.sn-store-used small { font-size: 12px; font-weight: 600; color: #64748B; }
+.sn-store-pct { padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; color: #15803D; background: rgba(34, 197, 94, .14); }
+.sn-store-pct.warn { color: #B45309; background: rgba(245, 158, 11, .16); }
+.sn-store-pct.full { color: #B91C1C; background: rgba(239, 68, 68, .16); }
+.sn-store-bar { height: 10px; border-radius: 999px; overflow: hidden; background: rgba(100, 116, 139, .2); box-shadow: inset 0 1px 2px rgba(15, 23, 42, .15); }
+.sn-store-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #22C55E, #0EA5E9 60%, #6366F1);
+    box-shadow: 0 0 10px rgba(14, 165, 233, .55); transition: width .6s ease; }
+.sn-store-bar i.warn { background: linear-gradient(90deg, #F59E0B, #F97316); box-shadow: 0 0 10px rgba(245, 158, 11, .5); }
+.sn-store-bar i.full { background: linear-gradient(90deg, #EF4444, #B91C1C); box-shadow: 0 0 10px rgba(239, 68, 68, .5); }
+.sn-store-foot { font-size: 12px; color: #64748B; }
+.sn-store-foot b { color: #0F172A; }
+html[data-theme="dark"] .sn-store-used, html[data-theme="dark"] .sn-store-foot b { color: #F1F5F9; }
+html[data-theme="dark"] .sn-store-used small, html[data-theme="dark"] .sn-store-foot { color: #94A3B8; }
+html[data-theme="dark"] .sn-store-bar { background: rgba(255, 255, 255, .1); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5); }
+html[data-theme="dark"] .sn-store-pct { color: #86EFAC; background: rgba(34, 197, 94, .18); }
+html[data-theme="dark"] .sn-store-pct.warn { color: #FCD34D; }
+html[data-theme="dark"] .sn-store-pct.full { color: #FCA5A5; }

@@ -357,13 +357,15 @@ public sealed class MeetingsController : Controller
 
     /// <summary>Downloads (or shows) a file shared in a call. Anyone in the workspace who was given the link.</summary>
     [HttpGet("chat/file/{fileId:guid}")]
-    public async Task<IActionResult> CallChatDownload(Guid fileId, [FromServices] ICallChatService callChat, [FromServices] IFileStorage files)
+    public async Task<IActionResult> CallChatDownload(Guid fileId, [FromServices] ICallChatService callChat, [FromServices] IFileStorage files, [FromServices] ILogger<MeetingsController> log)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var f = await callChat.GetFileAsync(tenantId, fileId);
         if (f is null) return NotFound();
         var inline = f.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) || f.ContentType == "application/pdf";
-        var stream = files.OpenRead(f.StoragePath);
+        Stream stream;
+        try { stream = files.OpenRead(f.StoragePath); }
+        catch (Exception ex) when (MissingFile.Is(ex)) { return MissingFile.Page(f.FileName, log, f.StoragePath); }
         return inline ? File(stream, f.ContentType, enableRangeProcessing: true)
                       : File(stream, f.ContentType, f.FileName, enableRangeProcessing: true);
     }

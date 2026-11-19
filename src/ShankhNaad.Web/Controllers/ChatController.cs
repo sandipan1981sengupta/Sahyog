@@ -337,12 +337,12 @@ public sealed partial class ChatController : Controller
         return RedirectToAction(nameof(Index), new { id = channelId });
     }
 
-    /// <summary>Deletes one message: your own, or any message if you are a workspace admin. Called from chat.js.</summary>
+    /// <summary>Deletes one message: only your own (not even an admin can delete someone else's). Called from chat.js.</summary>
     [HttpPost("messages/{messageId:long}/delete")]
     public async Task<IActionResult> DeleteMessage(long messageId)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
-        var (status, channelId, path) = await _chat.DeleteMessageAsync(tenantId, messageId, Me, User.IsInRole(AppRoles.TenantAdmin));
+        var (status, channelId, path) = await _chat.DeleteMessageAsync(tenantId, messageId, Me, isAdmin: false);
         if (status == 1) return NotFound(new { error = "That message no longer exists." });
         if (status == 2) return StatusCode(403, new { error = "You can delete only your own messages." });
         if (path is not null)
@@ -419,7 +419,7 @@ public sealed partial class ChatController : Controller
     }
 
     [HttpGet("file/{id:guid}")]
-    public async Task<IActionResult> Download(Guid id)
+    public async Task<IActionResult> Download(Guid id, [FromServices] ILogger<ChatController> log)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var attachment = await _chat.GetAttachmentAsync(tenantId, id, Me);
@@ -427,7 +427,9 @@ public sealed partial class ChatController : Controller
 
         var inline = attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
                      || attachment.ContentType == "application/pdf";
-        var stream = _files.OpenRead(attachment.StoragePath);
+        Stream stream;
+        try { stream = _files.OpenRead(attachment.StoragePath); }
+        catch (Exception ex) when (MissingFile.Is(ex)) { return MissingFile.Page(attachment.FileName, log, attachment.StoragePath); }
         return inline
             ? File(stream, attachment.ContentType, enableRangeProcessing: true)
             : File(stream, attachment.ContentType, attachment.FileName, enableRangeProcessing: true);
