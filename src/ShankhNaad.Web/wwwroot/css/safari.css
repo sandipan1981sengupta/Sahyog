@@ -1,93 +1,109 @@
 /* =====================================================================
    ShankhNaad · Safari (Mac) and every browser on iPhone / iPad (they all use WebKit).
-   Only applies when <html class="sn-webkit"> (set at the top of _Layout and _AuthLayout).
+   Only applies when <html class="sn-webkit"> (set at the top of _Layout, _AuthLayout and Meetings/Room).
 
-   Why: frosted glass (backdrop-filter) has to be redrawn whenever anything behind it moves.
-   Chrome/Edge do that on the graphics card cheaply; Safari does far more work per frame. With
-   shapes drifting behind every panel, page changes, dialogs and scrolling stutter on a Mac.
+   THE PROBLEM
+   Frosted glass (backdrop-filter) is what Safari handles badly. Every glass panel is re-blurred whenever
+   it, or anything over or under it, moves. And while a glass panel is animating (page arrival, cards
+   rising, the Details panel sliding, a dialog opening) Safari loses its rounded corners and often draws
+   it late, so panels "pop" in square and then snap to round. That is the jerky page load and the
+   missing rounded corners.
 
-   What changes in Safari (same look, much less work):
-     1. the background shapes stay still (same colours, same place)
-     2. glass uses a lighter blur (24–28px instead of 40–44px; side by side it looks the same)
-     3. page changes, panels and dialogs move only with transform + opacity (the two things
-        Safari animates on the graphics card), slightly shorter
-     4. crisper text, momentum scrolling on iPhone / iPad
+   THE FIX (same look, same animations as Edge / Chrome)
+   In Safari the background shapes stand still, so a blur of them never changes. We therefore draw
+   every glass panel as an already-frosted colour (a slightly more solid version of the same glass
+   gradient) instead of blurring live. Nothing has to be re-blurred, rounded corners stay round, and
+   all the animations (page arrival, cards, rows, Details panel, dialogs) run smoothly, as in Edge.
    ===================================================================== */
 
-/* ---------- 1. a still background ---------- */
+/* ---------- 1. no live blur anywhere in Safari ---------- */
+html.sn-webkit *,
+html.sn-webkit *::before,
+html.sn-webkit *::after,
+html.sn-webkit *::backdrop { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+
+/* ---------- 2. "pre-frosted" glass: the same gradients, a little more solid ---------- */
+html.sn-webkit {
+    --sn-glass: linear-gradient(150deg, rgba(255, 255, 255, .84) 0%, rgba(255, 255, 255, .70) 50%, rgba(255, 255, 255, .78) 100%);
+}
+html.sn-webkit[data-theme="dark"] {
+    --sn-glass: linear-gradient(150deg, rgba(30, 37, 60, .94) 0%, rgba(19, 25, 43, .92) 50%, rgba(27, 31, 54, .93) 100%);
+}
+html.sn-webkit .sn-body .glass-strong {
+    background: linear-gradient(150deg, rgba(255, 255, 255, .95) 0%, rgba(255, 255, 255, .88) 50%, rgba(255, 255, 255, .92) 100%);
+}
+html.sn-webkit[data-theme="dark"] .sn-body .glass-strong { background: rgba(22, 28, 47, .97); }
+/* message bubbles */
+html.sn-webkit .sn-body .bubble { background: rgba(255, 255, 255, .9); }
+html.sn-webkit[data-theme="dark"] .sn-body .bubble { background: rgba(38, 45, 68, .95); }
+/* sign-in window */
+html.sn-webkit .glass-clear {
+    background: linear-gradient(150deg, rgba(255, 255, 255, .80) 0%, rgba(255, 255, 255, .62) 50%, rgba(255, 255, 255, .72) 100%);
+}
+/* meeting room: panels and dock over the video */
+html.sn-webkit .room-body .room-panel,
+html.sn-webkit .room-body .dock { background: rgba(15, 20, 40, .9); }
+
+/* rounded corners always clip what's inside (Safari otherwise lets children paint square corners
+   over the rounded edge while something animates) */
+html.sn-webkit .sn-body .glass,
+html.sn-webkit .sn-body .glass-strong,
+html.sn-webkit .sn-body .cee-group-box,
+html.sn-webkit .sn-body .modern-table-wrapper { background-clip: padding-box; }
+
+/* ---------- 3. a still background (drawn once, never repainted) ---------- */
 html.sn-webkit .sn-backdrop { transform: translateZ(0); contain: strict; }
 html.sn-webkit .sn-backdrop .orb,
 html.sn-webkit .sn-backdrop .blob,
 html.sn-webkit .bg-blobs span,
+html.sn-webkit .sn-window-orbs span,
 html.sn-webkit .studio-bg i { animation: none !important; will-change: auto !important; }
+/* the big soft shapes: a gradient instead of a 140px blur filter (looks the same, costs nothing) */
+html.sn-webkit .sn-backdrop .blob { filter: none !important; }
+html.sn-webkit .sn-backdrop .b1 { background: radial-gradient(closest-side, var(--sn-blue), transparent); width: 1000px; height: 1000px; left: -360px; top: -400px; }
+html.sn-webkit .sn-backdrop .b2 { background: radial-gradient(closest-side, var(--sn-pink), transparent); width: 920px; height: 920px; right: -320px; bottom: -400px; }
+html.sn-webkit .sn-backdrop .b3 { background: radial-gradient(closest-side, #a78bfa, transparent); width: 720px; height: 720px; }
+html.sn-webkit .bg-blobs span { filter: blur(60px) !important; }
+html.sn-webkit .studio-bg i { filter: none !important; }        /* already gradients */
+html.sn-webkit .studio-bg .grain { display: none; }             /* film grain blended over the live video */
 
-/* ---------- 2. lighter glass ---------- */
-html.sn-webkit .sn-body .glass,
-html.sn-webkit .sn-glass,
-html.sn-webkit .sn-body .cee-group-box,
-html.sn-webkit .sn-body .modern-table-wrapper,
-html.sn-webkit .sn-body .composer {
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    backdrop-filter: blur(24px) saturate(180%);
-}
-html.sn-webkit .sn-body .glass-strong {
-    -webkit-backdrop-filter: blur(28px) saturate(180%);
-    backdrop-filter: blur(28px) saturate(180%);
-}
-/* a pop-up over the page: the page behind is dimmed anyway, so no blur behind the dim layer */
-html.sn-webkit .sn-body .sn-dialog::backdrop,
-html.sn-webkit .sn-del-choose::backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
-/* (glass panels are deliberately NOT forced onto their own layer with transform: that would make
-   drop-down menus inside them position against the panel instead of the window) */
+/* ---------- 4. page arrival (same three steps as Edge / Chrome) ----------
+   Safari's page-swap (view transition) snapshots the page and is where the glitches start, so in Safari
+   _Layout skips it and the page frame rises in with a plain CSS animation instead; then the cards rise
+   and the data fades in exactly as in Edge (those rules live in shankhnaad.css and apply unchanged). */
+html.sn-webkit .sn-rail,
+html.sn-webkit .sn-topbar,
+html.sn-webkit .sn-body-row,
+html.sn-webkit .sn-backdrop { view-transition-name: none; }
 
-/* ---------- 3. smooth movement ---------- */
-/* page changes (Safari 18.2+ has page transitions like Chrome): transform + opacity only, a little shorter */
-html.sn-webkit::view-transition-group(*) { animation-duration: .34s; animation-timing-function: cubic-bezier(.22, 1, .36, 1); }
-html.sn-webkit::view-transition-old(root), html.sn-webkit::view-transition-new(root) { animation-duration: .24s; }
-html.sn-webkit::view-transition-old(sn-main) { animation: snSfOut .16s cubic-bezier(.4, 0, 1, 1) both; }
-html.sn-webkit::view-transition-new(sn-main) { animation: snSfIn .34s cubic-bezier(.22, 1, .36, 1) .03s both; }
-html.sn-webkit:active-view-transition-type(next)::view-transition-old(sn-main) { animation: snSfOutLeft .18s cubic-bezier(.4, 0, 1, 1) both; }
-html.sn-webkit:active-view-transition-type(next)::view-transition-new(sn-main) { animation: snSfInRight .34s cubic-bezier(.22, 1, .36, 1) both; }
-html.sn-webkit:active-view-transition-type(prev)::view-transition-old(sn-main) { animation: snSfOutRight .18s cubic-bezier(.4, 0, 1, 1) both; }
-html.sn-webkit:active-view-transition-type(prev)::view-transition-new(sn-main) { animation: snSfInLeft .34s cubic-bezier(.22, 1, .36, 1) both; }
-@keyframes snSfOut { to { opacity: 0; } }
-@keyframes snSfIn { from { opacity: 0; transform: translate3d(0, 8px, 0); } to { opacity: 1; transform: none; } }
-@keyframes snSfOutLeft { to { opacity: 0; transform: translate3d(-24px, 0, 0); } }
-@keyframes snSfOutRight { to { opacity: 0; transform: translate3d(24px, 0, 0); } }
-@keyframes snSfInRight { from { opacity: 0; transform: translate3d(32px, 0, 0); } to { opacity: 1; transform: none; } }
-@keyframes snSfInLeft { from { opacity: 0; transform: translate3d(-32px, 0, 0); } to { opacity: 1; transform: none; } }
-/* older Safari (before 18.2, no page transitions): the new page rises in the same way */
-html.sn-webkit.sn-no-vt .sn-body-row { animation: snSfIn .34s cubic-bezier(.22, 1, .36, 1) both; will-change: transform, opacity; }
-
-/* pop-ups and panels: rise in on the graphics card */
+/* ---------- 5. pop-ups: the same rise, without the blur(…) in the keyframes ---------- */
 html.sn-webkit .sn-body .sn-dialog[open],
-html.sn-webkit .sn-body .mb-dialog { animation: snSfWinIn .3s cubic-bezier(.22, 1, .36, 1) both; }
-html.sn-webkit .sn-body .sn-dialog.sn-closing { animation: snSfWinOut .18s cubic-bezier(.4, 0, 1, 1) both !important; }
-@keyframes snSfWinIn { from { opacity: 0; transform: translate3d(0, 14px, 0) scale(.985); } to { opacity: 1; transform: none; } }
-@keyframes snSfWinOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translate3d(0, 10px, 0) scale(.985); } }
+html.sn-webkit .sn-body .mb-dialog,
+html.sn-webkit .auth-body .mb-dialog { animation: snSfWinIn .34s cubic-bezier(.16, 1, .3, 1) both; }
+html.sn-webkit .sn-body .sn-dialog.sn-closing { animation: snSfWinOut .2s cubic-bezier(.4, 0, 1, 1) both !important; }
+@keyframes snSfWinIn { from { opacity: 0; transform: translate3d(0, 18px, 0) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes snSfWinOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translate3d(0, 20px, 0) scale(.97); } }
 @media (max-width: 640px) {
     @keyframes snSfWinIn { from { transform: translate3d(0, 100%, 0); } to { transform: none; } }
     @keyframes snSfWinOut { from { transform: none; } to { transform: translate3d(0, 100%, 0); } }
 }
-/* Chat → Details panel: in Chrome it smoothly changes width, which makes Safari re-lay out the whole chat
-   every frame. In Safari it slides and fades instead, and the width changes in one step:
-   opening = make room, then slide in;  closing = slide out, then give the room back. */
-html.sn-webkit .sn-body .chat-info {
-    will-change: transform, opacity;
-    transition: opacity .26s ease .02s, transform .34s cubic-bezier(.22, 1, .36, 1) .02s,
-                flex-basis 0s, max-width 0s, margin 0s !important;
-}
-html.sn-webkit .sn-hide-info .chat-info,
-html.sn-webkit .sn-body.sn-hide-info .chat-info {
-    transition: opacity .18s ease, transform .22s cubic-bezier(.4, 0, 1, 1),
-                flex-basis 0s .22s, max-width 0s .22s, margin 0s .22s !important;
-}
-html.sn-webkit.sn-still .sn-body .chat-info { transition: none !important; }
-/* small menus, the emoji panel, the "⋯" pop-up */
+
+/* ---------- 6. Chat → Details panel: same smooth slide as Edge ----------
+   (it uses the normal rules in shankhnaad.css; Safari only gets help keeping the slide on the graphics card) */
+html.sn-webkit .sn-body .chat-info { will-change: transform, opacity; }
 html.sn-webkit .msg-more-panel,
 html.sn-webkit .sn-sheet { will-change: transform, opacity; }
 
-/* ---------- 4. text and scrolling ---------- */
+/* ---------- 7. video call: the frame around the video ----------
+   It spun forever as a masked gradient the size of the whole video, repainted on every frame over the
+   video. In Safari it stays still (it still lights up when someone talks); the "speaking" bars scale
+   instead of changing height. */
+html.sn-webkit .stage::before { animation: none !important; }
+html.sn-webkit .stage-chip .eq i,
+html.sn-webkit .people-row.speaking .eq i { height: 100% !important; transform-origin: 50% 100%; animation-name: snSfEq !important; }
+@keyframes snSfEq { 0%, 100% { transform: scaleY(.25); } 50% { transform: scaleY(1); } }
+
+/* ---------- 8. text and scrolling ---------- */
 html.sn-webkit body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
 html.sn-webkit .messages,
 html.sn-webkit .side-scroll,
@@ -100,6 +116,5 @@ html.sn-webkit .sn-pp-list::-webkit-scrollbar-track,
 .sn-body .msg-more-panel::-webkit-scrollbar-track { margin: 10px 0; }
 
 @media (prefers-reduced-motion: reduce) {
-    html.sn-webkit::view-transition-group(*), html.sn-webkit::view-transition-old(*), html.sn-webkit::view-transition-new(*) { animation: none !important; }
-    html.sn-webkit .sn-body .sn-dialog[open], html.sn-webkit .sn-body .mb-dialog, html.sn-webkit.sn-no-vt .sn-body-row { animation: none !important; }
+    html.sn-webkit .sn-body .sn-dialog[open], html.sn-webkit .sn-body .mb-dialog { animation: none !important; }
 }

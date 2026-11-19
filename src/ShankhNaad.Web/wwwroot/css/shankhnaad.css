@@ -1372,7 +1372,7 @@ html[data-theme="dark"] .sn-mev.allday.busy { background: #2F55C9; color: #fff; 
 html[data-theme="dark"] .sn-mev.allday.free { color: #93C5FD; border-color: rgba(147, 197, 253, .5); background: transparent; }
 
 /* ---------- delete a chat message ---------- */
-.msg-line { position: relative; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.msg-line { position: relative; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; max-width: 100%; }
 .msg.mine .msg-line { align-items: flex-end; }
 .msg-del {
     position: absolute; top: 50%; right: -42px; width: 32px; height: 32px; margin-top: -16px; border-radius: 10px;
@@ -2795,7 +2795,9 @@ html[data-theme="dark"] .msg-more-panel .mmp-head { background: rgb(22, 28, 48);
     border: 0; border-left: 3px solid #7C3AED; border-radius: 10px; background: rgba(124, 58, 237, .08); color: inherit;
     font: inherit; text-align: left; cursor: pointer; }
 .msg-quote b { font-size: 12px; color: #6D28D9; }
-.msg-quote span { font-size: 12.5px; color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-quote span { display: block; max-width: 100%; min-width: 0; font-size: 12.5px; color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Safari: a <button> sizes to its text unless told otherwise, so the "…" never appeared */
+.msg-quote { max-width: min(360px, 100%); box-sizing: border-box; overflow: hidden; }
 .msg-quote:hover { background: rgba(124, 58, 237, .14); }
 .msg-quote.gone { flex-direction: row; align-items: center; gap: 6px; cursor: default; border-left-color: #94A3B8; background: rgba(148, 163, 184, .12); }
 .msg-quote.gone span { font-style: italic; color: #64748B; }

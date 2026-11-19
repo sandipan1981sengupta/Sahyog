@@ -26,8 +26,8 @@
             // so css/safari.css gives it a lighter, still-glassy setup (see that file).
             var ua = navigator.userAgent || "";
             var touchMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;          // iPad asking for the desktop site
-            if ((/AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg|OPR|Android/.test(ua)) || /iPhone|iPad|iPod/.test(ua) || touchMac)
-                root.classList.add("sn-webkit");
+            var webkit = (/AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg|OPR|Android/.test(ua)) || /iPhone|iPad|iPod/.test(ua) || touchMac;
+            if (webkit) root.classList.add("sn-webkit");
 
             // Background spheres keep moving from where they were on the last page (no jump on every page change).
             root.style.setProperty("--sn-orb-t", "-" + ((Date.now() / 1000) % 600).toFixed(2) + "s");
@@ -55,6 +55,16 @@
                 if (vt && vt.finished) vt.finished.then(function () { setTimeout(showData, 40); }, showData);
                 else if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(showData, 340); });
                 else setTimeout(showData, 340);
+            }
+
+            // Safari: its page swap (view transition) snapshots the page and makes it jerky, so it is skipped
+            // and the page frame rises in with plain CSS instead (css/safari.css part 4). Cards and data
+            // then arrive exactly as in Edge / Chrome.
+            if (webkit) {
+                window.addEventListener("pagereveal", function (e) { if (e.viewTransition) e.viewTransition.skipTransition(); });
+                root.classList.add("sn-no-vt");
+                arrive(null);
+                return;
             }
 
             window.addEventListener("pagereveal", function (e) {

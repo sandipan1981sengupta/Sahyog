@@ -31,6 +31,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @* Safari (Mac) and iPhone / iPad: lighter effects over the video (see css/safari.css, part 7) *@
+    <script>
+        (function () {
+            var ua = navigator.userAgent || "";
+            var touchMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+            if ((/AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg|OPR|Android/.test(ua)) || /iPhone|iPad|iPod/.test(ua) || touchMac)
+                document.documentElement.classList.add("sn-webkit");
+        })();
+    </script>
+    <link rel="stylesheet" href="~/css/safari.css" asp-append-version="true" />
 </head>
 <body class="room-body">
     @* studio background: slow aurora light, fine grain and a soft vignette *@
