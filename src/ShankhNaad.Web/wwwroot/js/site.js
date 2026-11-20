@@ -100,6 +100,15 @@
         const e = o.untilUtc ? new Date(o.untilUtc) : null;
         return s < d1 && (!e || e > d0) ? o : null;
     };
+    /** Is the person away at any moment between start and end (Dates)? e.g. a 4–5 pm absence and a 4:30 meeting. */
+    const oooDuring = (id, start, end) => {
+        const o = oooPlanOf(id);
+        if (!o) return null;
+        const s = o.startUtc ? new Date(o.startUtc) : new Date(o.sinceUtc || Date.now());
+        const e = o.untilUtc ? new Date(o.untilUtc) : null;
+        return s < end && (!e || e > start) ? o : null;
+    };
+    Sahyog.oooDuring = oooDuring;
     Sahyog.oooOf = oooOf;
     Sahyog.oooPlanOf = oooPlanOf;
     Sahyog.oooOn = oooOn;
@@ -134,6 +143,7 @@
             }
             el.classList.toggle("is-busy", inCall);
             el.classList.toggle("is-on", state === "available");
+            el.classList.toggle("is-ooo", state === "ooo");
             el.setAttribute("data-state", state);
             el.setAttribute("data-status", info.label);
         });
@@ -204,9 +214,10 @@
         return hub.invoke("ClearOutOfOffice");
     };
     /** From a day to a day (yyyy-MM-dd; to = "" → until I turn it off), and who to tell by email. Returns { ooo, mailed, mailNote }. */
-    Sahyog.saveOutOfOffice = async ({ message, from, to, notify, people }) => {
+    Sahyog.saveOutOfOffice = async ({ message, from, to, notify, people, fromTime, toTime }) => {
         const fd = new FormData();
         fd.append("Message", message || ""); fd.append("From", from); fd.append("To", to || ""); fd.append("Notify", notify || "none");
+        fd.append("FromTime", fromTime || ""); fd.append("ToTime", toTime || "");   // HH:mm: only part of the day
         (people || []).forEach((id) => fd.append("People", id));
         const res = await fetch("/status/out-of-office", { method: "POST", body: fd, headers: { "RequestVerificationToken": Sahyog.antiforgery() }, credentials: "same-origin" });
         const data = await res.json().catch(() => ({}));

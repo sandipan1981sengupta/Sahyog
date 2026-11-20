@@ -690,6 +690,8 @@
 </dialog>
 
 <script id="busyJson" type="application/json">@Html.Raw(JsonSerializer.Serialize(busy))</script>
+@* colleagues' names, so the calendar can show who is out of office on each day *@
+<script id="teamJson" type="application/json">@Html.Raw(JsonSerializer.Serialize(Model.Team.Where(p => !p.Pending).Select(p => new { id = p.Id, name = p.Name })))</script>
 
 @section Scripts {
     @* charts are only used on this page, so their scripts load only here *@
@@ -844,13 +846,26 @@
             function pad(n) { return String(n).padStart(2, "0"); }
             function parseDmy(dmy) { var p = dmy.split("-"); return new Date(+p[2], +p[1] - 1, +p[0]); }
             function nextHalfHour() { var m = NOW.getHours() * 60 + NOW.getMinutes(); m = Math.ceil((m + 1) / 30) * 30; return m >= 24 * 60 ? null : pad(Math.floor(m / 60)) + ":" + pad(m % 60); }
-            window.snOpenSchedule = function (dmy, time, allDay) {
+            window.snOpenSchedule = function (dmy, time, allDay, exactSlot) {
                 var day = parseDmy(dmy);
                 var when = new Date(day); var t = (time || "10:00").split(":"); when.setHours(+t[0], +t[1]);
+                var slotStart = new Date(when);
                 if (allDay) when.setHours(23, 59);
                 if (when < new Date(NOW.getTime() - 5 * 60000)) {
                     Sahyog.toast("Pick a time from now on to schedule a meeting.", { kind: "info", title: "That time has passed" });
                     return;
+                }
+                // out of office: the whole day is blocked; on the day / week grid, so are the hours away (e.g. 4:00 pm – 5:00 pm)
+                var me = document.body.dataset.me, S = window.Sahyog;
+                var away = me && S && S.oooOn ? S.oooOn(me, day) : null;
+                if (away) {
+                    var hours = window.SN && SN.oooHoursOn ? SN.oooHoursOn(away, day) : "";
+                    var hit = !hours || (exactSlot && S.oooDuring && S.oooDuring(me, slotStart, new Date(slotStart.getTime() + 30 * 60000)));
+                    if (hit) {
+                        S.toast((hours ? "You're out of office " + hours + " that day." : "You're out of office all day on " + day.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) + ".")
+                            + " Change or turn off out of office to schedule a meeting then.", { kind: "warn", title: "Out of office" });
+                        return;
+                    }
                 }
                 var input = document.getElementById("mDate");
                 if (input && input._flatpickr) input._flatpickr.setDate(day, true); else if (input) input.value = dmy;
@@ -886,7 +901,7 @@
                 $cal.on("mouseleave", ".sn-sched-col", function () { var h = this.querySelector(".sn-slot-hint"); if (h) h.classList.remove("on"); });
                 $cal.on("click", ".sn-sched-col", function (e) {
                     if ($(e.target).closest(".sn-ev").length || !realClick(e)) return;
-                    snOpenSchedule(this.dataset.date, slotAt(this, e.clientY).time);
+                    snOpenSchedule(this.dataset.date, slotAt(this, e.clientY).time, false, true);
                 });
 
                 // open at the current time, the first meeting, or 08:00

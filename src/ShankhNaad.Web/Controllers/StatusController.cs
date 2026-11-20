@@ -60,6 +60,10 @@ public sealed class StatusController : Controller
         public string? From { get; set; }
         /// <summary>Last day away, yyyy-MM-dd. Empty = until I turn it off.</summary>
         public string? To { get; set; }
+        /// <summary>Only part of the day: leave at, HH:mm, on the first day. Empty = from the start of the day.</summary>
+        public string? FromTime { get; set; }
+        /// <summary>Only part of the day: back at, HH:mm (or 24:00), on the last day. Empty = at the end of the day.</summary>
+        public string? ToTime { get; set; }
         /// <summary>none | all | some</summary>
         public string? Notify { get; set; }
         public List<Guid>? People { get; set; }
@@ -84,13 +88,23 @@ public sealed class StatusController : Controller
             to = t;
         }
 
+        if (!TryMinutes(input.FromTime, false, out var fromMin)) return BadRequest(new { error = "The “Leave at” time isn't valid." });
+        if (!TryMinutes(input.ToTime, true, out var toMin)) return BadRequest(new { error = "The “Back at” time isn't valid." });
+
         var message = (input.Message ?? "").Trim();
         if (message.Length > 500) message = message[..500];
         var note = message.Length == 0 ? null : message;
 
-        // starting today = starting now; a later day = planned
-        DateTime? startUtc = from > today ? MeetingCalendar.ToUtc(from.ToDateTime(TimeOnly.MinValue), zone) : null;
-        DateTime? untilUtc = to is DateOnly last ? MeetingCalendar.ToUtc(last.AddDays(1).ToDateTime(TimeOnly.MinValue), zone) : null;
+        // a start already passed = starting now; a later moment = planned (e.g. today from 4:00 pm)
+        var nowUtc = DateTime.UtcNow;
+        var leaveUtc = MeetingCalendar.ToUtc(from.ToDateTime(TimeOnly.MinValue).AddMinutes(fromMin ?? 0), zone);
+        DateTime? startUtc = leaveUtc > nowUtc ? leaveUtc : null;
+        DateTime? untilUtc = to is DateOnly last ? MeetingCalendar.ToUtc(last.ToDateTime(TimeOnly.MinValue).AddMinutes(toMin ?? 24 * 60), zone) : null;
+        if (untilUtc is DateTime back)
+        {
+            if (back <= leaveUtc) return BadRequest(new { error = "“Back at” has to be after “Leave at”." });
+            if (back <= nowUtc) return BadRequest(new { error = "That time has already passed. Pick a later time." });
+        }
 
         var saved = startUtc is null && to is null
             ? (await _ooo.SetAsync(TenantId, Me, note, null) ? OooSaveStatus.Saved : OooSaveStatus.NeedsDatabase32)
@@ -118,7 +132,7 @@ public sealed class StatusController : Controller
             {
                 var me = await _users.GetByIdAsync(Me);
                 var name = me?.DisplayName ?? User.DisplayName();
-                var when = DescribeRange(from, to, today);
+                var when = DescribeRange(from, to, today, fromMin, to is null ? null : toMin);
                 var html = MailHtml(name, when, note);
                 if (await _email.SendHiddenAsync(emails, $"Out of office: {name} · {when}", html, me?.Email, name)) mailed = emails.Count;
                 else mailNote = "Saved, but the email couldn't be sent. Please try again later.";
@@ -131,12 +145,34 @@ public sealed class StatusController : Controller
     private static bool TryDay(string? s, out DateOnly day) =>
         DateOnly.TryParseExact((s ?? "").Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out day);
 
+    /// <summary>"16:00" → 960 minutes; "24:00" (end of day) only when allowed; empty → null (no hours).</summary>
+    private static bool TryMinutes(string? s, bool allowEndOfDay, out int? minutes)
+    {
+        minutes = null;
+        s = (s ?? "").Trim();
+        if (s.Length == 0) return true;
+        if (allowEndOfDay && s == "24:00") { minutes = 24 * 60; return true; }
+        if (!TimeOnly.TryParseExact(s, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var t)) return false;
+        minutes = t.Hour * 60 + t.Minute;
+        return true;
+    }
+
     private static readonly CultureInfo En = CultureInfo.GetCultureInfo("en-GB");
 
-    /// <summary>"Mon 24 Nov – Fri 28 Nov 2026" · "Mon 24 Nov 2026" · "from Mon 24 Nov 2026 until further notice".</summary>
-    private static string DescribeRange(DateOnly from, DateOnly? to, DateOnly today)
+    /// <summary>"Mon 24 Nov – Fri 28 Nov 2026" · "Mon 24 Nov 2026" · "from Mon 24 Nov 2026 until further notice".
+    /// With hours: "Fri 20 Nov 2026, 4:00 pm – 5:00 pm" · "Fri 20 Nov 4:00 pm – Mon 23 Nov 2026 10:00 am".</summary>
+    private static string DescribeRange(DateOnly from, DateOnly? to, DateOnly today, int? fromMin = null, int? toMin = null)
     {
         string D(DateOnly d, bool year) => d.ToString(year ? "ddd d MMM yyyy" : "ddd d MMM", En);
+        string T(int m) => m >= 24 * 60 ? "end of day" : DateTime.Today.AddMinutes(m).ToString("h:mm tt", En).ToLowerInvariant();
+        var leaveAt = fromMin is int f && f > 0 ? f : (int?)null;
+        var backAt = toMin is int b && b < 24 * 60 ? b : (int?)null;
+        if (leaveAt is not null || backAt is not null)
+        {
+            if (to is null) return $"from {D(from, true)}, {T(leaveAt ?? 0)} until further notice";
+            if (to == from) return $"{D(from, true)}, {T(leaveAt ?? 0)} – {T(backAt ?? 24 * 60)}";
+            return $"{D(from, from.Year != to.Value.Year)}, {T(leaveAt ?? 0)} – {D(to.Value, true)}, {T(backAt ?? 24 * 60)}";
+        }
         if (to is null) return from == today ? "until further notice" : $"from {D(from, true)} until further notice";
         if (to == from) return D(from, true);
         return $"{D(from, from.Year != to.Value.Year)} – {D(to.Value, true)}";

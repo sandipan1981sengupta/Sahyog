@@ -737,7 +737,7 @@
         oooBar.hidden = !o;
         if (!o) return;
         let text;
-        if (soon && window.SN && SN.oooDays) { const r = SN.oooDays(soon); text = `will be out of office · ${r.last ? SN.oooRangeText(r.first, r.last) : SN.oooRangeText(r.first, null) + ", until further notice"}`; }
+        if (soon && window.SN && SN.oooDays) { const r = SN.oooDays(soon); text = `will be out of office · ${SN.oooWhenText ? SN.oooWhenText(soon) : SN.oooRangeText(r.first, r.last)}${r.last ? "" : ", until further notice"}`; }
         else text = "is out of office · " + (window.SN && SN.oooUntilText ? SN.oooUntilText(o).replace("until you turn it off", "until further notice") : "");
         oooBar.classList.toggle("planned", !!soon);
         oooBar.innerHTML = `<i class="dot st-ooo" aria-hidden="true"></i><span class="sn-ooo-bar-t"><b>${S.escape(otherName)}</b> ${S.escape(text)}`

@@ -60,7 +60,7 @@ public sealed class MeetingsController : Controller
     }
 
     [HttpPost("schedule")]
-    public async Task<IActionResult> Schedule([Bind(Prefix = "Form")] ScheduleMeetingInput input)
+    public async Task<IActionResult> Schedule([Bind(Prefix = "Form")] ScheduleMeetingInput input, [FromServices] IOutOfOfficeService ooo)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var limits = (await _tenants.GetLimitsAsync(tenantId))!;
@@ -114,6 +114,17 @@ public sealed class MeetingsController : Controller
                 ModelState.AddModelError("Form.DurationMinutes", $"Your {limits.PlanName} plan allows meetings up to {limits.MaxMeetingMinutes} minutes. Choose All day, or ask your admin for a bigger plan.");
             if (startLocal < nowLocal.AddMinutes(-5))
                 ModelState.AddModelError("Form.Time", "That time has already passed.");
+        }
+
+        // you can't book yourself while you're out of office (whole days, or hours such as 4:00 pm – 5:00 pm)
+        if ((await ooo.ListAsync(tenantId)).TryGetValue(Me.ToString(), out var away))
+        {
+            var meetStartUtc = MeetingCalendar.ToUtc(startLocal, zone);
+            var meetEndUtc = meetStartUtc.AddMinutes(duration);
+            var awayFrom = away.StartUtc ?? away.SinceUtc;
+            if (awayFrom < meetEndUtc && (away.UntilUtc is null || away.UntilUtc > meetStartUtc))
+                ModelState.AddModelError(input.AllDay ? "Form.DateText" : "Form.Time",
+                    "You're out of office at this time. Pick another time, or change or turn off your out of office first.");
         }
 
         var guestEmails = new List<string>();

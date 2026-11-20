@@ -487,10 +487,38 @@
         const last = o.untilUtc ? addDays(startOf(new Date(new Date(o.untilUtc) - 1)), 0) : null;
         return { first, last };
     };
+    const timeName = (d) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const isMidnight = (d) => d.getHours() === 0 && d.getMinutes() === 0;
+    SN.oooTimeName = timeName;
+    /** True when it starts or ends partway through a day (e.g. 4:00 pm – 5:00 pm). */
+    SN.oooHasHours = (o) => !!o && ((!!o.startUtc && !isMidnight(new Date(o.startUtc))) || (!!o.untilUtc && !isMidnight(new Date(o.untilUtc))));
+    /** "Fri, 20 Nov, 4:00 pm – 5:00 pm" · "Fri, 20 Nov, 4:00 pm – Mon, 23 Nov, 10:00 am" · "Mon, 24 Nov – Fri, 28 Nov" · "from Mon, 24 Nov" */
+    SN.oooWhenText = (o) => {
+        if (!o) return "";
+        const r = SN.oooDays(o);
+        if (!SN.oooHasHours(o)) return SN.oooRangeText(r.first, r.last);
+        const s = new Date(o.startUtc || o.sinceUtc || Date.now()), sTime = !!o.startUtc && !isMidnight(s);
+        const left = sTime ? dayName(s) + ", " + timeName(s) : dayName(s);
+        if (!o.untilUtc) return "from " + left;
+        const e = new Date(o.untilUtc), eTime = !isMidnight(e);
+        if (+r.last === +startOf(s)) return eTime ? (sTime ? left + " – " + timeName(e) : dayName(s) + ", until " + timeName(e)) : dayName(s) + ", from " + timeName(s);
+        return left + " – " + (eTime ? dayName(e) + ", " + timeName(e) : dayName(r.last));
+    };
+    /** The hours away on one day: "4:00 pm – 5:00 pm" · "from 4:00 pm" · "until 10:00 am" · "" (the whole day). */
+    SN.oooHoursOn = (o, day) => {
+        if (!o) return "";
+        const d0 = startOf(day), d1 = addDays(d0, 1);
+        const s = new Date(o.startUtc || o.sinceUtc || Date.now()), e = o.untilUtc ? new Date(o.untilUtc) : null;
+        const from = o.startUtc && s > d0 ? s : null, until = e && e < d1 ? e : null;
+        if (from && until) return timeName(from) + " – " + timeName(until);
+        if (from) return "from " + timeName(from);
+        if (until) return "until " + timeName(until);
+        return "";
+    };
     /** "back Mon, 25 Nov" / "until you turn it off" (for out of office now); "planned · Mon, 24 Nov – Fri, 28 Nov" (later) */
     SN.oooUntilText = (o) => {
         if (!o) return "";
-        if (o.startUtc && new Date(o.startUtc) > new Date()) { const r = SN.oooDays(o); return "planned · " + SN.oooRangeText(r.first, r.last); }
+        if (o.startUtc && new Date(o.startUtc) > new Date()) return "planned · " + SN.oooWhenText(o);
         if (!o.untilUtc) return "until you turn it off";
         const d = new Date(o.untilUtc);
         return d.getHours() === 0 && d.getMinutes() === 0 ? "back " + dayName(d) : "back " + dayName(d) + ", " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -501,7 +529,7 @@
     const datebox = (id, label, placeholder) => `
         <div class="mdpwl-outer sn-ooo-dp" style="--mdpwl-height: 42px;">
             <label class="mdpwl-label" for="${id}">${label}</label>
-            <div class="mdpwl-field" data-required="false">
+            <div class="mdpwl-field" data-required="false" style="--mdpwl-radius: 30px;">
                 <input type="text" id="${id}" class="mdpwl-input" placeholder="${placeholder}" autocomplete="off" data-disabled-dates="[]" />
                 <span class="mdpwl-icon-error" style="display:none;"></span>
                 <span class="mdpwl-icon"><i class="bi bi-calendar3"></i></span>
@@ -540,6 +568,16 @@
                         <div class="sn-ooo-range-foot">
                             <label class="sn-ooo-noend"><input type="checkbox" id="oooNoEnd" /> <span>No end date: until I turn it off</span></label>
                             <span class="sn-ooo-count" id="oooCount"></span>
+                        </div>
+                        <div class="sn-ooo-hours">
+                            <label class="sn-ooo-noend"><input type="checkbox" id="oooPart" /> <span>Only part of the day: set the hours</span></label>
+                            <div class="sn-ooo-range sn-ooo-times" id="oooTimes" hidden>
+                                <div class="mdpwl-outer"><label class="mdpwl-label" for="oooFromTime">Leave at</label>
+                                    <select id="oooFromTime" class="sn-ooo-tsel"></select></div>
+                                <span class="sn-ooo-arrow" aria-hidden="true"><i class="fa fa-long-arrow-right"></i></span>
+                                <div class="mdpwl-outer" id="oooToTimeBox"><label class="mdpwl-label" for="oooToTime">Back at</label>
+                                    <select id="oooToTime" class="sn-ooo-tsel"></select></div>
+                            </div>
                         </div>
                         <label class="sn-field-label" for="oooMsg">Note for colleagues</label>
                         <textarea id="oooMsg" class="sn-textarea sn-ooo-msg" rows="3" maxlength="500"></textarea>
@@ -599,6 +637,7 @@
                 if (fFrom) fFrom.set("minDate", today);
                 if (from && to && to < from && !q("#oooNoEnd").checked) setDay("oooTo", from);
                 if (fTo) fTo.set("minDate", from || today);
+                oooDlg._fixTimes?.();
                 preview();
             };
             oooDlg._sync = sync;
@@ -627,6 +666,51 @@
                 else if (w === "week") setRange(t, addDays(t, dow <= 5 ? 5 - dow : 6));                       // till Friday (Saturday on a Saturday)
                 else if (w === "next") { const mon = addDays(t, ((8 - dow) % 7) || 7); setRange(mon, addDays(mon, 4)); }   // next Mon – Fri
             }));
+
+            // ----- only part of the day: leave at (on the first day) → back at (on the last day) -----
+            const pad = (n) => String(n).padStart(2, "0");
+            const hhmm = (mins) => `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
+            const minsOf = (v) => { const [h, m] = String(v || "0:0").split(":").map(Number); return h * 60 + (m || 0); };
+            const timeOpts = (fromM, toM, endOfDay) => {
+                let h = "";
+                for (let m = fromM; m <= toM; m += 15) h += `<option value="${hhmm(m)}">${timeName(new Date(2000, 0, 1, Math.floor(m / 60), m % 60))}</option>`;
+                return h + (endOfDay ? '<option value="24:00">End of day</option>' : "");
+            };
+            q("#oooFromTime").innerHTML = timeOpts(0, 23 * 60 + 45, false);
+            q("#oooToTime").innerHTML = timeOpts(15, 23 * 60 + 45, true);
+            const partOn = () => q("#oooPart").checked;
+            const at = (day, v) => { const m = minsOf(v); return new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(m / 60), m % 60); };
+            /** The time away as chosen: { from, to, noEnd, part, start, end } (end = null: until I turn it off). */
+            const span = () => {
+                const from = dayOf("oooFrom"), noEnd = q("#oooNoEnd").checked, to = noEnd ? null : dayOf("oooTo"), part = partOn();
+                if (!from) return { from, to, noEnd, part, start: null, end: null };
+                return { from, to, noEnd, part, start: part ? at(from, q("#oooFromTime").value) : from, end: to ? (part ? at(to, q("#oooToTime").value) : addDays(to, 1)) : null };
+            };
+            oooDlg._span = span;
+            const setTimes = (fromV, toV) => { q("#oooFromTime").value = fromV; q("#oooToTime").value = toV; };
+            oooDlg._setTimes = setTimes;
+            /** Leave at the next quarter hour (today) or 9:00 am, back an hour later. */
+            const defaultTimes = () => {
+                const from = dayOf("oooFrom"), now = new Date();
+                const s = from && +from === +startOf(now) ? Math.min(Math.ceil((now.getHours() * 60 + now.getMinutes() + 1) / 15) * 15, 22 * 60 + 45) : 9 * 60;
+                setTimes(hhmm(s), hhmm(s + 60));
+            };
+            const fixTimes = () => {
+                const { from, to } = span();
+                q("#oooToTimeBox").hidden = q("#oooNoEnd").checked;
+                // the same day: back has to be after leave
+                if (from && to && +from === +to && minsOf(q("#oooToTime").value) <= minsOf(q("#oooFromTime").value))
+                    q("#oooToTime").value = minsOf(q("#oooFromTime").value) >= 23 * 60 ? "24:00" : hhmm(minsOf(q("#oooFromTime").value) + 60);
+            };
+            oooDlg._fixTimes = fixTimes;
+            q("#oooPart").addEventListener("change", () => {
+                q("#oooTimes").hidden = !partOn();
+                if (partOn()) defaultTimes();
+                fixTimes(); preview();
+            });
+            q("#oooFromTime").addEventListener("change", () => { fixTimes(); preview(); });
+            q("#oooToTime").addEventListener("change", () => { fixTimes(); preview(); });
+            q("#oooNoEnd").addEventListener("change", () => fixTimes());
 
             // ----- who to tell by email -----
             let people = null, picked = new Set(), canEmail = true;
@@ -693,16 +777,26 @@
             // ----- what colleagues will see -----
             const workDays = (a, b) => { let n = 0; for (let d = a; d <= b; d = addDays(d, 1)) if (d.getDay() % 6) n++; return n; };
             const preview = () => {
-                const from = dayOf("oooFrom"), noEnd = q("#oooNoEnd").checked, to = noEnd ? null : dayOf("oooTo");
+                const { from, to, noEnd, part, start, end } = span();
                 const today = startOf(new Date());
                 let when;
                 if (!from) when = "pick your first day";
+                else if (part) {
+                    const o = { startUtc: start.toISOString(), untilUtc: end ? end.toISOString() : null };
+                    if (noEnd) when = "from " + dayName(start) + ", " + timeName(start) + ", until you turn it off";
+                    else if (!to) when = "pick your last day";
+                    else when = SN.oooWhenText(o) + " · back " + (isMidnight(end) ? dayName(end) : (+startOf(end) === +startOf(start) ? "at " : dayName(end) + ", ") + timeName(end));
+                }
                 else if (noEnd) when = +from === +today ? "until you turn it off" : "from " + dayName(from) + ", until you turn it off";
                 else if (!to) when = "pick your last day";
                 else when = SN.oooRangeText(from, to) + " · back " + dayName((() => { let d = addDays(to, 1); while (!(d.getDay() % 6)) d = addDays(d, 1); return d; })());
                 q("#oooPrevWhen").textContent = when;
                 const c = q("#oooCount");
-                if (from && to && !noEnd) {
+                const mins = part && start && end ? Math.round((end - start) / 6e4) : 0;
+                if (part && mins > 0 && mins < 24 * 60) {
+                    const h = Math.floor(mins / 60), m = mins % 60;
+                    c.textContent = (h ? `${h} hour${h === 1 ? "" : "s"}` : "") + (h && m ? " " : "") + (m ? `${m} min` : "");
+                } else if (from && to && !noEnd) {
                     const days = Math.round((to - from) / 864e5) + 1, wd = workDays(from, to);
                     c.textContent = `${days} day${days === 1 ? "" : "s"}` + (wd !== days ? ` · ${wd} working day${wd === 1 ? "" : "s"}` : "");
                 } else c.textContent = "";
@@ -720,20 +814,24 @@
             // ----- save -----
             q("#oooForm").addEventListener("submit", async (e) => {
                 e.preventDefault();
-                const from = dayOf("oooFrom"), noEnd = q("#oooNoEnd").checked, to = noEnd ? null : dayOf("oooTo");
+                const { from, to, noEnd, part, start, end } = span();
                 const warn = (t) => Sahyog.toast?.(t, { kind: "warn", title: "Out of office" });
                 if (!from) { warn("Pick the first day you're away."); fp("oooFrom")?.open(); return; }
                 if (from < startOf(new Date())) { warn("The first day can't be in the past."); return; }
                 if (!noEnd && !to) { warn("Pick the last day you're away, or tick “No end date”."); fp("oooTo")?.open(); return; }
                 if (to && to < from) { warn("The last day can't be before the first day."); return; }
+                if (part && end && end <= start) { warn("“Back at” has to be after “Leave at”."); q("#oooToTime").focus(); return; }
+                if (part && end && end <= new Date()) { warn("That time has already passed. Pick a later time."); q("#oooFromTime").focus(); return; }
                 const notify = oooDlg.dataset.notify;
                 if (notify === "some" && !picked.size && canEmail) { warn("Pick who gets the email, or choose “Don't email”."); return; }
                 q("#oooSave").disabled = true;
                 try {
-                    const r = await Sahyog.saveOutOfOffice({ message: q("#oooMsg").value.trim(), from: isoDay(from), to: to ? isoDay(to) : "", notify, people: [...picked] });
+                    const r = await Sahyog.saveOutOfOffice({ message: q("#oooMsg").value.trim(), from: isoDay(from), to: to ? isoDay(to) : "", notify, people: [...picked],
+                        fromTime: part ? q("#oooFromTime").value : "", toTime: part && to ? q("#oooToTime").value : "" });
                     oooDlg.close();
-                    const planned = from > startOf(new Date());
-                    let text = (planned ? "Out of office is planned: " : "Out of office is on: ") + (noEnd ? (planned ? "from " + dayName(from) + ", until you turn it off" : "until you turn it off") : SN.oooRangeText(from, to)) + ".";
+                    const planned = start > new Date();
+                    const range = part ? (noEnd ? "from " + dayName(start) + ", " + timeName(start) : SN.oooWhenText({ startUtc: start.toISOString(), untilUtc: end.toISOString() })) : SN.oooRangeText(from, to);
+                    let text = (planned ? "Out of office is planned: " : "Out of office is on: ") + (noEnd ? (planned ? (part ? range : "from " + dayName(from)) + ", until you turn it off" : "until you turn it off") : range) + ".";
                     if (r.mailed) text += ` Email sent to ${r.mailed} ${r.mailed === 1 ? "person" : "people"}.`;
                     Sahyog.toast?.(text, { kind: "success", title: "Out of office" });
                     if (r.mailNote) Sahyog.toast?.(r.mailNote, { kind: "warn", title: "Email" });
@@ -765,6 +863,15 @@
         } else {
             noEndBox.checked = false; noEndBox.dispatchEvent(new Event("change"));
             oooDlg._setDay("oooFrom", today); oooDlg._setDay("oooTo", today);
+        }
+        // saved with hours (e.g. 4:00 pm – 5:00 pm): show them again
+        const withHours = !!(cur && SN.oooHasHours(cur));
+        q("#oooPart").checked = withHours;
+        q("#oooTimes").hidden = !withHours;
+        if (withHours) {
+            const hm = (iso, fallback) => { if (!iso) return fallback; const d = new Date(iso); return isMidnight(d) ? fallback : `${String(d.getHours()).padStart(2, "0")}:${String(Math.floor(d.getMinutes() / 15) * 15).padStart(2, "0")}`; };
+            const started = cur.startUtc && new Date(cur.startUtc) <= new Date();
+            oooDlg._setTimes(started || !cur.startUtc ? "00:00" : hm(cur.startUtc, "00:00"), hm(cur.untilUtc, "24:00"));
         }
         oooDlg._resetPeople();
         oooDlg._pickNotify("none");

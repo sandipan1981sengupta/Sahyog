@@ -3538,6 +3538,18 @@ html[data-theme="dark"] .sn-of-suggest { color: #C4B5FD; background: rgba(167, 1
 .sn-body .dot.st-ooo, .dot.st-ooo { background: radial-gradient(circle at 35% 30%, #E9D5FF 0%, #A855F7 50%, #7E22CE 100%) !important; animation: none; transform: none; position: relative; }
 .sn-body .dot.st-ooo::after, .dot.st-ooo::after { content: "\f08b"; font-family: FontAwesome; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 7px; }
 .sn-status-menu .dot.st-ooo { display: inline-block; width: 14px; height: 14px; border-radius: 50%; }
+/* on an avatar: pinned to the bottom-right corner like the green "available" dot, a little bigger, with a plane and a purple ring */
+.sn-body .avatar .dot.st-ooo { position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; border: 3px solid var(--sn-dot-ring); z-index: 2;
+    animation: snDotOoo 2.6s ease-in-out infinite; }
+.sn-body .av-44 .dot.st-ooo, .sn-body .av-56 .dot.st-ooo { width: 21px; height: 21px; }
+.sn-body .avatar .dot.st-ooo::after { content: "\f072"; font-size: 8px; line-height: 1; transform: rotate(-45deg); }
+.sn-body .av-44 .dot.st-ooo::after, .sn-body .av-56 .dot.st-ooo::after { font-size: 9.5px; }
+.sn-body .avatar.is-ooo { box-shadow: 0 0 0 2px var(--sn-dot-ring), 0 0 0 3.5px rgba(168, 85, 247, .75), 0 0 14px rgba(168, 85, 247, .35); }
+@keyframes snDotOoo {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, .55), 0 0 6px rgba(168, 85, 247, .7); }
+    50%      { box-shadow: 0 0 0 5px rgba(168, 85, 247, 0), 0 0 11px rgba(168, 85, 247, .95); }
+}
+@media (prefers-reduced-motion: reduce) { .sn-body .avatar .dot.st-ooo { animation: none; } }
 .sn-ooo-off[hidden] { display: none !important; }
 /* the dialog */
 .sn-ooo-dlg { width: min(560px, calc(100vw - 24px)); }
@@ -3611,11 +3623,38 @@ html[data-theme="dark"] .msg-edit:hover { background: rgba(96, 165, 250, .18); }
 .sn-ooo-range { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; gap: 10px; }
 .sn-ooo-range .mdpwl-outer { width: 100%; }
 .sn-ooo-arrow { height: 42px; display: grid; place-items: center; color: #A855F7; font-size: 18px; }
-.sn-ooo-range-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: -4px; }
+.sn-ooo-range-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
 .sn-ooo-noend { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; color: var(--sn-ink); }
 .sn-ooo-noend input { width: 16px; height: 16px; accent-color: #9333EA; margin: 0; }
 .sn-ooo-count { font-size: 12.5px; font-weight: 700; color: #7E22CE; }
 .sn-ooo-dp .mdpwl-field.mdpwl-disabled { opacity: .5; }
+/* only part of the day: Leave at → Back at (same rounded boxes as the dates) */
+.sn-ooo-hours { display: flex; flex-direction: column; gap: 10px; }
+.sn-ooo-times[hidden], #oooToTimeBox[hidden] { display: none !important; }
+.sn-ooo-tsel { width: 100%; height: 42px; padding: 0 40px 0 18px; border-radius: 30px; font: 500 15px Roboto, system-ui, sans-serif; color: var(--sn-ink);
+    background: var(--sn-field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath fill='%23A855F7' d='M8 11 3 6h10z'/%3E%3C/svg%3E") no-repeat right 16px center;
+    border: 1.5px solid var(--sn-field-edge); appearance: none; -webkit-appearance: none; cursor: pointer; }
+.sn-ooo-tsel:focus { outline: none; border-color: #A855F7; box-shadow: 0 0 0 4px rgba(168, 85, 247, .18); }
+html[data-theme="dark"] .sn-body .sn-ooo-tsel { background-color: #0D1220 !important; border-color: rgba(148, 163, 184, .22) !important; color: #E2E8F0; }
+html[data-theme="dark"] .sn-body .sn-ooo-tsel option { background: #0D1220; color: #E2E8F0; }
+/* Meetings calendar: colleagues who are away that day */
+.sn-ooo-who { display: flex; align-items: center; gap: 5px; min-width: 0; margin: 2px 0; padding: 2px 8px; border-radius: 999px; font: 600 11px Roboto, system-ui, sans-serif;
+    color: #7E22CE; background: rgba(168, 85, 247, .12); box-shadow: inset 0 0 0 1px rgba(168, 85, 247, .3); white-space: nowrap; overflow: hidden; }
+.sn-ooo-who span { overflow: hidden; text-overflow: ellipsis; }
+.sn-ooo-who small { font-size: 10.5px; font-weight: 500; opacity: .85; }
+html[data-theme="dark"] .sn-ooo-who { color: #E9D5FF; background: rgba(168, 85, 247, .18); }
+.sn-mcell .sn-ooo-whos { display: flex; flex-direction: column; gap: 2px; margin: 0 0 3px; }
+.sn-sched-col .sn-ooo-whos { position: absolute; left: 4px; right: 4px; top: 4px; z-index: 1; display: flex; flex-direction: column; gap: 2px; pointer-events: none; }
+.sn-sched-col.sn-ooo-day .sn-ooo-whos { top: 32px; }
+/* week / day: hours away drawn at their time (e.g. 4:00 pm – 5:00 pm) */
+.sn-ooo-block { position: absolute; left: 2px; right: 2px; z-index: 0; pointer-events: none; border-radius: 8px; min-height: 18px; padding: 2px 6px; overflow: hidden;
+    background: repeating-linear-gradient(135deg, rgba(168, 85, 247, .16) 0 8px, rgba(168, 85, 247, .07) 8px 16px); box-shadow: inset 0 0 0 1px rgba(168, 85, 247, .45);
+    font: 600 10.5px/1.35 Roboto, system-ui, sans-serif; color: #7E22CE; }
+.sn-ooo-block b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-theme="dark"] .sn-ooo-block { color: #E9D5FF; }
+/* your own out-of-office days can't be booked: no "add" cursor or slot hint there */
+.sn-mcell.sn-ooo-day, .sn-sched-col.sn-ooo-day, .sn-allday-cell.sn-ooo-day { cursor: not-allowed !important; }
+.sn-mcell.sn-ooo-day .sn-madd, .sn-sched-col.sn-ooo-day .sn-slot-hint { display: none !important; }
 /* email: Don't email · Whole team · Pick people */
 .sn-ooo-seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 999px; background: var(--sn-field); border: 1px solid var(--sn-field-edge); align-self: flex-start; }
 .sn-ooo-seg button { height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--sn-ink); cursor: pointer; font: 600 13px Roboto, system-ui, sans-serif; display: inline-flex; align-items: center; gap: 7px; }
