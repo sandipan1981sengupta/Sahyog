@@ -331,6 +331,34 @@
         document.addEventListener("pointerdown", outside, true);
     };
 
+    // ---------- "Team chat · Calls · Meetings" right after the company name in the top bar (also shortcuts) ----------
+    document.addEventListener("DOMContentLoaded", () => {
+        const heading = document.querySelector(".sn-topbar .strip-heading");
+        if (!heading || !document.body.dataset.me || heading.parentElement.classList.contains("sn-headrow")) return;
+        const row = document.createElement("div");
+        row.className = "sn-headrow";
+        heading.parentNode.insertBefore(row, heading);
+        row.appendChild(heading);
+        const nav = document.createElement("nav");
+        nav.className = "sn-app-tags";
+        nav.setAttribute("aria-label", "ShankhNaad");
+        nav.innerHTML = [["chat", "/chat", "Team chat", "fa-comments"], ["calls", "/calls", "Calls", "fa-phone"], ["meet", "/meetings", "Meetings", "fa-video-camera"]]
+            .map(([k, href, label, icon]) => `<a href="${href}" class="sn-app-tag ${k}" title="${label}"><span class="sn-app-ic"><i class="fa ${icon}" aria-hidden="true"></i></span><span class="sn-app-lb">${label}</span></a>`)
+            .join("");
+        row.appendChild(nav);
+        const mark = () => {
+            const p = location.pathname.toLowerCase();
+            nav.querySelectorAll("a").forEach((a) => {
+                const on = p === a.getAttribute("href") || p.startsWith(a.getAttribute("href") + "/");
+                a.classList.toggle("on", on);
+                if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+            });
+        };
+        mark();
+        if (SN.onPage) SN.onPage(mark);
+        window.addEventListener("popstate", mark);
+    });
+
     // A "Theme: …" item in the user menu (the top-bar button is hidden on phones).
     document.addEventListener("DOMContentLoaded", () => {
         const dd = document.querySelector(".strip-user-dropdown[data-strip-user-dropdown]");

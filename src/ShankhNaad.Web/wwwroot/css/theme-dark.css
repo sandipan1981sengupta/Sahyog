@@ -168,6 +168,7 @@ html[data-theme="dark"].sn-carbon .sn-pc-map .leaflet-bar a { background: #23232
 html[data-theme="dark"].sn-carbon .sn-theme-pop { background: rgba(30, 30, 30, .97); }
 html[data-theme="dark"].sn-carbon.sn-carbon .sn-theme-pop { background: rgba(25, 25, 25, .97); }
 html[data-theme="dark"].sn-carbon .sn-theme-pop-t { color: #9A9A9A; }
+html[data-theme="dark"].sn-carbon .sn-app-tag { color: #D6D6D6; }
 /* ---- from responsive.css ---- */
 @media (max-width: 760px) {
     html[data-theme="dark"].sn-carbon .sn-head .hdr-menu-toggle { color: #E9E9E9 !important; }
