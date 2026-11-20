@@ -460,6 +460,26 @@ public sealed partial class ChatController : Controller
         return RedirectToAction(nameof(Index), new { id = channelId });
     }
 
+    /// <summary>Edits one of your own text messages; everyone in the chat sees the change at once ("Edited"). Called from chat.js.</summary>
+    [HttpPost("messages/{messageId:long}/edit")]
+    public async Task<IActionResult> EditMessage(long messageId, string? body)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        body = (body ?? "").Trim();
+        if (body.Length == 0) return BadRequest(new { error = "A message can't be empty. To remove it, delete it." });
+        if (body.Length > 4000) return BadRequest(new { error = "That's too long (4,000 characters at most)." });
+        var (status, message) = await _chat.EditMessageAsync(tenantId, messageId, Me, body);
+        switch (status)
+        {
+            case 1: return NotFound(new { error = "That message no longer exists." });
+            case 2: return StatusCode(403, new { error = "You can edit only your own messages." });
+            case 3: return BadRequest(new { error = "This message can't be edited." });
+            case 4: return StatusCode(503, new { error = "Editing needs a database update (32_OutOfOfficeAndEdit.sql). Ask your administrator." });
+        }
+        await _hub.Clients.Group(ChatHub.ChannelGroup(message!.ChannelId)).SendAsync("MessageEdited", message);
+        return Json(message);
+    }
+
     /// <summary>Deletes one message: only your own (not even an admin can delete someone else's). Called from chat.js.</summary>
     [HttpPost("messages/{messageId:long}/delete")]
     public async Task<IActionResult> DeleteMessage(long messageId)

@@ -55,6 +55,8 @@ public sealed record MessageDto(
     public string? ReplyToText { get; init; }
     /// <summary>Copied into a group from a one-to-one chat ("Add people" with history; needs 29_GroupMembers.sql).</summary>
     public bool IsCopied { get; init; }
+    /// <summary>When the sender last edited it (needs 32_OutOfOfficeAndEdit.sql). Null = never edited.</summary>
+    public DateTime? EditedUtc { get; init; }
 }
 
 public sealed record SendMessageRequest(Guid TenantId, Guid ChannelId, Guid SenderId, string Body)

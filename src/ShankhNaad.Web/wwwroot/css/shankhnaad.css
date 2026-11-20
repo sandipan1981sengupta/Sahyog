@@ -3523,3 +3523,81 @@ html[data-theme="dark"] .sn-app-tag.on { background: rgba(255, 255, 255, .12); c
 html[data-theme="dark"] .sn-of-quick { background: rgba(96, 165, 250, .08); border-color: rgba(96, 165, 250, .2); }
 html[data-theme="dark"] .sn-of-quick[data-state="yes"] { background: rgba(34, 197, 94, .1); border-color: rgba(34, 197, 94, .28); }
 html[data-theme="dark"] .sn-of-suggest { color: #C4B5FD; background: rgba(167, 139, 250, .1); border-color: rgba(167, 139, 250, .25); }
+
+/* the user menu's "Theme  CloudWheel  ›" item (opens the theme submenu) */
+.sn-theme-item { display: flex; align-items: center; }
+.sn-theme-item .sn-theme-label { flex: 1; }
+.sn-theme-now { font-size: 12px; font-weight: 600; color: var(--sn-text-2); margin-right: 8px; }
+.sn-theme-chev { font-size: 10px; color: var(--sn-text-2); transform: rotate(180deg); }
+.sn-theme-pop.sn-theme-sub { transform: translateX(8px) scale(.98); }
+.sn-theme-pop.sn-theme-sub.in { transform: none; }
+
+/* =====================================================================
+   Out of office (purple) · edit your message
+   ===================================================================== */
+.sn-body .dot.st-ooo, .dot.st-ooo { background: radial-gradient(circle at 35% 30%, #E9D5FF 0%, #A855F7 50%, #7E22CE 100%) !important; animation: none; transform: none; position: relative; }
+.sn-body .dot.st-ooo::after, .dot.st-ooo::after { content: "\f08b"; font-family: FontAwesome; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 7px; }
+.sn-status-menu .dot.st-ooo { display: inline-block; width: 14px; height: 14px; border-radius: 50%; }
+.sn-ooo-off[hidden] { display: none !important; }
+/* the dialog */
+.sn-ooo-dlg { width: min(560px, calc(100vw - 24px)); }
+.sn-ooo-ic { background: linear-gradient(135deg, #A855F7, #7E22CE) !important; color: #fff !important; }
+.sn-ooo-body { display: flex; flex-direction: column; gap: 8px; }
+.sn-ooo-body .sn-field-label { margin: 8px 0 0; }
+.sn-ooo-msg { font-family: Roboto, system-ui, sans-serif; font-size: 14px; }
+.sn-ooo-when { display: flex; flex-wrap: wrap; gap: 8px; }
+.sn-ooo-when button { height: 36px; padding: 0 14px; border-radius: 999px; cursor: pointer; font: 600 13.5px Roboto, system-ui, sans-serif;
+    color: var(--sn-ink); background: var(--sn-field); border: 1px solid var(--sn-field-edge); }
+.sn-ooo-when button[aria-checked="true"] { color: #fff; border-color: transparent; background: linear-gradient(135deg, #A855F7, #7E22CE); box-shadow: 0 8px 18px -10px rgba(126, 34, 206, .9); }
+.sn-ooo-date { width: auto !important; max-width: 220px; font-family: Roboto, system-ui, sans-serif !important; }
+.sn-ooo-date[hidden] { display: none; }
+.sn-ooo-preview { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 16px; background: rgba(168, 85, 247, .08); border: 1px solid rgba(168, 85, 247, .22); }
+.sn-ooo-preview-l { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--sn-text-2); }
+.sn-ooo-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; }
+.sn-ooo-chip .dot, .sn-ooo-bar .dot, .sn-pc-ooo .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.sn-ooo-preview q, .sn-ooo-bar q, .sn-pc-ooo q { display: block; font-size: 13px; font-style: italic; color: var(--sn-text-2); }
+.sn-ooo-preview q[hidden], .sn-pc-ooo q[hidden] { display: none; }
+/* above the message box: the person you're writing to is out of office */
+.sn-ooo-bar { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 8px; padding: 10px 14px; border-radius: 16px; font-size: 13.5px;
+    background: rgba(168, 85, 247, .1); border: 1px solid rgba(168, 85, 247, .25); color: var(--sn-ink); }
+.sn-ooo-bar[hidden] { display: none; }
+.sn-ooo-bar .dot { margin-top: 3px; }
+.sn-ooo-bar q { margin-top: 2px; }
+/* profile card */
+.sn-pc-ooo { margin: 2px 0 0; display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #7E22CE; }
+.sn-pc-ooo[hidden] { display: none; }
+.sn-pc-ooo .dot { margin-top: 2px; }
+.sn-pc-tag#pcStatus[data-status="Out of office"] { color: #7E22CE; background: rgba(168, 85, 247, .14); }
+.sn-pc-tag#pcStatus[data-status="Out of office"] i { background: #A855F7; }
+html[data-theme="dark"] .sn-ooo-bar, html[data-theme="dark"] .sn-ooo-preview { background: rgba(168, 85, 247, .12); border-color: rgba(192, 132, 252, .3); }
+html[data-theme="dark"] .sn-pc-ooo, html[data-theme="dark"] .sn-pc-tag#pcStatus[data-status="Out of office"] { color: #D8B4FE; }
+
+/* edit: ✏️ next to 🗑 on your own messages, the editor in place of the bubble, "· Edited" */
+.msg-edit {
+    position: absolute; top: 50%; left: -80px; width: 32px; height: 32px; margin-top: -16px; border-radius: 10px;
+    border: 1px solid rgba(15, 23, 42, .1); background: rgba(255, 255, 255, .9); color: #2563EB; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+    opacity: 0; transform: scale(.85); transition: opacity .15s ease, transform .15s ease, background .15s ease;
+}
+.msg:hover .msg-edit, .msg-edit:focus-visible { opacity: 1; transform: none; }
+.msg-edit:hover { background: #DBEAFE; }
+.msg.msg-editing .msg-edit, .msg.msg-editing .msg-del, .msg.msg-editing .msg-quick { display: none !important; }
+@media (hover: none) { .msg-edit { opacity: .75; transform: none; } }
+html[data-theme="dark"] .msg-edit { background: rgba(22, 28, 48, .95); border-color: rgba(255, 255, 255, .1); color: #93C5FD; }
+html[data-theme="dark"] .msg-edit:hover { background: rgba(96, 165, 250, .18); }
+.msg-edited { font-style: italic; opacity: .8; }
+.msg-editor { width: min(560px, 70vw); display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 18px;
+    background: var(--sn-field); border: 1.5px solid #2563EB; box-shadow: 0 0 0 4px rgba(37, 99, 235, .14); }
+.msg-editor textarea { width: 100%; box-sizing: border-box; border: 0; outline: none; resize: none; background: transparent; color: var(--sn-ink);
+    font: 14.5px/1.45 Roboto, system-ui, sans-serif; padding: 4px 6px; }
+.msg-editor-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.msg-editor-row small { font-size: 11.5px; color: var(--sn-text-2); }
+.msg-editor-row span { display: flex; gap: 6px; }
+.msg-editor-row button { height: 30px; padding: 0 12px; border-radius: 10px; cursor: pointer; font: 700 12.5px Roboto, system-ui, sans-serif; border: 1px solid var(--sn-field-edge); background: transparent; color: var(--sn-ink); }
+.msg-editor-row .msg-editor-save { border: 0; color: #fff; background: linear-gradient(135deg, #2563EB, #7C3AED); }
+.msg-editor-row button:disabled { opacity: .6; }
+@media (max-width: 900px) {
+    .sn-body .msg-edit { left: 26px; top: -10px; margin: 0; width: 28px; height: 28px; }
+    .msg.show-acts .msg-edit { opacity: 1; transform: none; }
+    .msg-editor { width: calc(100vw - 80px); }
+}

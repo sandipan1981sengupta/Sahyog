@@ -194,7 +194,7 @@
 
 @* ---------- conversation ---------- *@
 <main class="chat-main glass" id="chat"
-      data-channel="@(c?.Id)" data-has-older="@(Model.HasOlder ? "true" : "false")" data-max-mb="@Model.MaxUploadMb" data-me="@User.UserId()" data-other="@(c?.DirectWith?.Id)" data-admin="@(User.IsInRole(AppRoles.TenantAdmin) ? "true" : "false")">
+      data-channel="@(c?.Id)" data-has-older="@(Model.HasOlder ? "true" : "false")" data-max-mb="@Model.MaxUploadMb" data-me="@User.UserId()" data-other="@(c?.DirectWith?.Id)" data-other-name="@(c?.DirectWith?.Name)" data-admin="@(User.IsInRole(AppRoles.TenantAdmin) ? "true" : "false")">
     @if (c is null)
     {
         <div class="empty">

@@ -22,9 +22,11 @@ public sealed class ChatHub : Hub
     private readonly IUserService _users;
     private readonly ICallChatService _callChat;
     private readonly IReactionService _reactions;
+    private readonly IOutOfOfficeService _ooo;
 
-    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls, IUserService users, ICallChatService callChat, IReactionService reactions)
+    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls, IUserService users, ICallChatService callChat, IReactionService reactions, IOutOfOfficeService ooo)
     {
+        _ooo = ooo;
         _reactions = reactions;
         _callChat = callChat;
         _users = users;
@@ -185,6 +187,42 @@ public sealed class ChatHub : Hub
         var (tenantId, _) = Caller();
         if (!_presence.SetManual(Context.UserIdentifier!, status)) throw new HubException("Unknown status.");
         await BroadcastStatus(tenantId, Context.UserIdentifier!);
+    }
+
+    // ---------- out of office: kept in the database, so it shows while the person is offline ----------
+
+    /// <summary>Everyone in this workspace who is out of office now (user id → note, back date).</summary>
+    public async Task<Dictionary<string, OutOfOfficeDto>> OutOfOffice()
+    {
+        var (tenantId, _) = Caller();
+        return await _ooo.ListAsync(tenantId);
+    }
+
+    /// <summary>Turns on out of office with a note and an optional date it ends by itself (null = until turned off).</summary>
+    public async Task<OutOfOfficeDto> SetOutOfOffice(string? message, DateTime? untilUtc)
+    {
+        var (tenantId, userId) = Caller();
+        message = (message ?? "").Trim();
+        if (message.Length > 500) message = message[..500];
+        if (untilUtc is DateTime u)
+        {
+            untilUtc = DateTime.SpecifyKind(u, DateTimeKind.Utc);
+            if (untilUtc <= DateTime.UtcNow) throw new HubException("Pick a date in the future.");
+            if (untilUtc > DateTime.UtcNow.AddYears(1)) throw new HubException("Pick a date within a year.");
+        }
+        if (!await _ooo.SetAsync(tenantId, userId, message.Length == 0 ? null : message, untilUtc))
+            throw new HubException("Out of office needs a database update (32_OutOfOfficeAndEdit.sql). Ask your administrator.");
+        var dto = new OutOfOfficeDto(message.Length == 0 ? null : message, untilUtc, DateTime.UtcNow);
+        await Clients.Group(TenantGroup(tenantId)).SendAsync("OooChanged", userId.ToString(), dto);
+        return dto;
+    }
+
+    /// <summary>Back in the office.</summary>
+    public async Task ClearOutOfOffice()
+    {
+        var (tenantId, userId) = Caller();
+        await _ooo.ClearAsync(tenantId, userId);
+        await Clients.Group(TenantGroup(tenantId)).SendAsync("OooChanged", userId.ToString(), null);
     }
 
     /// <summary>The browser reports no activity for a while (shown as Away unless a status is picked).</summary>

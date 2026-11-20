@@ -35,6 +35,7 @@ public static class ServiceRegistration
         services.AddScoped<ICallChatService, CallChatService>();
         services.AddScoped<IReactionService, ReactionService>();
         services.AddScoped<ILocationService, LocationService>();
+        services.AddScoped<IOutOfOfficeService, OutOfOfficeService>();
         services.AddScoped<IAppEmailSender, SmtpEmailSender>();
         services.AddScoped<IAccountEmailService, AccountEmailService>();
 

@@ -50,6 +50,8 @@ public interface IChatService
     Task<int?> CopyHistoryAsync(Guid tenantId, Guid fromChannelId, Guid toChannelId, Guid userId, DateTime? sinceUtc);
     /// <summary>Deletes one message. Callers pass isAdmin = false so only the sender can delete it. Status 0 ok, 1 not found, 2 not allowed.</summary>
     Task<(int Status, Guid? ChannelId, string? FilePath)> DeleteMessageAsync(Guid tenantId, long messageId, Guid userId, bool isAdmin);
+    /// <summary>Edits your own text message. Status: 0 done, 1 not found, 2 not yours, 3 can't be edited, 4 the database needs 32_OutOfOfficeAndEdit.sql.</summary>
+    Task<(int Status, MessageDto? Message)> EditMessageAsync(Guid tenantId, long messageId, Guid userId, string body);
 }
 
 public sealed class ChatService : IChatService
@@ -75,7 +77,8 @@ public sealed class ChatService : IChatService
             ReplyToText = r.Has("ReplyToBody")
                 ? (string.IsNullOrEmpty(r.SN("ReplyToBody")) ? r.SN("ReplyToFileName") : r.SN("ReplyToBody"))
                 : null,
-            IsCopied = r.Has("CopiedFromId") && r["CopiedFromId"] is not DBNull
+            IsCopied = r.Has("CopiedFromId") && r["CopiedFromId"] is not DBNull,
+            EditedUtc = r.Has("EditedUtc") ? r.UtcN("EditedUtc") : null
         };
     }
 
@@ -352,6 +355,23 @@ public sealed class ChatService : IChatService
             result = p.AddOutput("@Result", SqlDbType.Int);
         }, r => r.S("StoragePath"));
         return (result!.OutInt() == 1, files);
+    }
+
+    public async Task<(int Status, MessageDto? Message)> EditMessageAsync(Guid tenantId, long messageId, Guid userId, string body)
+    {
+        SqlParameter? result = null;
+        List<MessageDto> rows;
+        try
+        {
+            rows = await _db.QueryAsync("dbo.sahyog_Chat_EditMessage", p =>
+            {
+                p.With("@TenantId", tenantId).With("@MessageId", messageId).With("@UserId", userId).AddText("@Body", body, 4000);
+                result = p.AddOutput("@Result", SqlDbType.Int);
+            }, MapMessage);
+        }
+        catch (SqlException ex) when (ex.Number == 2812) { return (4, null); }      // procedure not there yet
+        var status = result!.OutInt();
+        return status == 0 && rows.Count > 0 ? (0, rows[0]) : (status == 0 ? 1 : status, null);
     }
 
     public async Task<(int Status, Guid? ChannelId, string? FilePath)> DeleteMessageAsync(Guid tenantId, long messageId, Guid userId, bool isAdmin)

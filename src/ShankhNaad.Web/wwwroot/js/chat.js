@@ -158,6 +158,7 @@
     // words for the emoji panel's search box (English, a few per emoji)
     const EMOJI_WORDS = {"😀": "grin smile happy", "😃": "smile happy joy", "😄": "smile happy laugh", "😁": "grin beam happy", "😆": "laugh lol happy", "😅": "sweat laugh nervous phew", "🤣": "rofl laugh lol", "😂": "joy laugh tears lol", "🙂": "slight smile ok", "😉": "wink", "😊": "blush smile happy", "😇": "angel innocent halo", "🥰": "love hearts adore", "😍": "heart eyes love", "🤩": "star struck wow amazing", "😘": "kiss love", "😋": "yum tasty delicious", "😜": "wink tongue silly crazy", "🤪": "zany crazy silly", "😎": "cool sunglasses", "🤓": "nerd geek glasses", "🥳": "party celebrate birthday", "😏": "smirk", "😌": "relieved calm peace", "😴": "sleep tired zzz", "🤗": "hug hugging", "🤔": "think thinking hmm", "🤭": "oops giggle hand", "🤫": "shush quiet secret", "😶": "no mouth silent speechless", "😐": "neutral meh", "😑": "expressionless meh", "😬": "grimace awkward", "🙄": "eye roll whatever", "😮": "wow surprised open mouth", "😯": "hushed surprised", "😲": "astonished shocked wow", "😳": "flushed embarrassed", "🥺": "pleading please puppy", "😢": "cry sad tear", "😭": "sob cry sad", "😤": "triumph huff angry", "😡": "angry mad rage", "🤯": "mind blown explode", "😱": "scream fear shock", "🤒": "sick fever ill", "🤧": "sneeze sick cold", "😷": "mask sick", "👍": "thumbs up like yes ok good", "👎": "thumbs down dislike no bad", "👌": "ok perfect fine", "✌️": "peace victory", "🤞": "fingers crossed luck hope", "🤟": "love you", "🤘": "rock horns", "👏": "clap applause bravo well done", "🙌": "raise hands celebrate hooray", "👐": "open hands", "🙏": "pray thanks please namaste", "🤝": "handshake deal agree", "💪": "strong muscle flex power", "👋": "wave hello hi bye", "✋": "hand stop high five", "👊": "fist bump punch", "✊": "fist power", "🫡": "salute respect yes sir", "👀": "eyes look see watching", "🧠": "brain smart think", "❤️": "heart love red", "🧡": "orange heart", "💛": "yellow heart", "💚": "green heart", "💙": "blue heart", "💜": "purple heart", "🖤": "black heart", "🤍": "white heart", "💔": "broken heart sad", "💯": "hundred perfect 100", "💥": "boom bang", "✨": "sparkles shine new", "🔥": "fire hot lit", "⭐": "star", "🌟": "glowing star shine", "🎉": "party tada celebrate congrats", "🎊": "confetti celebrate", "🎁": "gift present", "🏆": "trophy win award winner", "🥇": "gold medal first winner", "✅": "check done yes tick complete", "❌": "cross no wrong cancel", "⚠️": "warning alert caution", "❓": "question what", "❗": "exclamation important", "💡": "idea bulb light", "📌": "pin pushpin important", "📎": "paperclip attach file", "📅": "calendar date schedule meeting", "⏰": "alarm clock time reminder", "📞": "phone call", "💻": "laptop computer work", "📊": "chart bar stats report", "📈": "chart up growth trend", "🚀": "rocket launch fast ship", "☕": "coffee tea break", "🍕": "pizza food", "🍰": "cake birthday dessert", "🌹": "rose flower", "🌞": "sun sunny morning"};
     const msgInfo = new Map();      // message id → { name, text } (for replies)
+    const bodies = new Map();       // message id → its text (for editing your own messages)
     const reactState = new Map();   // message id → [{ emoji, userId, name }]
     let reactQueue = new Set(), reactTimer = null;
     function queueReactions(id) {
@@ -363,11 +364,15 @@
         msgInfo.set(Number(m.id), { name: mine ? "yourself" : m.senderName, text: snippet(m) });
         // a group message shown in a person's chat
         const fromGroup = m.channelId !== channelId ? (m.fromGroup || "a group") : null;
+        // your own text messages can be edited (not calls, not a file without text)
+        const canEdit = mine && !call && !!m.body;
+        if (!call) bodies.set(Number(m.id), m.body || "");
+        const edited = m.editedUtc ? ` <span class="msg-edited" title="Edited ${S.escape(time(m.editedUtc))}">· Edited</span>` : "";
         el.innerHTML = `
             <span class="avatar av-38 tone-${m.senderTone}" data-user="${S.escape(m.senderId)}">${S.escape(m.senderInitials)}</span>
             <div class="msg-body">
-                <span class="msg-meta">${mine ? "You" : `<strong>${S.escape(m.senderName)}</strong>`} · ${time(m.sentUtc)}${fromGroup ? ` <span class="msg-from" title="Written in the group ${S.escape(fromGroup)}"><i class="fa fa-users" aria-hidden="true"></i> in ${S.escape(fromGroup)}</span>` : ""}</span>
-                <div class="msg-line">${quoteHtml(m)}${body}${file}${mine && !fromGroup ? ticksHtml(m.sentUtc) : ""}${canDelete ? `<button type="button" class="msg-del" data-del="${m.id}" title="Delete message" aria-label="Delete message"><i class="fa fa-trash-o" aria-hidden="true"></i></button>` : ""}
+                <span class="msg-meta">${mine ? "You" : `<strong>${S.escape(m.senderName)}</strong>`} · ${time(m.sentUtc)}${edited}${fromGroup ? ` <span class="msg-from" title="Written in the group ${S.escape(fromGroup)}"><i class="fa fa-users" aria-hidden="true"></i> in ${S.escape(fromGroup)}</span>` : ""}</span>
+                <div class="msg-line">${quoteHtml(m)}${body}${file}${mine && !fromGroup ? ticksHtml(m.sentUtc) : ""}${canEdit ? `<button type="button" class="msg-edit" data-edit="${m.id}" title="Edit message (↑ in an empty box edits your last one)" aria-label="Edit message"><i class="fa fa-pencil" aria-hidden="true"></i></button>` : ""}${canDelete ? `<button type="button" class="msg-del" data-del="${m.id}" title="Delete message" aria-label="Delete message"><i class="fa fa-trash-o" aria-hidden="true"></i></button>` : ""}
                     <span class="msg-quick" role="toolbar" aria-label="React or reply">${REACTS.map((e) => `<button type="button" data-react="${e}" data-mid="${m.id}" aria-label="React ${e}">${e}</button>`).join("")}<button type="button" class="mq-more" data-more="${m.id}" title="More reactions" aria-label="More reactions"><i class="fa fa-plus" aria-hidden="true"></i></button>${call ? "" : `<span class="mq-sep" aria-hidden="true"></span><button type="button" class="mq-reply" data-reply="${m.id}" title="Reply" aria-label="Reply to this message"><i class="fa fa-reply" aria-hidden="true"></i></button>`}</span>
                 </div>
                 <div class="msg-reacts" data-mid="${m.id}"></div>
@@ -460,6 +465,96 @@
                 }
             }
         });
+    });
+
+    // ---------- edit your own message ----------
+    // Click ✏️ (or press ↑ in an empty box): the bubble becomes a small editor. Enter saves, Shift+Enter = new line, Esc cancels.
+    function applyEdit(m) {
+        const id = Number(m.id);
+        bodies.set(id, m.body || "");
+        const info = msgInfo.get(id);
+        if (info) info.text = snippet(m);
+        // replies quoting it show the new text
+        list.querySelectorAll(`.msg-quote[data-jump="${id}"] span`).forEach((sp) => {
+            let t = (m.body || "").replace(/\s+/g, " ").trim();
+            sp.textContent = t.length > 120 ? `${t.slice(0, 120)}…` : t;
+        });
+        const el = list.querySelector(`.msg[data-id="${id}"]`);
+        if (!el) return;
+        if (el.classList.contains("msg-editing")) stopEdit(el);
+        const p = el.querySelector(".msg-line > .bubble:not(.msg-call)");
+        if (p) p.innerHTML = linkify(S.escape(m.body || ""));
+        const meta = el.querySelector(".msg-meta");
+        if (meta && m.editedUtc && !meta.querySelector(".msg-edited")) {
+            const sp = document.createElement("span");
+            sp.className = "msg-edited";
+            sp.title = `Edited ${time(m.editedUtc)}`;
+            sp.textContent = "· Edited";
+            const from = meta.querySelector(".msg-from");
+            meta.insertBefore(document.createTextNode(" "), from);
+            meta.insertBefore(sp, from);
+        }
+        el.classList.remove("msg-flash"); void el.offsetWidth; el.classList.add("msg-flash");
+    }
+    function stopEdit(el) {
+        el.classList.remove("msg-editing");
+        el.querySelector(".msg-editor")?.remove();
+        const p = el.querySelector(".msg-line > .bubble");
+        if (p) p.hidden = false;
+    }
+    function startEdit(id) {
+        id = Number(id);
+        const el = list.querySelector(`.msg[data-id="${id}"]`);
+        if (!el || !el.classList.contains("mine")) return;
+        list.querySelectorAll(".msg.msg-editing").forEach(stopEdit);
+        const p = el.querySelector(".msg-line > .bubble");
+        if (!p) return;
+        el.classList.add("msg-editing");
+        p.hidden = true;
+        const ed = document.createElement("form");
+        ed.className = "msg-editor";
+        ed.innerHTML = `<textarea rows="1" maxlength="4000" aria-label="Edit your message"></textarea>
+            <div class="msg-editor-row"><small>Enter to save · Esc to cancel</small>
+                <span><button type="button" class="msg-editor-cancel">Cancel</button><button type="submit" class="msg-editor-save"><i class="fa fa-check" aria-hidden="true"></i> Save</button></span></div>`;
+        p.after(ed);
+        const ta = ed.querySelector("textarea");
+        const original = bodies.get(id) || "";
+        ta.value = original;
+        const size = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 220) + "px"; };
+        size();
+        ta.addEventListener("input", size);
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+        const cancel = () => { stopEdit(el); box?.focus(); };
+        ed.querySelector(".msg-editor-cancel").addEventListener("click", cancel);
+        ta.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); }
+            if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); ed.requestSubmit(); }
+        });
+        ed.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const text = ta.value.trim();
+            if (text === original.trim()) { cancel(); return; }
+            if (!text) { S.toast("A message can't be empty. To remove it, delete it."); return; }
+            const save = ed.querySelector(".msg-editor-save");
+            save.disabled = true;
+            try {
+                const fd = new FormData();
+                fd.append("body", text);
+                const res = await fetch(`/chat/messages/${id}/edit`, { method: "POST", body: fd, headers: { "RequestVerificationToken": S.antiforgery() } });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { S.toast(data.error || "The message wasn't changed."); save.disabled = false; return; }
+                applyEdit(data);
+                box?.focus();
+            } catch {
+                S.toast("The message wasn't changed. Check your connection.");
+                save.disabled = false;
+            }
+        });
+    }
+    list?.addEventListener("click", (e) => {
+        const b = e.target.closest(".msg-edit");
+        if (b) startEdit(b.dataset.edit);
     });
 
     // initial page of messages (rendered by the server as JSON)
@@ -586,6 +681,8 @@
         });
 
         hub.on("MessageDeleted", (cid, mid) => { if (cid === channelId) removeMessage(mid); });
+        // someone edited a message (also one of theirs shown here from a group)
+        hub.on("MessageEdited", (m) => { if (m) applyEdit(m); });
 
         // someone read this conversation: their read time moves on and your ticks update
         hub.on("ChannelRead", (cid, userId, readUtc) => {
@@ -622,6 +719,24 @@
     // ---------- composer ----------
     if (!form || !channelId) return;
 
+    // ---------- the person you're writing to is out of office: their note above the box ----------
+    const otherName = root.dataset.otherName || "They";
+    const oooBar = document.createElement("div");
+    oooBar.className = "sn-ooo-bar";
+    oooBar.hidden = true;
+    oooBar.setAttribute("role", "status");
+    form.parentNode.insertBefore(oooBar, form);
+    const paintOoo = () => {
+        const o = other && S.oooOf ? S.oooOf(other) : null;
+        oooBar.hidden = !o;
+        if (!o) return;
+        const when = window.SN && SN.oooUntilText ? SN.oooUntilText(o).replace("until you turn it off", "until further notice") : "";
+        oooBar.innerHTML = `<i class="dot st-ooo" aria-hidden="true"></i><span class="sn-ooo-bar-t"><b>${S.escape(otherName)}</b> is out of office · ${S.escape(when)}`
+            + `${o.message ? `<q>${S.escape(o.message)}</q>` : ""}</span>`;
+    };
+    document.addEventListener("sahyog:ooo", paintOoo);
+    paintOoo();
+
     const autosize = () => {
         box.style.height = "auto";
         box.style.height = Math.min(box.scrollHeight, 160) + "px";
@@ -636,6 +751,11 @@
         }
     });
     box.addEventListener("keydown", (e) => {
+        // ↑ in an empty box: edit your last message
+        if (e.key === "ArrowUp" && !box.value && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+            const last = [...list.querySelectorAll(".msg.mine .msg-edit")].pop();
+            if (last) { e.preventDefault(); startEdit(last.dataset.edit); return; }
+        }
         if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
             form.requestSubmit();

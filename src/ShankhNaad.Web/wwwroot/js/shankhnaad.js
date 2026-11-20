@@ -261,8 +261,8 @@
         try { localStorage.setItem("sn-theme3", theme); localStorage.setItem("sn-theme", theme === "light" ? "light" : "dark"); } catch (e) { }
         const meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.setAttribute("content", (THEMES.find((t) => t.id === theme) || THEMES[0]).color);
-        const label = document.querySelector("[data-strip-action='theme'] .sn-theme-label");
-        if (label) label.textContent = "Theme: " + nameOf(theme);
+        const label = document.querySelector("[data-sn-theme] .sn-theme-now");
+        if (label) label.textContent = nameOf(theme);
         document.querySelectorAll(".sn-theme-pop [data-theme-id]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.themeId === theme)));
         document.dispatchEvent(new CustomEvent("sn:theme", { detail: { theme: root.getAttribute("data-theme"), skin: theme } }));
     }
@@ -292,10 +292,12 @@
     /** The top-bar button: a small menu with the three themes. */
     let pop = null;
     const closePop = () => { if (!pop) return; const p = pop; pop = null; p.classList.remove("in"); setTimeout(() => p.remove(), 180); document.removeEventListener("pointerdown", outside, true); };
-    const outside = (e) => { if (pop && !pop.contains(e.target) && !e.target.closest(".sn-theme-btn")) closePop(); };
-    SN.themeMenu = (evt) => {
+    const outside = (e) => { if (pop && !pop.contains(e.target) && !e.target.closest(".sn-theme-btn, [data-sn-theme]")) closePop(); };
+    /** opts.side = "left": a submenu that opens beside the user menu (from its "Theme" item). */
+    SN.themeMenu = (evt, opts) => {
+        opts = opts || {};
         if (pop) { closePop(); return; }
-        const btn = evt && evt.currentTarget ? evt.currentTarget : document.querySelector(".sn-theme-btn");
+        const btn = opts.anchor || (evt && evt.currentTarget ? evt.currentTarget : document.querySelector(".sn-theme-btn"));
         pop = document.createElement("div");
         pop.className = "sn-theme-pop";
         pop.setAttribute("role", "menu");
@@ -306,12 +308,22 @@
                 <span class="sn-theme-pop-n"><b>${t.name}</b><small>${t.note}</small></span>
                 <i class="fa fa-check sn-theme-ok" aria-hidden="true"></i></button>`).join("");
         document.body.appendChild(pop);
-        // under the button, its right edge lined up with the button's, kept inside the window
-        const r = btn ? btn.getBoundingClientRect() : { left: innerWidth - 60, right: innerWidth - 16, bottom: 64 };
-        const w = pop.offsetWidth || 250;
-        pop.style.top = Math.round(r.bottom + 8) + "px";
-        pop.style.left = Math.round(Math.min(Math.max(8, r.right - w), innerWidth - w - 8)) + "px";
-        pop.style.transformOrigin = (r.left + r.right) / 2 < innerWidth / 2 ? "top left" : "top right";
+        const r = btn ? btn.getBoundingClientRect() : { left: innerWidth - 60, right: innerWidth - 16, top: 20, bottom: 64 };
+        const w = pop.offsetWidth || 250, h = pop.offsetHeight || 220;
+        const menu = btn && btn.closest(".strip-user-dropdown");
+        if (opts.side === "left" && menu && menu.getBoundingClientRect().left - w - 10 >= 8) {
+            // a submenu: beside the user menu, level with the "Theme" item
+            const m = menu.getBoundingClientRect();
+            pop.classList.add("sn-theme-sub");
+            pop.style.left = Math.round(m.left - w - 10) + "px";
+            pop.style.top = Math.round(Math.min(Math.max(8, r.top - 44), innerHeight - h - 8)) + "px";
+            pop.style.transformOrigin = "top right";
+        } else {
+            // under the button (or the item, on a narrow screen), kept inside the window
+            pop.style.top = Math.round(Math.min(r.bottom + 8, innerHeight - h - 8)) + "px";
+            pop.style.left = Math.round(Math.min(Math.max(8, r.right - w), innerWidth - w - 8)) + "px";
+            pop.style.transformOrigin = (r.left + r.right) / 2 < innerWidth / 2 ? "top left" : "top right";
+        }
         requestAnimationFrame(() => pop && pop.classList.add("in"));
         pop.addEventListener("click", (e) => {
             const b = e.target.closest("[data-theme-id]");
@@ -359,21 +371,28 @@
         window.addEventListener("popstate", mark);
     });
 
-    // A "Theme: …" item in the user menu (the top-bar button is hidden on phones).
+    // "Theme  CloudWheel  ›" in the user menu: opens a submenu with the three themes (the menu stays open).
+    // (No data-strip-action on it, so the menu's own click handler doesn't close the menu.)
     document.addEventListener("DOMContentLoaded", () => {
         const dd = document.querySelector(".strip-user-dropdown[data-strip-user-dropdown]");
-        if (!dd || dd.querySelector("[data-strip-action='theme']")) return;
+        if (!dd || dd.querySelector("[data-sn-theme]")) return;
         const item = document.createElement("div");
-        item.className = "strip-user-dropdown-item";
-        item.setAttribute("data-strip-action", "theme");
-        item.innerHTML = '<i class="fa fa-adjust" aria-hidden="true" style="width:18px;text-align:center;font-size:16px"></i><span class="sn-theme-label"></span>';
+        item.className = "strip-user-dropdown-item sn-theme-item";
+        item.setAttribute("data-sn-theme", "");
+        item.setAttribute("role", "menuitem");
+        item.setAttribute("aria-haspopup", "menu");
+        item.setAttribute("tabindex", "0");
+        item.innerHTML = '<i class="fa fa-adjust" aria-hidden="true" style="width:18px;text-align:center;font-size:16px"></i><span class="sn-theme-label">Theme</span>'
+            + '<span class="sn-theme-now"></span><i class="fa fa-chevron-right sn-theme-chev" aria-hidden="true"></i>';
         const logout = dd.querySelector("[data-strip-action='logout']");
         dd.insertBefore(item, logout);
-        item.querySelector(".sn-theme-label").textContent = "Theme: " + nameOf(current());
-    });
-    document.addEventListener("strip-header:action", (e) => {
-        if (e.target !== document || !e.detail || e.detail.action !== "theme") return;
-        SN.toggleTheme();
+        item.querySelector(".sn-theme-now").textContent = nameOf(current());
+        const open = (e) => { e.preventDefault(); SN.themeMenu(e, { anchor: item, side: "left" }); };
+        item.addEventListener("click", open);
+        item.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " " || e.key === "ArrowLeft") open(e); });
+        // close the submenu together with the menu
+        new MutationObserver(() => { if (!dd.classList.contains("dropdown-open") && pop) closePop(); })
+            .observe(dd, { attributes: true, attributeFilter: ["class"] });
     });
 
     // ---------- my status (like Teams): a dot on my picture in the top bar + choices at the top of the user menu ----------
@@ -405,6 +424,10 @@
         box.innerHTML = `<div class="sn-status-now"><i class="dot" aria-hidden="true"></i><span><b class="sn-status-label">Available</b><small class="sn-status-why"></small></span></div>`
             + CHOICES.map(([v, label, cls]) => `<div class="strip-user-dropdown-item sn-status-item" data-strip-action="status" data-sn-status="${v}" role="menuitemradio">
                     <i class="dot ${cls}" aria-hidden="true"></i><span>${label}</span><i class="fa fa-check sn-status-tick" aria-hidden="true"></i></div>`).join("")
+            + `<div class="strip-user-dropdown-item sn-status-item sn-ooo-item" data-strip-action="ooo" role="menuitem">
+                    <i class="dot st-ooo" aria-hidden="true"></i><span class="sn-ooo-item-t">Out of office…</span></div>
+               <div class="strip-user-dropdown-item sn-status-item sn-ooo-off" data-strip-action="ooo-off" role="menuitem" hidden>
+                    <i class="fa fa-sign-in" aria-hidden="true"></i><span>I'm back: turn off out of office</span></div>`
             + `<div class="strip-user-dropdown-item sn-status-item sn-status-reset" data-strip-action="status" data-sn-status="auto" role="menuitem">
                     <i class="fa fa-refresh" aria-hidden="true"></i><span>Reset status</span><small>automatic</small></div>
                <div class="sn-status-sep" role="separator"></div>`;
@@ -413,6 +436,9 @@
         box.addEventListener("click", (e) => {
             const item = e.target.closest("[data-sn-status]");
             if (item && window.Sahyog?.setStatus) Sahyog.setStatus(item.dataset.snStatus);
+            if (e.target.closest(".sn-ooo-item")) setTimeout(() => SN.outOfOffice(), 60);
+            if (e.target.closest(".sn-ooo-off")) Sahyog.setOutOfOffice(false).then(() => Sahyog.toast?.("Welcome back. Out of office is off.", { kind: "success", title: "Out of office" }))
+                .catch(() => Sahyog.toast?.("That didn't work. Try again.", { kind: "error" }));
         });
 
         const paint = () => {
@@ -422,6 +448,10 @@
             const now = box.querySelector(".sn-status-now .dot");
             now.className = "dot " + info.cls;
             box.querySelector(".sn-status-label").textContent = info.label;
+            const ooo = Sahyog.oooOf && Sahyog.oooOf(me);
+            box.querySelector(".sn-ooo-item-t").textContent = ooo ? "Change out of office…" : "Out of office…";
+            box.querySelector(".sn-ooo-off").hidden = !ooo;
+            if (state === "ooo") { box.querySelector(".sn-status-why").textContent = SN.oooUntilText(ooo) + " · colleagues see your note"; return; }
             // why it shows that: picked by me, or set automatically
             const why = st.presenting ? "while you share your screen"
                 : (state === "call" || state === "meeting") && st.manual !== "dnd" ? "set automatically"
@@ -432,8 +462,123 @@
                 i.classList.toggle("on", i.dataset.snStatus === (st.manual || "auto")));
         };
         document.addEventListener("sahyog:presence", paint);
+        document.addEventListener("sahyog:ooo", paint);
         paint();
     });
+
+    // ---------- out of office: a note and the day you're back; shown to everyone, even while you're offline ----------
+    const dayName = (d) => d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+    /** "back Mon, 25 Nov" / "until you turn it off" */
+    SN.oooUntilText = (o) => {
+        if (!o || !o.untilUtc) return "until you turn it off";
+        const d = new Date(o.untilUtc);
+        return d.getHours() === 0 && d.getMinutes() === 0 ? "back " + dayName(d) : "back " + dayName(d) + ", " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    };
+    const DEFAULT_NOTE = "I'm out of the office and will reply when I'm back.";
+    const startOf = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    let oooDlg = null;
+    SN.outOfOffice = () => {
+        const me = document.body.dataset.me;
+        if (!me || !window.Sahyog?.setOutOfOffice) return;
+        const cur = Sahyog.oooOf && Sahyog.oooOf(me);
+        if (!oooDlg) {
+            oooDlg = document.createElement("dialog");
+            oooDlg.className = "sn-dialog glass-strong sn-ooo-dlg";
+            oooDlg.id = "oooDialog";
+            oooDlg.setAttribute("aria-labelledby", "oooT");
+            oooDlg.innerHTML = `
+                <form method="dialog" id="oooForm" novalidate>
+                    <div class="sn-dlg-head">
+                        <div class="sn-dlg-title"><span class="sn-dlg-icon sn-ooo-ic"><i class="fa fa-plane" aria-hidden="true"></i></span>
+                            <div><h2 id="oooT">Out of office</h2><p>Colleagues see a purple status and your note, even while you're offline.</p></div></div>
+                        <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+                    </div>
+                    <div class="sn-dlg-body sn-ooo-body">
+                        <label class="sn-field-label" for="oooMsg">Note for colleagues</label>
+                        <textarea id="oooMsg" class="sn-textarea sn-ooo-msg" rows="3" maxlength="500"></textarea>
+                        <div class="sn-field-label" id="oooWhenL">I'm back on</div>
+                        <div class="sn-ooo-when" role="radiogroup" aria-labelledby="oooWhenL">
+                            <button type="button" role="radio" data-when="tomorrow">Tomorrow</button>
+                            <button type="button" role="radio" data-when="monday">Monday</button>
+                            <button type="button" role="radio" data-when="pick">Pick a date</button>
+                            <button type="button" role="radio" data-when="none">Until I turn it off</button>
+                        </div>
+                        <input type="date" id="oooDate" class="sn-textarea sn-ooo-date" aria-label="The day you're back" hidden />
+                        <div class="sn-ooo-preview"><span class="sn-ooo-preview-l">Colleagues see</span>
+                            <span class="sn-ooo-chip"><i class="dot st-ooo" aria-hidden="true"></i><b>Out of office</b> · <span id="oooPrevWhen"></span></span>
+                            <q id="oooPrevMsg"></q></div>
+                    </div>
+                    <div class="sn-dlg-foot">
+                        <button type="button" class="cee-btn sn-btn-danger-soft" id="oooOff" hidden><i class="fa fa-sign-in" aria-hidden="true"></i> I'm back: turn off</button>
+                        <span style="display:flex;gap:10px;margin-left:auto">
+                            <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                            <button type="submit" class="cee-btn cee-btn-gradient" id="oooSave"><i class="fa fa-check" aria-hidden="true"></i> <span>Turn on</span></button>
+                        </span>
+                    </div>
+                </form>`;
+            document.body.appendChild(oooDlg);
+            const q = (s) => oooDlg.querySelector(s);
+            oooDlg.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () => oooDlg.close()));
+            const back = () => {
+                const w = oooDlg.dataset.when, t = startOf(new Date());
+                if (w === "tomorrow") return new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
+                if (w === "monday") { const add = ((8 - t.getDay()) % 7) || 7; return new Date(t.getFullYear(), t.getMonth(), t.getDate() + add); }
+                if (w === "pick" && q("#oooDate").value) { const [y, m, d] = q("#oooDate").value.split("-").map(Number); return new Date(y, m - 1, d); }
+                return null;
+            };
+            oooDlg._back = back;
+            const preview = () => {
+                const b = back();
+                q("#oooPrevWhen").textContent = b ? "back " + dayName(b) : oooDlg.dataset.when === "pick" ? "pick a day" : "until you turn it off";
+                const m = q("#oooMsg").value.trim();
+                q("#oooPrevMsg").textContent = m;
+                q("#oooPrevMsg").hidden = !m;
+            };
+            oooDlg._preview = preview;
+            const pickWhen = (w) => {
+                oooDlg.dataset.when = w;
+                oooDlg.querySelectorAll("[data-when]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.when === w)));
+                q("#oooDate").hidden = w !== "pick";
+                if (w === "pick") setTimeout(() => q("#oooDate").focus(), 30);
+                preview();
+            };
+            oooDlg._pickWhen = pickWhen;
+            oooDlg.querySelectorAll("[data-when]").forEach((b) => b.addEventListener("click", () => pickWhen(b.dataset.when)));
+            q("#oooMsg").addEventListener("input", preview);
+            q("#oooDate").addEventListener("input", preview);
+            q("#oooDate").addEventListener("change", preview);   // Safari picker
+            q("#oooForm").addEventListener("submit", async (e) => {
+                e.preventDefault();
+                if (oooDlg.dataset.when === "pick" && !back()) { Sahyog.toast?.("Pick the day you're back.", { kind: "warn" }); return; }
+                const b = back();
+                if (b && b <= new Date()) { Sahyog.toast?.("Pick a day after today.", { kind: "warn" }); return; }
+                q("#oooSave").disabled = true;
+                try {
+                    await Sahyog.setOutOfOffice(true, q("#oooMsg").value.trim(), b ? b.toISOString() : null);
+                    oooDlg.close();
+                    Sahyog.toast?.("Out of office is on" + (b ? " until " + dayName(b) : "") + ". Colleagues see your note.", { kind: "success", title: "Out of office" });
+                } catch (err) {
+                    Sahyog.toast?.(String(err && err.message || "").replace(/^.*HubException: /, "") || "That didn't work. Try again.", { kind: "error", title: "Out of office" });
+                }
+                q("#oooSave").disabled = false;
+            });
+            q("#oooOff").addEventListener("click", async () => {
+                try { await Sahyog.setOutOfOffice(false); oooDlg.close(); Sahyog.toast?.("Welcome back. Out of office is off.", { kind: "success", title: "Out of office" }); }
+                catch { Sahyog.toast?.("That didn't work. Try again.", { kind: "error" }); }
+            });
+        }
+        const q = (s) => oooDlg.querySelector(s);
+        const tomorrow = startOf(new Date()); tomorrow.setDate(tomorrow.getDate() + 1);
+        q("#oooDate").min = isoDay(tomorrow);
+        q("#oooMsg").value = cur ? (cur.message || "") : DEFAULT_NOTE;
+        if (cur && cur.untilUtc) { q("#oooDate").value = isoDay(new Date(cur.untilUtc)); oooDlg._pickWhen("pick"); }
+        else oooDlg._pickWhen(cur ? "none" : "tomorrow");
+        q("#oooOff").hidden = !cur;
+        q("#oooSave span").textContent = cur ? "Save" : "Turn on";
+        oooDlg.showModal();
+        setTimeout(() => q("#oooMsg").focus(), 50);
+    };
 
     // Follow the computer's setting until the person picks one.
     try {

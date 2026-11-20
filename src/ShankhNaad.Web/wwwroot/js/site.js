@@ -60,6 +60,7 @@
 
     Sahyog.busy = new Set();      // people in a call or meeting right now
     Sahyog.status = new Map();    // userId → { manual, idle, presenting, call }  (see PresenceTracker.cs)
+    Sahyog.ooo = new Map();       // userId → { message, untilUtc, sinceUtc }: out of office (kept on the server, shows while offline)
 
     // ---------- status, like Microsoft Teams ----------
     // What to show, most important first: Presenting › Do not disturb › In a call / meeting › Busy › Be right back › Away › Available.
@@ -73,13 +74,24 @@
         call: { label: "In a call", cls: "st-call" },
         meeting: { label: "In a meeting", cls: "st-meeting" },
         presenting: { label: "Presenting", cls: "st-present" },
+        ooo: { label: "Out of office", cls: "st-ooo" },
         offline: { label: "Offline", cls: "st-offline" }
     };
     Sahyog.STATES = STATES;
     const ALL_CLS = Object.values(STATES).map((x) => x.cls);
+    /** Out of office right now (and not ended by its date)? */
+    const oooOf = (id) => {
+        const o = Sahyog.ooo.get(id);
+        if (!o) return null;
+        if (o.untilUtc && new Date(o.untilUtc) <= new Date()) { Sahyog.ooo.delete(id); return null; }
+        return o;
+    };
+    Sahyog.oooOf = oooOf;
     const stateOf = (id) => {
         const st = Sahyog.status.get(id) || {};
         const busy = Sahyog.busy.has(id);
+        // out of office shows to everyone, even while the person is offline; only a live call / presenting comes first
+        if (oooOf(id) && !(busy || st.call || st.presenting)) return "ooo";
         if (!Sahyog.online.has(id) && !busy) return "offline";
         if (st.manual === "offline") return "offline";
         if (st.presenting) return "presenting";
@@ -149,6 +161,28 @@
             const all = await hub.invoke("Statuses");
             Sahyog.status = new Map(Object.entries(all || {}));
         } catch { /* older server */ }
+        try {
+            const ooo = await hub.invoke("OutOfOffice");
+            Sahyog.ooo = new Map(Object.entries(ooo || {}));
+            document.dispatchEvent(new CustomEvent("sahyog:ooo"));
+        } catch { /* older server or database */ }
+    };
+    // someone turned out of office on / off (null = back)
+    hub.on("OooChanged", (userId, o) => {
+        if (o) Sahyog.ooo.set(userId, o); else Sahyog.ooo.delete(userId);
+        document.dispatchEvent(new CustomEvent("sahyog:ooo"));
+        paintPresence();
+    });
+    // an out-of-office date passed: back to the normal status without a page reload
+    setInterval(() => {
+        const before = Sahyog.ooo.size;
+        Sahyog.ooo.forEach((o, id) => oooOf(id));
+        if (Sahyog.ooo.size !== before) { document.dispatchEvent(new CustomEvent("sahyog:ooo")); paintPresence(); }
+    }, 60 * 1000);
+    /** Turns out of office on (note, back date or null) or off (on = false). */
+    Sahyog.setOutOfOffice = async (on, message, untilUtc) => {
+        if (on) return hub.invoke("SetOutOfOffice", message || null, untilUtc || null);
+        return hub.invoke("ClearOutOfOffice");
     };
     // after (re)connecting, tell the server the status I picked last time (it only keeps it while I'm connected)
     const restoreMyStatus = () => {

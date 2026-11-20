@@ -370,6 +370,7 @@
                 <h3 id="pcName">-</h3>
                 <div class="sn-pc-tags"><span class="sn-pc-tag" id="pcRole">Member</span><span class="sn-pc-tag" id="pcStatus" data-status="Offline"><i></i><span>Offline</span></span></div>
                 <a class="sn-pc-mail" id="pcEmail" href="#"><i class="fa fa-envelope-o" aria-hidden="true"></i> <span></span></a>
+                <p class="sn-pc-ooo" id="pcOoo" hidden><i class="dot st-ooo" aria-hidden="true"></i><span><b>Out of office</b> · <span id="pcOooWhen"></span><q id="pcOooMsg"></q></span></p>
             </div>
         </div>
         @if (locOn)
@@ -831,6 +832,14 @@
             var mail = document.getElementById("pcEmail");
             mail.href = row.Email ? "mailto:" + row.Email : "#"; mail.querySelector("span").textContent = row.Email || "";
             mail.hidden = !row.Email;
+            // out of office: purple tag and their note
+            var ooo = Sahyog.oooOf ? Sahyog.oooOf(id) : null;
+            document.getElementById("pcOoo").hidden = !ooo;
+            if (ooo) {
+                document.getElementById("pcOooWhen").textContent = SN.oooUntilText ? SN.oooUntilText(ooo).replace("until you turn it off", "until further notice") : "";
+                var oq = document.getElementById("pcOooMsg"); oq.textContent = ooo.message || ""; oq.hidden = !ooo.message;
+                st.setAttribute("data-status", "Out of office"); st.querySelector("span").textContent = "Out of office";
+            }
             SN.open("personDialog");
             if (snLocOn) snLoadLocation(id, row);
         }
