@@ -347,6 +347,23 @@
             {
                 @* ---------- Agenda: day by day, each meeting with its time, who set it up, the people and the agenda ---------- *@
                 <section id="viewSchedule" class="sn-view sn-agenda glass" aria-label="Agenda, day by day">
+                    @if (!events.Any(e => !e.IsCancelled))
+                {
+                    <div class="sn-next-hint" role="status">
+                        <span class="sn-next-hint-ic"><i class="fa fa-calendar-o" aria-hidden="true"></i></span>
+                        <span><b>No meetings @(view == "list" ? "this week" : "in these 7 days")</b></span>
+                        @if (Model.NextAfter is CalendarEventVm na)
+                        {
+                            <span class="sn-next-hint-next">Next: <b>@na.StartLocal.ToString("ddd d MMM", inv)@(na.IsAllDay ? " · all day" : ", " + na.StartLocal.ToString("HH:mm", inv))</b> · @na.Title <small>(set up by @By(na))</small></span>
+                            <a class="sn-next-hint-go" href="@PUrl(view, DateOnly.FromDateTime(na.StartLocal))" onclick="return snNav(this.href, 'next', event)">Go to that @(view == "list" ? "week" : "day") <i class="fa fa-arrow-right" aria-hidden="true"></i></a>
+                        }
+                        else
+                        {
+                            <span class="muted">Nothing scheduled in the next 6 months.</span>
+                        }
+                    </div>
+                }
+
                     @foreach (var d in Model.Days)
                     {
                         var dayEvents = d.Events.OrderByDescending(x => x.IsAllDay).ThenBy(x => x.StartLocal).ToList();
@@ -421,6 +438,22 @@
 
             @* ---------- List (Template 1 modern-table) ---------- *@
             <section id="viewList" class="sn-view sn-view-list @(view == "list" ? "is-on" : "")" aria-label="Meeting list">
+                @if (view == "list" && !events.Any(e => !e.IsCancelled))
+                {
+                    <div class="sn-next-hint" role="status">
+                        <span class="sn-next-hint-ic"><i class="fa fa-calendar-o" aria-hidden="true"></i></span>
+                        <span><b>No meetings @(view == "list" ? "this week" : "in these 7 days")</b></span>
+                        @if (Model.NextAfter is CalendarEventVm na)
+                        {
+                            <span class="sn-next-hint-next">Next: <b>@na.StartLocal.ToString("ddd d MMM", inv)@(na.IsAllDay ? " · all day" : ", " + na.StartLocal.ToString("HH:mm", inv))</b> · @na.Title <small>(set up by @By(na))</small></span>
+                            <a class="sn-next-hint-go" href="@PUrl(view, DateOnly.FromDateTime(na.StartLocal))" onclick="return snNav(this.href, 'next', event)">Go to that @(view == "list" ? "week" : "day") <i class="fa fa-arrow-right" aria-hidden="true"></i></a>
+                        }
+                        else
+                        {
+                            <span class="muted">Nothing scheduled in the next 6 months.</span>
+                        }
+                    </div>
+                }
             <modern-table id="MeetingsTable" name="SelectedMeeting"
                           grid-name="@(view == "list" ? "Meeting list" : "Meetings in this period")" icon="calendar" icon-background-color="linear-gradient(115deg,#2563EB,#DB2777)" icon-color="#fff"
                           show-grid-name-and-icon="true"

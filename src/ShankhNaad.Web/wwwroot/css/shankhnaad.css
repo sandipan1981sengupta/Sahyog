@@ -3814,3 +3814,68 @@ html[data-theme="dark"] .sn-ag-cancel { color: #FCA5A5; }
 .sn-cancel-mail input { margin-top: 2px !important; accent-color: #DC2626 !important; }
 .sn-cancel-hint { margin: 0; font-size: 12.5px; color: var(--sn-text-2, #64748B); }
 .sn-cancel-go:disabled { opacity: .6; cursor: progress; }
+
+/* List / Agenda with no meetings in the period: "Next: Mon 23 Nov, 18:00 · Project planning · Go to that week →" */
+.sn-next-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 10px; padding: 10px 14px; border-radius: 16px; font-size: 13.5px; color: var(--sn-ink);
+    background: linear-gradient(110deg, rgba(37, 99, 235, .1), rgba(219, 39, 119, .08)); box-shadow: inset 0 0 0 1px rgba(99, 102, 241, .25); flex: none; }
+.sn-agenda .sn-next-hint { margin: 10px 0 4px; }
+.sn-next-hint-ic { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, #2563EB, #DB2777); flex: none; }
+.sn-next-hint-next small { opacity: .7; }
+.sn-next-hint-go { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 99px; font-weight: 700; font-size: 12.5px; text-decoration: none;
+    color: #fff; background: linear-gradient(110deg, #2563EB, #7C3AED, #DB2777); box-shadow: 0 6px 14px -8px rgba(124, 58, 237, .8); transition: transform .15s ease; }
+.sn-next-hint-go:hover { transform: translateX(2px); color: #fff; }
+html[data-theme="dark"] .sn-next-hint { background: linear-gradient(110deg, rgba(37, 99, 235, .16), rgba(219, 39, 119, .12)); box-shadow: inset 0 0 0 1px rgba(129, 140, 248, .3); }
+
+/* =====================================================================
+   Chat: emoji-only messages (big, animated, no bubble) · GIFs
+   ===================================================================== */
+.sn-body .bubble.bubble-emoji, html[data-theme="dark"] .sn-body .bubble.bubble-emoji, html[data-theme="dark"] .sn-body .msg.mine .bubble.bubble-emoji, .sn-body .msg.mine .bubble.bubble-emoji {
+    background: none !important; border: 0 !important; box-shadow: none !important; padding: 2px 0 !important;
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important; line-height: 1; white-space: nowrap; display: inline-flex; gap: 4px; align-items: flex-end; }
+.bubble-emoji .be { display: inline-grid; place-items: center; width: var(--es); height: var(--es); transform-origin: 50% 85%;
+    animation: snEmojiPop .55s cubic-bezier(.34, 1.56, .64, 1) calc(var(--i, 0) * 70ms) backwards; }
+.bubble-emoji.e1 { --es: 72px; }
+.bubble-emoji.e3 { --es: 52px; }
+.bubble-emoji.e5 { --es: 40px; }
+.bubble-emoji .be img { width: 100%; height: 100%; object-fit: contain; -webkit-user-drag: none; user-select: none; }
+/* the plain emoji when the animated picture can't load: still big, with a gentle bounce */
+.bubble-emoji .be-text { font-size: calc(var(--es) * .82); line-height: 1; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    animation: snEmojiBob 2.6s ease-in-out calc(.6s + var(--i, 0) * 150ms) infinite; display: inline-block; }
+.msg-is-emoji .bubble-emoji:hover .be { animation: snEmojiWiggle .6s ease-in-out; }
+@keyframes snEmojiPop { from { transform: scale(.2) rotate(-12deg); opacity: 0; } 70% { transform: scale(1.12) rotate(4deg); opacity: 1; } to { transform: none; } }
+@keyframes snEmojiBob { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.06); } }
+@keyframes snEmojiWiggle { 0%, 100% { transform: none; } 25% { transform: rotate(-10deg) scale(1.08); } 75% { transform: rotate(10deg) scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .bubble-emoji .be, .bubble-emoji .be-text, .msg-is-emoji .bubble-emoji:hover .be { animation: none !important; } }
+
+/* a GIF: the picture itself, rounded, with a small "GIF" tag */
+.sn-body .bubble.bubble-gif, html[data-theme="dark"] .sn-body .bubble.bubble-gif, html[data-theme="dark"] .sn-body .msg.mine .bubble.bubble-gif, .sn-body .msg.mine .bubble.bubble-gif {
+    position: relative; padding: 0 !important; background: rgba(15, 23, 42, .06) !important; border: 0 !important; overflow: hidden; border-radius: 18px !important;
+    box-shadow: 0 8px 22px -12px rgba(15, 23, 42, .45) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; line-height: 0; max-width: 100%; }
+.bubble-gif a { display: block; }
+.bubble-gif img { display: block; max-width: min(280px, 100%); height: auto; }
+.bubble-gif .gif-badge { position: absolute; left: 8px; bottom: 8px; padding: 2px 6px; border-radius: 6px; background: rgba(0, 0, 0, .55); color: #fff; font: 800 10px/1.4 Roboto, sans-serif; letter-spacing: .06em; pointer-events: none; }
+
+/* the GIF button in the message box */
+.gif-btn .gif-btn-t { display: inline-grid; place-items: center; height: 20px; padding: 0 5px; border-radius: 6px; border: 1.8px solid currentColor; font: 900 10.5px/1 Roboto, sans-serif; letter-spacing: .04em; }
+.gif-btn[aria-expanded="true"] { color: #DB2777; }
+
+/* the GIF panel (opens above the message box) */
+.gif-panel { position: fixed; z-index: 1200; width: min(380px, calc(100vw - 16px)); height: min(440px, 70vh); display: flex; flex-direction: column; gap: 8px; padding: 10px;
+    border-radius: 20px; background: rgba(255, 255, 255, .96); box-shadow: 0 24px 48px -16px rgba(15, 23, 42, .45), inset 0 0 0 1px rgba(15, 23, 42, .06); }
+.gif-panel[hidden] { display: none; }
+.gif-search { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; background: rgba(15, 23, 42, .05); box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .08); color: #64748B; flex: none; }
+.gif-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: 500 14px Roboto, sans-serif; color: var(--sn-ink); }
+.gif-scroll { flex: 1; min-height: 0; overflow-y: auto; border-radius: 12px; }
+.gif-grid { columns: 2; column-gap: 6px; }
+.gif-tile { display: block; width: 100%; margin: 0 0 6px; padding: 0; border: 0; border-radius: 10px; overflow: hidden; cursor: pointer; background: linear-gradient(110deg, rgba(37, 99, 235, .12), rgba(219, 39, 119, .12));
+    break-inside: avoid; transition: transform .15s ease, box-shadow .15s ease; }
+.gif-tile:hover, .gif-tile:focus-visible { transform: scale(1.03); box-shadow: 0 0 0 2px #DB2777; outline: 0; }
+.gif-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.gif-note { margin: 18px 8px; text-align: center; font-size: 13px; color: #64748B; line-height: 1.5; }
+.gif-note code { font-size: 12px; }
+.gif-foot { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: #64748B; flex: none; padding: 0 4px; }
+.gif-foot b { font-weight: 800; letter-spacing: .02em; color: #0F172A; }
+html[data-theme="dark"] .gif-panel { background: rgba(17, 22, 38, .97); box-shadow: 0 24px 48px -16px rgba(0, 0, 0, .7), inset 0 0 0 1px rgba(255, 255, 255, .08); }
+html[data-theme="dark"] .gif-search { background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); color: #94A3B8; }
+html[data-theme="dark"] .gif-search input { color: #E2E8F0; }
+html[data-theme="dark"] .gif-foot b { color: #E2E8F0; }

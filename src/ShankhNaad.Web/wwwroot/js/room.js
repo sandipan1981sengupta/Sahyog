@@ -1006,6 +1006,7 @@
         let chats = [], open = null, loaded = false;
         const shown = new Set();            // message ids on screen (my reply also comes back over the live connection)
         const isCallCard = (b) => /^\[\[call:/.test(b || "");
+        const isGifCard = (b) => /^\[\[gif:/.test(b || "");
         const when = (iso) => {
             const d = new Date(iso);
             if (isNaN(d)) return "";
@@ -1039,7 +1040,7 @@
         }
         const msgHtml = (m) => {
             const mine = String(m.senderId).toLowerCase() === me;
-            const body = isCallCard(m.body) ? "&#128222; Call" : esc(m.body || "").replace(/\n/g, "<br>");
+            const body = isCallCard(m.body) ? "&#128222; Call" : isGifCard(m.body) ? "&#127902;&#65039; GIF" : esc(m.body || "").replace(/\n/g, "<br>");
             const file = m.attachment ? `<a class="mx-file" href="${esc(m.attachment.url)}" target="_blank" rel="noopener">&#128206; ${esc(m.attachment.fileName)}</a>` : "";
             const who = !mine && open && !open.isDirect ? `<small class="mx-who">${esc(m.senderName)}</small>` : "";
             const where = m.fromGroup && open && open.isDirect ? `<small class="mx-who">in ${esc(m.fromGroup)}</small>` : "";
@@ -1111,7 +1112,7 @@
             if (c) { c.lastUtc = m.sentUtc; toTop(c); paintList(); }
             else if (loaded) loadChats();                                       // a chat that's new to the list
             if (!mine && !(open && sameId(open.id, m.channelId) && visible())) {
-                const preview = m.body ? (m.body.length > 80 ? m.body.slice(0, 80) + "…" : m.body) : "Sent a file";
+                const preview = isGifCard(m.body) ? "🎞️ Sent a GIF" : m.body ? (m.body.length > 80 ? m.body.slice(0, 80) + "…" : m.body) : "Sent a file";
                 notice(m.fromGroup ? `${m.senderName} · ${m.fromGroup}` : m.senderName, preview, "msg",
                     { text: "Open", onClick: () => openMessages(m.channelId) });
             }

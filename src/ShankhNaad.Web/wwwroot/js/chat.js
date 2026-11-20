@@ -43,6 +43,73 @@
     const linkify = (escaped) =>
         escaped.replace(/(https?:\/\/[^\s<]+)/g, (url) => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
 
+    // ---------- a message that is only emoji: no bubble, big, animated ----------
+    // Animated pictures come from Google's Noto animated emoji; if one can't load, the normal emoji shows (with a little bounce).
+    const EMOJI_ONE = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?)*|\p{Regional_Indicator}{2}|[#*0-9]\uFE0F?\u20E3)$/u;
+    const graphemes = (t) => (window.Intl && Intl.Segmenter)
+        ? [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(t)].map((x) => x.segment)
+        : Array.from(t);
+    /** The emoji of a message made only of 1–5 emoji (spaces allowed), else null. */
+    function emojiOnly(text) {
+        const t = (text || "").trim();
+        if (!t || t.length > 80) return null;
+        const parts = graphemes(t).filter((g) => !/^\s+$/.test(g));
+        if (!parts.length || parts.length > 5 || !parts.every((g) => EMOJI_ONE.test(g))) return null;
+        // a lone symbol like © or ™ (text unless it carries the emoji marker) stays normal text
+        if (parts.some((g) => [...g].length === 1 && !/\p{Emoji_Presentation}/u.test(g))) return null;
+        return parts;
+    }
+    const NOTO = "https://fonts.gstatic.com/s/e/notoemoji/latest/";
+    const notoCode = (g, keepVs) => [...g].map((c) => c.codePointAt(0)).filter((cp) => keepVs || cp !== 0xfe0f).map((cp) => cp.toString(16)).join("_");
+    function emojiHtml(parts) {
+        const size = parts.length === 1 ? "e1" : parts.length <= 3 ? "e3" : "e5";
+        const imgs = parts.map((g, i) => {
+            const a = notoCode(g, true), b = notoCode(g, false);
+            return `<span class="be" style="--i:${i}"><img src="${NOTO}${a}/512.webp" alt="${S.escape(g)}" data-alt2="${b !== a ? b : ""}" loading="lazy" decoding="async" draggable="false"></span>`;
+        }).join("");
+        return `<p class="bubble bubble-emoji ${size}" role="img" aria-label="${S.escape(parts.join(" "))}">${imgs}</p>`;
+    }
+    // a missing animation: try without the variation selector, then show the plain emoji
+    list?.addEventListener("error", (e) => {
+        const img = e.target;
+        if (!(img instanceof HTMLImageElement)) return;
+        if (img.closest(".bubble-emoji")) {
+            const b = img.dataset.alt2;
+            if (b) { img.dataset.alt2 = ""; img.src = `${NOTO}${b}/512.webp`; return; }
+            const t = document.createElement("span");
+            t.className = "be-text";
+            t.textContent = img.alt;
+            img.replaceWith(t);
+        } else if (img.dataset.gifFallback) {
+            const f = img.dataset.gifFallback;
+            img.dataset.gifFallback = "";
+            if (f) img.src = f;
+        }
+    }, true);
+
+    // ---------- GIFs (GIPHY): the message is "[[gif:ID:WIDTHxHEIGHT]]" ----------
+    const GIF_RE = /^\[\[gif:([A-Za-z0-9]{4,64}):(\d{1,4})x(\d{1,4})\]\]$/;
+    const isGif = (body) => GIF_RE.test((body || "").trim());
+    function gifHtml(body) {
+        const g = GIF_RE.exec((body || "").trim());
+        const id = g[1];
+        let w = Math.max(1, +g[2]), h = Math.max(1, +g[3]);
+        // shown 200 px tall (narrower screens: at most 280 px wide)
+        const scale = Math.min(200 / h, 280 / w);
+        w = Math.round(w * scale); h = Math.round(h * scale);
+        const base = `https://media.giphy.com/media/${id}/`;
+        return `<div class="bubble bubble-gif"><a href="https://giphy.com/gifs/${id}" target="_blank" rel="noopener" title="Open on GIPHY">`
+            + `<img src="${base}200.webp" data-gif-fallback="${base}200.gif" width="${w}" height="${h}" alt="GIF" loading="lazy" decoding="async"></a><span class="gif-badge">GIF</span></div>`;
+    }
+    /** The message's text part: a GIF, big emoji, or a normal bubble. */
+    function bodyHtml(body) {
+        if (!body) return "";
+        if (isGif(body)) return gifHtml(body);
+        const e = emojiOnly(body);
+        return e ? emojiHtml(e) : `<p class="bubble">${linkify(S.escape(body))}</p>`;
+    }
+    const shortText = (body) => isGif(body) ? "🎞️ GIF" : /^\[\[call:/i.test(body || "") ? "📞 Call" : (body || "").replace(/\s+/g, " ").trim();
+
     function attachmentHtml(a) {
         const name = S.escape(a.fileName);
         if (a.contentType.startsWith("image/")) {
@@ -330,6 +397,7 @@
     });
     const snippet = (m) => {
         if (/^\[\[call:/i.test(m.body || "")) return "📞 Call";
+        if (isGif(m.body)) return "🎞️ GIF";
         if (m.attachment) return `📎 ${m.attachment.fileName}`;
         const t = (m.body || "").replace(/\s+/g, " ").trim();
         return t.length > 120 ? `${t.slice(0, 120)}…` : t;
@@ -337,7 +405,7 @@
     function quoteHtml(m) {
         if (!m.replyToId) return "";
         if (!m.replyToSender) return `<div class="msg-quote gone"><i class="fa fa-reply" aria-hidden="true"></i><span>Original message was deleted</span></div>`;
-        let t = /^\[\[call:/i.test(m.replyToText || "") ? "📞 Call" : (m.replyToText || "").replace(/\s+/g, " ").trim();
+        let t = shortText(m.replyToText);
         if (t.length > 120) t = `${t.slice(0, 120)}…`;
         return `<button type="button" class="msg-quote" data-jump="${m.replyToId}" title="Go to the original message">
                     <b>${S.escape(m.replyToSender)}</b><span>${S.escape(t)}</span></button>`;
@@ -356,7 +424,7 @@
         if (call) { el.classList.add("msg-is-call"); el.dataset.call = call[1].toLowerCase(); }
         const body = call
             ? `<div class="bubble msg-call" data-call="${call[1].toLowerCase()}" data-mine="${mine ? 1 : 0}" data-ch="${S.escape(m.channelId)}" data-who="${S.escape(m.senderName)}" data-at="${S.escape(m.sentUtc)}">${callCardHtml(call[1].toLowerCase(), mine, m.senderName, m.sentUtc)}</div>`
-            : m.body ? `<p class="bubble">${linkify(S.escape(m.body))}</p>` : "";
+            : bodyHtml(m.body);
         if (call) queueCallState(call[1].toLowerCase());
         const file = m.attachment ? attachmentHtml(m.attachment) : "";
         // only your own messages can be deleted (an admin can't delete other people's either)
@@ -365,7 +433,9 @@
         // a group message shown in a person's chat
         const fromGroup = m.channelId !== channelId ? (m.fromGroup || "a group") : null;
         // your own text messages can be edited (not calls, not a file without text)
-        const canEdit = mine && !call && !!m.body;
+        const canEdit = mine && !call && !!m.body && !isGif(m.body);
+        if (!call && isGif(m.body)) el.classList.add("msg-is-gif");
+        if (!call && emojiOnly(m.body)) el.classList.add("msg-is-emoji");
         if (!call) bodies.set(Number(m.id), m.body || "");
         const edited = m.editedUtc ? ` <span class="msg-edited" title="Edited ${S.escape(time(m.editedUtc))}">· Edited</span>` : "";
         el.innerHTML = `
@@ -476,14 +546,19 @@
         if (info) info.text = snippet(m);
         // replies quoting it show the new text
         list.querySelectorAll(`.msg-quote[data-jump="${id}"] span`).forEach((sp) => {
-            let t = (m.body || "").replace(/\s+/g, " ").trim();
+            const t = shortText(m.body);
             sp.textContent = t.length > 120 ? `${t.slice(0, 120)}…` : t;
         });
         const el = list.querySelector(`.msg[data-id="${id}"]`);
         if (!el) return;
         if (el.classList.contains("msg-editing")) stopEdit(el);
         const p = el.querySelector(".msg-line > .bubble:not(.msg-call)");
-        if (p) p.innerHTML = linkify(S.escape(m.body || ""));
+        if (p) {
+            // the edited text may now be only emoji (or no longer): draw it again
+            p.insertAdjacentHTML("afterend", bodyHtml(m.body || ""));
+            p.remove();
+            el.classList.toggle("msg-is-emoji", !!emojiOnly(m.body));
+        }
         const meta = el.querySelector(".msg-meta");
         if (meta && m.editedUtc && !meta.querySelector(".msg-edited")) {
             const sp = document.createElement("span");
@@ -792,6 +867,95 @@
             S.toast(err?.message?.replace(/^.*HubException: /, "") || "Message not sent.");
         }
     });
+
+    // ---------- GIFs: search GIPHY (through our server, which keeps the API key) and send one ----------
+    const gifBtn = document.getElementById("gifBtn");
+    if (gifBtn) {
+        let panel = null, q = "", offset = 0, more = true, loading = false, timer = 0, seq = 0;
+        const close = () => { if (!panel) return; panel.hidden = true; gifBtn.setAttribute("aria-expanded", "false"); };
+        const place = () => {
+            const r = form.getBoundingClientRect();
+            panel.style.left = Math.max(8, Math.min(r.left, window.innerWidth - panel.offsetWidth - 8)) + "px";
+            panel.style.bottom = (window.innerHeight - r.top + 8) + "px";
+        };
+        const tile = (g) => `<button type="button" class="gif-tile" data-id="${S.escape(g.id)}" data-w="${g.w}" data-h="${g.h}" title="${S.escape(g.title || "GIF")}" style="aspect-ratio:${g.pw}/${g.ph}">`
+            + `<img src="${S.escape(g.preview)}" alt="${S.escape(g.title || "GIF")}" loading="lazy" decoding="async"></button>`;
+        async function load(reset) {
+            if (loading || (!more && !reset)) return;
+            if (reset) { offset = 0; more = true; }
+            loading = true;
+            const my = ++seq;
+            const grid = panel.querySelector(".gif-grid"), note = panel.querySelector(".gif-note");
+            if (reset) { grid.innerHTML = ""; note.textContent = "Loading…"; note.hidden = false; }
+            try {
+                const r = await fetch(`/chat/gifs?q=${encodeURIComponent(q)}&offset=${offset}`, { headers: { Accept: "application/json" }, credentials: "same-origin" });
+                const d = await r.json();
+                if (my !== seq) return;                       // a newer search started
+                if (d.configured === false) { note.innerHTML = "GIFs aren't set up yet. An admin adds a free GIPHY API key in <code>appsettings.json</code> → <code>Gifs:GiphyApiKey</code>."; more = false; return; }
+                if (!r.ok) throw new Error(d.error || "");
+                grid.insertAdjacentHTML("beforeend", (d.items || []).map(tile).join(""));
+                offset = d.next ?? (offset + (d.items || []).length);
+                more = !!d.more;
+                note.hidden = grid.childElementCount > 0;
+                if (!grid.childElementCount) note.textContent = q ? `No GIFs found for “${q}”.` : "No GIFs right now.";
+            } catch (err) {
+                if (my === seq) { note.hidden = false; note.textContent = err?.message || "Couldn't load GIFs. Try again."; }
+            } finally { if (my === seq) loading = false; }
+        }
+        function open() {
+            if (!panel) {
+                panel = document.createElement("div");
+                panel.className = "gif-panel glass-strong";
+                panel.setAttribute("role", "dialog");
+                panel.setAttribute("aria-label", "Send a GIF");
+                panel.innerHTML = `<label class="gif-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" placeholder="Search GIFs (party, thanks, coffee…)" aria-label="Search GIFs" autocomplete="off" /></label>`
+                    + `<div class="gif-scroll"><div class="gif-grid"></div><p class="gif-note" hidden></p></div>`
+                    + `<div class="gif-foot"><span>Trending</span><b>Powered by GIPHY</b></div>`;
+                document.body.appendChild(panel);
+                const input = panel.querySelector("input");
+                input.addEventListener("input", () => {
+                    clearTimeout(timer);
+                    timer = setTimeout(() => {
+                        q = input.value.trim();
+                        panel.querySelector(".gif-foot span").textContent = q ? `Results for “${q}”` : "Trending";
+                        load(true);
+                    }, 350);
+                });
+                input.addEventListener("keydown", (e) => { if (e.key === "Escape") { close(); box.focus(); } });
+                panel.querySelector(".gif-scroll").addEventListener("scroll", (e) => {
+                    const el = e.currentTarget;
+                    if (el.scrollTop + el.clientHeight > el.scrollHeight - 220) load(false);
+                });
+                panel.addEventListener("click", async (e) => {
+                    const t = e.target.closest(".gif-tile");
+                    if (!t) return;
+                    if (!hub || hub.state !== "Connected") { S.toast("Reconnecting… try again in a moment."); return; }
+                    close();
+                    const reply = replyTo;
+                    cancelReply();
+                    try {
+                        const sent = await hub.invoke("SendMessage", channelId, `[[gif:${t.dataset.id}:${t.dataset.w}x${t.dataset.h}]]`, reply ? reply.id : null);
+                        append(sent);
+                    } catch (err) {
+                        if (reply) startReply(reply.id);
+                        S.toast(err?.message?.replace(/^.*HubException: /, "") || "GIF not sent.");
+                    }
+                    box.focus();
+                });
+                document.addEventListener("pointerdown", (e) => {
+                    if (panel.hidden || panel.contains(e.target) || gifBtn.contains(e.target)) return;
+                    close();
+                });
+                window.addEventListener("resize", () => { if (!panel.hidden) place(); });
+                load(true);
+            }
+            panel.hidden = false;
+            gifBtn.setAttribute("aria-expanded", "true");
+            place();
+            setTimeout(() => panel.querySelector("input").focus(), 30);
+        }
+        gifBtn.addEventListener("click", () => (panel && !panel.hidden ? close() : open()));
+    }
 
     // ---------- upload ----------
     const fileInput = document.getElementById("fileInput");

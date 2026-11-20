@@ -540,7 +540,7 @@
         if (quiet) return;
         ding();
 
-        const preview = m.body ? (m.body.length > 90 ? m.body.slice(0, 90) + "…" : m.body) : "Sent a file";
+        const preview = /^\[\[gif:/.test(m.body || "") ? "🎞️ Sent a GIF" : m.body ? (m.body.length > 90 ? m.body.slice(0, 90) + "…" : m.body) : "Sent a file";
         const av = document.createElement("span");
         av.className = `avatar av-38 tone-${m.senderTone}`;
         av.dataset.user = m.senderId;

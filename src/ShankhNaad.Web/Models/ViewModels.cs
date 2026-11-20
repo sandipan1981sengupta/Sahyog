@@ -207,6 +207,8 @@ public sealed class MeetingsViewModel
     public required DateOnly WeekStart { get; init; }
     public required List<CalendarDayVm> Days { get; init; }
     public CalendarEventVm? UpNext { get; init; }
+    /// <summary>List / Agenda with no meetings in the period: the next one after it (for "Next: Mon 23 Nov, 18:00 …").</summary>
+    public CalendarEventVm? NextAfter { get; init; }
     public int UpNextMinutes { get; init; }
     public required List<PersonVm> Team { get; init; }
     public required ScheduleMeetingInput Form { get; init; }

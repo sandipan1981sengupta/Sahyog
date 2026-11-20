@@ -551,7 +551,7 @@ public sealed class MeetingsController : Controller
         var rangeFromUtc = MeetingCalendar.ToUtc(fromLocal < nowLocal.AddHours(-2) ? fromLocal : nowLocal.AddHours(-2), zone);
         var rangeToUtc = MeetingCalendar.ToUtc(toLocal > nowLocal.AddDays(1) ? toLocal : nowLocal.AddDays(1), zone);
         var (meetings, invitees) = await _meetings.ListForUserAsync(tenantId, me, rangeFromUtc, rangeToUtc);
-        var inviteesByMeeting = invitees.ToLookup(i => i.MeetingId);
+        var inviteesByMeeting = invitees.ToLookup(i => i.MeetingId);   // (replaced below if the "next meeting" hint needs a later period)
         // calls and "Meet now" meetings are on the Calls page; the calendar shows them only while someone is in them
         meetings = meetings.Where(m => !m.IsInstant || _rooms.Count(m.MeetingId) > 0).ToList();
         // a "Meet now" meeting is live only while someone is in it; once everyone has left it has ended
@@ -588,6 +588,23 @@ public sealed class MeetingsController : Controller
             .Select(d => new CalendarDayVm(d, d == today,
                 occurrences.Where(o => DateOnly.FromDateTime(o.StartLocal) == d).OrderBy(o => o.StartLocal).Select(ToVm).ToList()))
             .ToList();
+
+        // List / Agenda with nothing in the period: find the next meeting after it (up to six months on), for a "Next: …" hint
+        CalendarEventVm? nextAfter = null;
+        if (view is "list" or "agenda" && !occurrences.Any(o => !o.Meeting.IsCancelled))
+        {
+            var afterFrom = toLocal > nowLocal ? toLocal : nowLocal;
+            var (later, laterInvitees) = await _meetings.ListForUserAsync(tenantId, me, MeetingCalendar.ToUtc(afterFrom, zone), MeetingCalendar.ToUtc(afterFrom.AddDays(183), zone));
+            var laterOcc = MeetingCalendar.Expand(later.Where(m => !m.IsCancelled && (!m.IsInstant || _rooms.Count(m.MeetingId) > 0)), afterFrom, afterFrom.AddDays(183), zone)
+                .Where(o => o.StartLocal >= afterFrom).OrderBy(o => o.StartLocal).FirstOrDefault();
+            if (laterOcc is not null)
+            {
+                // add the later meetings' people without changing the ones already on screen (Up next uses them too)
+                var known = invitees.Select(i => i.MeetingId).ToHashSet();
+                inviteesByMeeting = invitees.Concat(laterInvitees.Where(i => !known.Contains(i.MeetingId))).ToLookup(i => i.MeetingId);
+                nextAfter = ToVm(laterOcc);
+            }
+        }
 
         var next = MeetingCalendar.Expand(meetings, nowLocal.AddHours(-2), nowLocal.AddDays(1), zone)
             .Where(o => o.EndLocal > nowLocal && !o.Meeting.IsAllDay && !o.Meeting.IsCancelled && !InstantOver(o.Meeting, o.StartLocal))
@@ -629,6 +646,7 @@ public sealed class MeetingsController : Controller
             WeekStart = weekStart,
             Days = days,
             UpNext = next is null ? null : ToVm(next),
+            NextAfter = nextAfter,
             UpNextMinutes = next is null ? 0 : (int)Math.Ceiling((next.StartLocal - nowLocal).TotalMinutes),
             Team = team,
             Form = form,
