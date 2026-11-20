@@ -11,6 +11,8 @@ public interface IOutOfOfficeService
     Task<Dictionary<string, OutOfOfficeDto>> ListAsync(Guid tenantId);
     /// <summary>False when the database doesn't have the table yet (32_OutOfOfficeAndEdit.sql).</summary>
     Task<bool> SetAsync(Guid tenantId, Guid userId, string? message, DateTime? untilUtc);
+    /// <summary>From a date to a date. A start date needs 33_OutOfOfficeDates.sql.</summary>
+    Task<OooSaveStatus> SetRangeAsync(Guid tenantId, Guid userId, string? message, DateTime? startUtc, DateTime? untilUtc);
     Task<bool> ClearAsync(Guid tenantId, Guid userId);
 }
 
@@ -19,13 +21,15 @@ public sealed class OutOfOfficeService : IOutOfOfficeService
     private readonly SqlDb _db;
     public OutOfOfficeService(SqlDb db) => _db = db;
     private const int MissingProcedure = 2812;
+    private const int TooManyArguments = 8144;   // 33_OutOfOfficeDates.sql not run yet: the procedure has no @StartUtc
 
     public async Task<Dictionary<string, OutOfOfficeDto>> ListAsync(Guid tenantId)
     {
         try
         {
             var rows = await _db.QueryAsync("dbo.sahyog_Ooo_List", p => p.With("@TenantId", tenantId),
-                r => (Id: r.G("UserId").ToString(), Dto: new OutOfOfficeDto(r.SN("Message"), r.UtcN("UntilUtc"), r.Utc("SinceUtc"))));
+                r => (Id: r.G("UserId").ToString(), Dto: new OutOfOfficeDto(r.SN("Message"), r.UtcN("UntilUtc"), r.Utc("SinceUtc"),
+                    r.Has("StartUtc") ? r.UtcN("StartUtc") : null)));
             return rows.ToDictionary(x => x.Id, x => x.Dto);
         }
         catch (SqlException ex) when (ex.Number == MissingProcedure) { return new(); }
@@ -40,6 +44,21 @@ public sealed class OutOfOfficeService : IOutOfOfficeService
             return true;
         }
         catch (SqlException ex) when (ex.Number == MissingProcedure) { return false; }
+    }
+
+    public async Task<OooSaveStatus> SetRangeAsync(Guid tenantId, Guid userId, string? message, DateTime? startUtc, DateTime? untilUtc)
+    {
+        try
+        {
+            await _db.ExecAsync("dbo.sahyog_Ooo_Set", p =>
+            {
+                p.With("@TenantId", tenantId).With("@UserId", userId).AddText("@Message", message, 500).AddDateTime2("@UntilUtc", untilUtc);
+                if (startUtc is not null) p.AddDateTime2("@StartUtc", startUtc);
+            });
+            return OooSaveStatus.Saved;
+        }
+        catch (SqlException ex) when (ex.Number == MissingProcedure) { return OooSaveStatus.NeedsDatabase32; }
+        catch (SqlException ex) when (ex.Number == TooManyArguments) { return OooSaveStatus.NeedsDatabase33; }
     }
 
     public async Task<bool> ClearAsync(Guid tenantId, Guid userId)

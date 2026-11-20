@@ -727,11 +727,20 @@
     oooBar.setAttribute("role", "status");
     form.parentNode.insertBefore(oooBar, form);
     const paintOoo = () => {
-        const o = other && S.oooOf ? S.oooOf(other) : null;
+        const now = other && S.oooOf ? S.oooOf(other) : null;
+        // planned in the next two weeks: say so too ("will be out of office Mon, 24 Nov – Fri, 28 Nov")
+        let o = now, soon = null;
+        if (!o && other && S.oooPlanOf) {
+            const p = S.oooPlanOf(other);
+            if (p && p.startUtc && new Date(p.startUtc) - Date.now() < 14 * 864e5) { o = p; soon = p; }
+        }
         oooBar.hidden = !o;
         if (!o) return;
-        const when = window.SN && SN.oooUntilText ? SN.oooUntilText(o).replace("until you turn it off", "until further notice") : "";
-        oooBar.innerHTML = `<i class="dot st-ooo" aria-hidden="true"></i><span class="sn-ooo-bar-t"><b>${S.escape(otherName)}</b> is out of office · ${S.escape(when)}`
+        let text;
+        if (soon && window.SN && SN.oooDays) { const r = SN.oooDays(soon); text = `will be out of office · ${r.last ? SN.oooRangeText(r.first, r.last) : SN.oooRangeText(r.first, null) + ", until further notice"}`; }
+        else text = "is out of office · " + (window.SN && SN.oooUntilText ? SN.oooUntilText(o).replace("until you turn it off", "until further notice") : "");
+        oooBar.classList.toggle("planned", !!soon);
+        oooBar.innerHTML = `<i class="dot st-ooo" aria-hidden="true"></i><span class="sn-ooo-bar-t"><b>${S.escape(otherName)}</b> ${S.escape(text)}`
             + `${o.message ? `<q>${S.escape(o.message)}</q>` : ""}</span>`;
     };
     document.addEventListener("sahyog:ooo", paintOoo);

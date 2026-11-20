@@ -60,7 +60,7 @@
 
     Sahyog.busy = new Set();      // people in a call or meeting right now
     Sahyog.status = new Map();    // userId → { manual, idle, presenting, call }  (see PresenceTracker.cs)
-    Sahyog.ooo = new Map();       // userId → { message, untilUtc, sinceUtc }: out of office (kept on the server, shows while offline)
+    Sahyog.ooo = new Map();       // userId → { message, startUtc, untilUtc, sinceUtc }: out of office now or planned (kept on the server, shows while offline)
 
     // ---------- status, like Microsoft Teams ----------
     // What to show, most important first: Presenting › Do not disturb › In a call / meeting › Busy › Be right back › Away › Available.
@@ -79,14 +79,30 @@
     };
     Sahyog.STATES = STATES;
     const ALL_CLS = Object.values(STATES).map((x) => x.cls);
-    /** Out of office right now (and not ended by its date)? */
-    const oooOf = (id) => {
+    /** Out of office now or planned for later days (null once its last day has passed). */
+    const oooPlanOf = (id) => {
         const o = Sahyog.ooo.get(id);
         if (!o) return null;
         if (o.untilUtc && new Date(o.untilUtc) <= new Date()) { Sahyog.ooo.delete(id); return null; }
         return o;
     };
+    /** Out of office right now (started, and not ended by its date)? */
+    const oooOf = (id) => {
+        const o = oooPlanOf(id);
+        return o && (!o.startUtc || new Date(o.startUtc) <= new Date()) ? o : null;
+    };
+    /** Is the person away on this day (a Date, local)? */
+    const oooOn = (id, day) => {
+        const o = oooPlanOf(id);
+        if (!o) return null;
+        const d0 = new Date(day.getFullYear(), day.getMonth(), day.getDate()), d1 = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + 1);
+        const s = o.startUtc ? new Date(o.startUtc) : new Date(o.sinceUtc || Date.now());
+        const e = o.untilUtc ? new Date(o.untilUtc) : null;
+        return s < d1 && (!e || e > d0) ? o : null;
+    };
     Sahyog.oooOf = oooOf;
+    Sahyog.oooPlanOf = oooPlanOf;
+    Sahyog.oooOn = oooOn;
     const stateOf = (id) => {
         const st = Sahyog.status.get(id) || {};
         const busy = Sahyog.busy.has(id);
@@ -174,15 +190,30 @@
         paintPresence();
     });
     // an out-of-office date passed: back to the normal status without a page reload
+    // (and a planned one whose first day has come starts showing)
+    const oooSig = () => [...Sahyog.ooo.keys()].map((id) => id + (oooOf(id) ? "+" : "-")).join();
+    let lastOooSig = "";
     setInterval(() => {
-        const before = Sahyog.ooo.size;
-        Sahyog.ooo.forEach((o, id) => oooOf(id));
-        if (Sahyog.ooo.size !== before) { document.dispatchEvent(new CustomEvent("sahyog:ooo")); paintPresence(); }
+        const sig = oooSig();
+        if (sig !== lastOooSig) { lastOooSig = sig; document.dispatchEvent(new CustomEvent("sahyog:ooo")); paintPresence(); }
     }, 60 * 1000);
+    document.addEventListener("sahyog:ooo", () => { lastOooSig = oooSig(); });
     /** Turns out of office on (note, back date or null) or off (on = false). */
     Sahyog.setOutOfOffice = async (on, message, untilUtc) => {
         if (on) return hub.invoke("SetOutOfOffice", message || null, untilUtc || null);
         return hub.invoke("ClearOutOfOffice");
+    };
+    /** From a day to a day (yyyy-MM-dd; to = "" → until I turn it off), and who to tell by email. Returns { ooo, mailed, mailNote }. */
+    Sahyog.saveOutOfOffice = async ({ message, from, to, notify, people }) => {
+        const fd = new FormData();
+        fd.append("Message", message || ""); fd.append("From", from); fd.append("To", to || ""); fd.append("Notify", notify || "none");
+        (people || []).forEach((id) => fd.append("People", id));
+        const res = await fetch("/status/out-of-office", { method: "POST", body: fd, headers: { "RequestVerificationToken": Sahyog.antiforgery() }, credentials: "same-origin" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Couldn't save out of office. Please try again.");
+        const me = document.body.dataset.me;
+        if (me && data.ooo) { Sahyog.ooo.set(me, data.ooo); document.dispatchEvent(new CustomEvent("sahyog:ooo")); paintPresence(); }
+        return data;
     };
     // after (re)connecting, tell the server the status I picked last time (it only keeps it while I'm connected)
     const restoreMyStatus = () => {

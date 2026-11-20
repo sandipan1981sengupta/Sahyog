@@ -28,6 +28,8 @@ public interface IAppEmailSender
     bool IsConfigured { get; }
     /// <summary>True when the mail server accepted the message. Never throws: failures are logged.</summary>
     Task<bool> SendAsync(IEnumerable<string> to, string subject, string html, EmailCalendarPart? calendar = null);
+    /// <summary>Same, but recipients don't see each other's addresses (Bcc; the sender address goes in To).</summary>
+    Task<bool> SendHiddenAsync(IEnumerable<string> to, string subject, string html, string? replyTo = null, string? replyToName = null);
 }
 
 /// <summary>
@@ -53,7 +55,13 @@ public sealed class SmtpEmailSender : IAppEmailSender
         : _o.Port == 465 ? SecureSocketOptions.SslOnConnect
         : SecureSocketOptions.StartTls;
 
-    public async Task<bool> SendAsync(IEnumerable<string> to, string subject, string html, EmailCalendarPart? calendar = null)
+    public Task<bool> SendAsync(IEnumerable<string> to, string subject, string html, EmailCalendarPart? calendar = null) =>
+        SendCoreAsync(to, subject, html, calendar, hidden: false, null, null);
+
+    public Task<bool> SendHiddenAsync(IEnumerable<string> to, string subject, string html, string? replyTo = null, string? replyToName = null) =>
+        SendCoreAsync(to, subject, html, null, hidden: true, replyTo, replyToName);
+
+    private async Task<bool> SendCoreAsync(IEnumerable<string> to, string subject, string html, EmailCalendarPart? calendar, bool hidden, string? replyTo, string? replyToName)
     {
         var recipients = to.Where(e => !string.IsNullOrWhiteSpace(e)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (recipients.Count == 0) return false;
@@ -68,7 +76,17 @@ public sealed class SmtpEmailSender : IAppEmailSender
         {
             var message = new MimeMessage();
             message.From.Add(new MailboxAddress(_o.FromName, _o.FromAddress));
-            foreach (var r in recipients) message.To.Add(MailboxAddress.Parse(r));
+            if (hidden)
+            {
+                message.To.Add(new MailboxAddress(_o.FromName, _o.FromAddress));
+                foreach (var r in recipients) message.Bcc.Add(MailboxAddress.Parse(r));
+            }
+            else foreach (var r in recipients) message.To.Add(MailboxAddress.Parse(r));
+            if (!string.IsNullOrWhiteSpace(replyTo))
+            {
+                try { message.ReplyTo.Add(new MailboxAddress(replyToName ?? "", replyTo)); }
+                catch (Exception) { /* a bad reply address must not stop the email */ }
+            }
             message.Subject = subject;
 
             var body = new BodyBuilder { HtmlBody = html };

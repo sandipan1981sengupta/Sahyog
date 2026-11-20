@@ -15,15 +15,44 @@
     const isAllDay = () => !!(allDayBox && allDayBox.checked);
     const showAsFree = () => (document.querySelector('input[name="Form.ShowAs"]:checked') || {}).value === "free";
 
-    let last = "";
+    let last = "", oooStamp = 0;
+    const parseDay = (s) => { const m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(s || ""); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+    // invite list: people who are out of office on the meeting's day get a purple tag
+    function markInvitees(day) {
+        document.querySelectorAll("#invitePeople .sn-pp-row").forEach((row) => {
+            const id = row.querySelector("input")?.value;
+            const o = day && id && window.Sahyog?.oooOn ? Sahyog.oooOn(id, day) : null;
+            let tag = row.querySelector(".sn-pp-ooo");
+            row.classList.toggle("is-ooo", !!o);
+            if (!o) { tag?.remove(); return; }
+            if (!tag) { tag = document.createElement("span"); tag.className = "sn-pp-ooo"; row.querySelector(".sn-pp-who")?.appendChild(tag); }
+            const r = window.SN?.oooDays ? SN.oooDays(o) : null;
+            tag.innerHTML = '<i class="dot st-ooo" aria-hidden="true"></i> ';
+            tag.appendChild(document.createTextNode("Out of office that day" + (r && r.last && window.SN?.oooRangeText ? " · " + SN.oooRangeText(r.first, r.last) : "")));
+            tag.title = o.message || "";
+        });
+    }
+    document.addEventListener("sahyog:ooo", () => { oooStamp++; check(); });
     function check() {
         const date = val("mDate");
         const allDay = isAllDay();
         const time = allDay ? "00:00" : (val("mTime_value") || "00:00");
         const minutes = allDay ? 24 * 60 : Number(val("mDuration_value") || 30);
-        const key = `${date}|${time}|${minutes}|${allDay}|${showAsFree()}`;
+        const key = `${date}|${time}|${minutes}|${allDay}|${showAsFree()}|${oooStamp}`;
         if (key === last) return;
         last = key;
+        const day = parseDay(date);
+        markInvitees(day);
+        // my own out of office that day comes first
+        const me = document.body.dataset.me;
+        const away = day && me && window.Sahyog?.oooOn ? Sahyog.oooOn(me, day) : null;
+        if (away) {
+            const r = window.SN?.oooDays ? SN.oooDays(away) : null;
+            freeText.className = "sn-free clash ooo";
+            freeText.innerHTML = '<i class="fa fa-plane"></i> ';
+            freeText.appendChild(document.createTextNode("You're out of office that day" + (r && window.SN?.oooRangeText ? ` (${r.last ? SN.oooRangeText(r.first, r.last) : SN.oooRangeText(r.first, null) + ", no end date"})` : "")));
+            return;
+        }
 
         const [h, m] = time.split(":").map(Number);
         const start = h + (m || 0) / 60;
@@ -204,4 +233,35 @@
     // The pickers set their values from script, so also re-check every half second while the dialog is open.
     setInterval(() => { if (document.getElementById("scheduleDialog")?.open) { check(); updateRepeat(); } }, 500);
     check();
+})();
+
+// ShankhNaad · Meetings calendar: the days you're out of office get a purple band (week / day / month).
+(function () {
+    "use strict";
+    const views = document.querySelector(".sn-views");
+    if (!views) return;
+    const parseDay = (s) => { const m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(s || ""); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+    function mark() {
+        const me = document.body.dataset.me;
+        const S = window.Sahyog;
+        const mine = me && S?.oooPlanOf ? S.oooPlanOf(me) : null;
+        const title = mine ? "Out of office" + (mine.message ? ": " + mine.message : "") : "";
+        views.querySelectorAll(".sn-mcell[data-date], .sn-sched-col[data-date], .sn-sched-dayhead[data-date], .sn-allday-cell[data-date]").forEach((el) => {
+            const day = parseDay(el.dataset.date);
+            const on = !!(mine && day && S.oooOn(me, day));
+            el.classList.toggle("sn-ooo-day", on);
+            let band = el.querySelector(":scope > .sn-ooo-band");
+            if (!on) { band?.remove(); return; }
+            if (!band) {
+                band = document.createElement("span");
+                band.className = "sn-ooo-band";
+                band.innerHTML = '<i class="fa fa-plane" aria-hidden="true"></i><span>Out of office</span>';
+                const top = el.classList.contains("sn-mcell") ? el.querySelector(".sn-mcell-top") : null;
+                if (top) top.after(band); else el.appendChild(band);
+            }
+            band.title = title;
+        });
+    }
+    document.addEventListener("sahyog:ooo", mark);
+    mark();
 })();

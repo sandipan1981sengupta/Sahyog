@@ -437,8 +437,8 @@
             const item = e.target.closest("[data-sn-status]");
             if (item && window.Sahyog?.setStatus) Sahyog.setStatus(item.dataset.snStatus);
             if (e.target.closest(".sn-ooo-item")) setTimeout(() => SN.outOfOffice(), 60);
-            if (e.target.closest(".sn-ooo-off")) Sahyog.setOutOfOffice(false).then(() => Sahyog.toast?.("Welcome back. Out of office is off.", { kind: "success", title: "Out of office" }))
-                .catch(() => Sahyog.toast?.("That didn't work. Try again.", { kind: "error" }));
+            if (e.target.closest(".sn-ooo-off")) { const wasNow = !!(Sahyog.oooOf && Sahyog.oooOf(me)); Sahyog.setOutOfOffice(false).then(() => Sahyog.toast?.(wasNow ? "Welcome back. Out of office is off." : "Your planned out of office is cancelled.", { kind: "success", title: "Out of office" }))
+                .catch(() => Sahyog.toast?.("That didn't work. Try again.", { kind: "error" })); }
         });
 
         const paint = () => {
@@ -449,8 +449,11 @@
             now.className = "dot " + info.cls;
             box.querySelector(".sn-status-label").textContent = info.label;
             const ooo = Sahyog.oooOf && Sahyog.oooOf(me);
-            box.querySelector(".sn-ooo-item-t").textContent = ooo ? "Change out of office…" : "Out of office…";
-            box.querySelector(".sn-ooo-off").hidden = !ooo;
+            const plan = Sahyog.oooPlanOf ? Sahyog.oooPlanOf(me) : ooo;
+            box.querySelector(".sn-ooo-item-t").textContent = ooo ? "Change out of office…" : plan ? "Out of office: " + SN.oooUntilText(plan) : "Out of office…";
+            const off = box.querySelector(".sn-ooo-off");
+            off.hidden = !plan;
+            off.lastElementChild.textContent = ooo ? "I'm back: turn off out of office" : "Cancel planned out of office";
             if (state === "ooo") { box.querySelector(".sn-status-why").textContent = SN.oooUntilText(ooo) + " · colleagues see your note"; return; }
             // why it shows that: picked by me, or set automatically
             const why = st.presenting ? "while you share your screen"
@@ -466,22 +469,49 @@
         paint();
     });
 
-    // ---------- out of office: a note and the day you're back; shown to everyone, even while you're offline ----------
+    // ---------- out of office: from a day to a day, a note, and who to tell by email; shown to everyone, even while you're offline ----------
     const dayName = (d) => d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
-    /** "back Mon, 25 Nov" / "until you turn it off" */
+    const startOf = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+    const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    /** "Mon, 24 Nov – Fri, 28 Nov" / "Mon, 24 Nov" / "from Mon, 24 Nov" — first and last day away (local dates). */
+    SN.oooRangeText = (first, last) => {
+        if (!first) return "";
+        if (!last) return "from " + dayName(first);
+        return +startOf(first) === +startOf(last) ? dayName(first) : dayName(first) + " – " + dayName(last);
+    };
+    /** The days away of a saved out of office: { first, last } (last = null: until turned off). */
+    SN.oooDays = (o) => {
+        if (!o) return null;
+        const first = startOf(new Date(o.startUtc || o.sinceUtc || Date.now()));
+        const last = o.untilUtc ? addDays(startOf(new Date(new Date(o.untilUtc) - 1)), 0) : null;
+        return { first, last };
+    };
+    /** "back Mon, 25 Nov" / "until you turn it off" (for out of office now); "planned · Mon, 24 Nov – Fri, 28 Nov" (later) */
     SN.oooUntilText = (o) => {
-        if (!o || !o.untilUtc) return "until you turn it off";
+        if (!o) return "";
+        if (o.startUtc && new Date(o.startUtc) > new Date()) { const r = SN.oooDays(o); return "planned · " + SN.oooRangeText(r.first, r.last); }
+        if (!o.untilUtc) return "until you turn it off";
         const d = new Date(o.untilUtc);
         return d.getHours() === 0 && d.getMinutes() === 0 ? "back " + dayName(d) : "back " + dayName(d) + ", " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     };
     const DEFAULT_NOTE = "I'm out of the office and will reply when I'm back.";
-    const startOf = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    // the same date box as the meetings scheduler (TagHelper <modern-datepicker-with-label>)
+    const datebox = (id, label, placeholder) => `
+        <div class="mdpwl-outer sn-ooo-dp" style="--mdpwl-height: 42px;">
+            <label class="mdpwl-label" for="${id}">${label}</label>
+            <div class="mdpwl-field" data-required="false">
+                <input type="text" id="${id}" class="mdpwl-input" placeholder="${placeholder}" autocomplete="off" data-disabled-dates="[]" />
+                <span class="mdpwl-icon-error" style="display:none;"></span>
+                <span class="mdpwl-icon"><i class="bi bi-calendar3"></i></span>
+            </div>
+        </div>`;
     let oooDlg = null;
     SN.outOfOffice = () => {
         const me = document.body.dataset.me;
-        if (!me || !window.Sahyog?.setOutOfOffice) return;
-        const cur = Sahyog.oooOf && Sahyog.oooOf(me);
+        if (!me || !window.Sahyog?.saveOutOfOffice) return;
+        const cur = Sahyog.oooPlanOf ? Sahyog.oooPlanOf(me) : (Sahyog.oooOf && Sahyog.oooOf(me));
         if (!oooDlg) {
             oooDlg = document.createElement("dialog");
             oooDlg.className = "sn-dialog glass-strong sn-ooo-dlg";
@@ -495,22 +525,47 @@
                         <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
                     </div>
                     <div class="sn-dlg-body sn-ooo-body">
+                        <div class="sn-field-label" id="oooWhenL">When are you away?</div>
+                        <div class="sn-ooo-when" aria-labelledby="oooWhenL">
+                            <button type="button" data-quick="today">Today</button>
+                            <button type="button" data-quick="tomorrow">Tomorrow</button>
+                            <button type="button" data-quick="week">Rest of this week</button>
+                            <button type="button" data-quick="next">Next week</button>
+                        </div>
+                        <div class="sn-ooo-range">
+                            ${datebox("oooFrom", "From", "First day away")}
+                            <span class="sn-ooo-arrow" aria-hidden="true"><i class="fa fa-long-arrow-right"></i></span>
+                            ${datebox("oooTo", "To", "Last day away")}
+                        </div>
+                        <div class="sn-ooo-range-foot">
+                            <label class="sn-ooo-noend"><input type="checkbox" id="oooNoEnd" /> <span>No end date: until I turn it off</span></label>
+                            <span class="sn-ooo-count" id="oooCount"></span>
+                        </div>
                         <label class="sn-field-label" for="oooMsg">Note for colleagues</label>
                         <textarea id="oooMsg" class="sn-textarea sn-ooo-msg" rows="3" maxlength="500"></textarea>
-                        <div class="sn-field-label" id="oooWhenL">I'm back on</div>
-                        <div class="sn-ooo-when" role="radiogroup" aria-labelledby="oooWhenL">
-                            <button type="button" role="radio" data-when="tomorrow">Tomorrow</button>
-                            <button type="button" role="radio" data-when="monday">Monday</button>
-                            <button type="button" role="radio" data-when="pick">Pick a date</button>
-                            <button type="button" role="radio" data-when="none">Until I turn it off</button>
+                        <div class="sn-field-label" id="oooMailL">Tell people by email</div>
+                        <div class="sn-ooo-seg" role="radiogroup" aria-labelledby="oooMailL">
+                            <button type="button" role="radio" data-notify="none"><i class="fa fa-ban" aria-hidden="true"></i> Don't email</button>
+                            <button type="button" role="radio" data-notify="all"><i class="fa fa-users" aria-hidden="true"></i> Whole team</button>
+                            <button type="button" role="radio" data-notify="some"><i class="fa fa-user-plus" aria-hidden="true"></i> Pick people</button>
                         </div>
-                        <input type="date" id="oooDate" class="sn-textarea sn-ooo-date" aria-label="The day you're back" hidden />
+                        <p class="sn-ooo-mailnote" id="oooMailNote" hidden></p>
+                        <div class="sn-ooo-people" id="oooPeople" hidden>
+                            <div class="sn-ooo-people-top">
+                                <label class="sn-ooo-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" id="oooSearch" placeholder="Search your team" aria-label="Search your team" autocomplete="off" /></label>
+                                <span id="oooPicked">0 picked</span>
+                                <button type="button" class="sn-ooo-linkbtn" id="oooAll">Select shown</button>
+                                <button type="button" class="sn-ooo-linkbtn sn-ooo-clear" id="oooNone">Clear</button>
+                            </div>
+                            <div class="sn-ooo-list" id="oooList" role="listbox" aria-multiselectable="true"><p class="sn-ooo-empty">Loading your team…</p></div>
+                        </div>
                         <div class="sn-ooo-preview"><span class="sn-ooo-preview-l">Colleagues see</span>
                             <span class="sn-ooo-chip"><i class="dot st-ooo" aria-hidden="true"></i><b>Out of office</b> · <span id="oooPrevWhen"></span></span>
-                            <q id="oooPrevMsg"></q></div>
+                            <q id="oooPrevMsg"></q>
+                            <span class="sn-ooo-prev-mail" id="oooPrevMail" hidden><i class="fa fa-envelope-o" aria-hidden="true"></i> <span></span></span></div>
                     </div>
                     <div class="sn-dlg-foot">
-                        <button type="button" class="cee-btn sn-btn-danger-soft" id="oooOff" hidden><i class="fa fa-sign-in" aria-hidden="true"></i> I'm back: turn off</button>
+                        <button type="button" class="cee-btn sn-btn-danger-soft" id="oooOff" hidden><i class="fa fa-sign-in" aria-hidden="true"></i> <span>I'm back: turn off</span></button>
                         <span style="display:flex;gap:10px;margin-left:auto">
                             <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
                             <button type="submit" class="cee-btn cee-btn-gradient" id="oooSave"><i class="fa fa-check" aria-hidden="true"></i> <span>Turn on</span></button>
@@ -520,61 +575,204 @@
             document.body.appendChild(oooDlg);
             const q = (s) => oooDlg.querySelector(s);
             oooDlg.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () => oooDlg.close()));
-            const back = () => {
-                const w = oooDlg.dataset.when, t = startOf(new Date());
-                if (w === "tomorrow") return new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
-                if (w === "monday") { const add = ((8 - t.getDay()) % 7) || 7; return new Date(t.getFullYear(), t.getMonth(), t.getDate() + add); }
-                if (w === "pick" && q("#oooDate").value) { const [y, m, d] = q("#oooDate").value.split("-").map(Number); return new Date(y, m - 1, d); }
-                return null;
+
+            // ----- the two date boxes (flatpickr, like the scheduler) -----
+            if (window.ModernDatePickerWithLabel) window.ModernDatePickerWithLabel.init(oooDlg);
+            const fp = (id) => window.ModernDatePickerWithLabel?._instances?.[id] || null;
+            const dayOf = (id) => {
+                const f = fp(id);
+                if (f) return f.selectedDates[0] ? startOf(f.selectedDates[0]) : null;
+                const m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(q("#" + id).value.trim());
+                return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null;
             };
-            oooDlg._back = back;
-            const preview = () => {
-                const b = back();
-                q("#oooPrevWhen").textContent = b ? "back " + dayName(b) : oooDlg.dataset.when === "pick" ? "pick a day" : "until you turn it off";
-                const m = q("#oooMsg").value.trim();
-                q("#oooPrevMsg").textContent = m;
-                q("#oooPrevMsg").hidden = !m;
+            const setDay = (id, d) => {
+                const f = fp(id);
+                if (f) { if (d) f.setDate(d, false); else f.clear(false); }
+                else q("#" + id).value = d ? `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}` : "";
             };
-            oooDlg._preview = preview;
-            const pickWhen = (w) => {
-                oooDlg.dataset.when = w;
-                oooDlg.querySelectorAll("[data-when]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.when === w)));
-                q("#oooDate").hidden = w !== "pick";
-                if (w === "pick") setTimeout(() => q("#oooDate").focus(), 30);
+            oooDlg._setDay = setDay;
+            oooDlg._dayOf = dayOf;
+            const sync = () => {
+                const from = dayOf("oooFrom"), today = startOf(new Date());
+                const fTo = fp("oooTo"), fFrom = fp("oooFrom");
+                const to = dayOf("oooTo");   // read before changing the limit (the calendar drops a day outside it)
+                if (fFrom) fFrom.set("minDate", today);
+                if (from && to && to < from && !q("#oooNoEnd").checked) setDay("oooTo", from);
+                if (fTo) fTo.set("minDate", from || today);
                 preview();
             };
-            oooDlg._pickWhen = pickWhen;
-            oooDlg.querySelectorAll("[data-when]").forEach((b) => b.addEventListener("click", () => pickWhen(b.dataset.when)));
+            oooDlg._sync = sync;
+            ["oooFrom", "oooTo"].forEach((id) => {
+                const f = fp(id);
+                if (f) f.config.onChange.push(() => setTimeout(sync, 0));
+                q("#" + id).addEventListener("change", sync);
+                q("#" + id).addEventListener("blur", () => setTimeout(sync, 0));
+            });
+            q("#oooNoEnd").addEventListener("change", () => {
+                const off = q("#oooNoEnd").checked, input = q("#oooTo");
+                if (off) { setDay("oooTo", null); window.disableModernDatePickerWithLabel ? window.disableModernDatePickerWithLabel("#oooTo") : (input.disabled = true); }
+                else { window.enableModernDatePickerWithLabel ? window.enableModernDatePickerWithLabel("#oooTo") : (input.disabled = false); }
+                preview();
+            });
+            const setRange = (from, to) => {
+                if (q("#oooNoEnd").checked && to) { q("#oooNoEnd").checked = false; q("#oooNoEnd").dispatchEvent(new Event("change")); }
+                fp("oooTo")?.set("minDate", null);   // the old limit would refuse an earlier day
+                setDay("oooFrom", from); setDay("oooTo", to); sync();
+            };
+            oooDlg.querySelectorAll("[data-quick]").forEach((b) => b.addEventListener("click", () => {
+                const t = startOf(new Date()), dow = t.getDay();   // 0 Sun … 6 Sat
+                const w = b.dataset.quick;
+                if (w === "today") setRange(t, t);
+                else if (w === "tomorrow") setRange(addDays(t, 1), addDays(t, 1));
+                else if (w === "week") setRange(t, addDays(t, dow <= 5 ? 5 - dow : 6));                       // till Friday (Saturday on a Saturday)
+                else if (w === "next") { const mon = addDays(t, ((8 - dow) % 7) || 7); setRange(mon, addDays(mon, 4)); }   // next Mon – Fri
+            }));
+
+            // ----- who to tell by email -----
+            let people = null, picked = new Set(), canEmail = true;
+            const paintPicked = () => {
+                q("#oooPicked").textContent = picked.size + " picked";
+                preview();
+            };
+            const paintList = () => {
+                const list = q("#oooList");
+                if (!people) return;
+                const term = q("#oooSearch").value.trim().toLowerCase();
+                const shown = people.filter((p) => !term || p.name.toLowerCase().includes(term));
+                if (!shown.length) { list.innerHTML = `<p class="sn-ooo-empty">${people.length ? "Nobody matches." : "Nobody else in your team yet."}</p>`; return; }
+                list.innerHTML = shown.map((p) => {
+                    const on = picked.has(p.id);
+                    return `<button type="button" class="sn-ooo-person${on ? " on" : ""}" role="option" aria-selected="${on}" data-id="${esc(p.id)}"${p.hasEmail ? "" : " disabled title=\"No email address\""}>
+                        <span class="avatar av-28 sn-ooo-av tone-${+p.tone || 0}" data-user="${esc(p.id)}">${esc(p.initials)}</span>
+                        <span class="sn-ooo-pname">${esc(p.name)}${p.hasEmail ? "" : "<small>no email address</small>"}</span>
+                        <i class="sn-ooo-tick fa fa-check" aria-hidden="true"></i></button>`;
+                }).join("");
+                window.Sahyog?.paintPhotos?.(list);
+            };
+            q("#oooList").addEventListener("click", (e) => {
+                const b = e.target.closest(".sn-ooo-person");
+                if (!b || b.disabled) return;
+                const id = b.dataset.id;
+                if (picked.has(id)) picked.delete(id); else picked.add(id);
+                b.classList.toggle("on", picked.has(id)); b.setAttribute("aria-selected", String(picked.has(id)));
+                paintPicked();
+            });
+            q("#oooSearch").addEventListener("input", paintList);
+            q("#oooAll").addEventListener("click", () => {
+                const term = q("#oooSearch").value.trim().toLowerCase();
+                (people || []).filter((p) => p.hasEmail && (!term || p.name.toLowerCase().includes(term))).forEach((p) => picked.add(p.id));
+                paintList(); paintPicked();
+            });
+            q("#oooNone").addEventListener("click", () => { picked.clear(); paintList(); paintPicked(); });
+            const loadPeople = async () => {
+                if (people) return;
+                try {
+                    const r = await fetch("/status/out-of-office/people", { headers: { Accept: "application/json" }, credentials: "same-origin" });
+                    const d = await r.json();
+                    people = d.people || []; canEmail = d.canEmail !== false;
+                } catch { people = []; }
+                paintList(); notifyNote(); preview();
+            };
+            const notifyNote = () => {
+                const n = q("#oooMailNote"), w = oooDlg.dataset.notify;
+                n.hidden = canEmail || w === "none";
+                n.textContent = "Email isn't set up on the server yet, so no email can be sent. Your status still changes.";
+            };
+            const pickNotify = (w) => {
+                oooDlg.dataset.notify = w;
+                oooDlg.querySelectorAll("[data-notify]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.notify === w)));
+                q("#oooPeople").hidden = w !== "some";
+                if (w !== "none") loadPeople();
+                if (w === "some") setTimeout(() => q("#oooSearch").focus(), 30);
+                notifyNote(); preview();
+            };
+            oooDlg._pickNotify = pickNotify;
+            oooDlg._resetPeople = () => { picked = new Set(); q("#oooSearch").value = ""; paintList(); paintPicked(); };
+            oooDlg.querySelectorAll("[data-notify]").forEach((b) => b.addEventListener("click", () => pickNotify(b.dataset.notify)));
+
+            // ----- what colleagues will see -----
+            const workDays = (a, b) => { let n = 0; for (let d = a; d <= b; d = addDays(d, 1)) if (d.getDay() % 6) n++; return n; };
+            const preview = () => {
+                const from = dayOf("oooFrom"), noEnd = q("#oooNoEnd").checked, to = noEnd ? null : dayOf("oooTo");
+                const today = startOf(new Date());
+                let when;
+                if (!from) when = "pick your first day";
+                else if (noEnd) when = +from === +today ? "until you turn it off" : "from " + dayName(from) + ", until you turn it off";
+                else if (!to) when = "pick your last day";
+                else when = SN.oooRangeText(from, to) + " · back " + dayName((() => { let d = addDays(to, 1); while (!(d.getDay() % 6)) d = addDays(d, 1); return d; })());
+                q("#oooPrevWhen").textContent = when;
+                const c = q("#oooCount");
+                if (from && to && !noEnd) {
+                    const days = Math.round((to - from) / 864e5) + 1, wd = workDays(from, to);
+                    c.textContent = `${days} day${days === 1 ? "" : "s"}` + (wd !== days ? ` · ${wd} working day${wd === 1 ? "" : "s"}` : "");
+                } else c.textContent = "";
+                const m = q("#oooMsg").value.trim();
+                q("#oooPrevMsg").textContent = m; q("#oooPrevMsg").hidden = !m;
+                const w = oooDlg.dataset.notify, pm = q("#oooPrevMail");
+                const all = (people || []).filter((p) => p.hasEmail).length;
+                pm.hidden = w === "none" || !canEmail;
+                pm.querySelector("span").textContent = w === "all" ? `Email to the whole team${people ? ` (${all} ${all === 1 ? "person" : "people"})` : ""}`
+                    : `Email to ${picked.size ? [...picked].map((id) => (people || []).find((p) => p.id === id)?.name).filter(Boolean).slice(0, 3).join(", ") + (picked.size > 3 ? ` and ${picked.size - 3} more` : "") : "nobody yet: pick people above"}`;
+            };
+            oooDlg._preview = preview;
             q("#oooMsg").addEventListener("input", preview);
-            q("#oooDate").addEventListener("input", preview);
-            q("#oooDate").addEventListener("change", preview);   // Safari picker
+
+            // ----- save -----
             q("#oooForm").addEventListener("submit", async (e) => {
                 e.preventDefault();
-                if (oooDlg.dataset.when === "pick" && !back()) { Sahyog.toast?.("Pick the day you're back.", { kind: "warn" }); return; }
-                const b = back();
-                if (b && b <= new Date()) { Sahyog.toast?.("Pick a day after today.", { kind: "warn" }); return; }
+                const from = dayOf("oooFrom"), noEnd = q("#oooNoEnd").checked, to = noEnd ? null : dayOf("oooTo");
+                const warn = (t) => Sahyog.toast?.(t, { kind: "warn", title: "Out of office" });
+                if (!from) { warn("Pick the first day you're away."); fp("oooFrom")?.open(); return; }
+                if (from < startOf(new Date())) { warn("The first day can't be in the past."); return; }
+                if (!noEnd && !to) { warn("Pick the last day you're away, or tick “No end date”."); fp("oooTo")?.open(); return; }
+                if (to && to < from) { warn("The last day can't be before the first day."); return; }
+                const notify = oooDlg.dataset.notify;
+                if (notify === "some" && !picked.size && canEmail) { warn("Pick who gets the email, or choose “Don't email”."); return; }
                 q("#oooSave").disabled = true;
                 try {
-                    await Sahyog.setOutOfOffice(true, q("#oooMsg").value.trim(), b ? b.toISOString() : null);
+                    const r = await Sahyog.saveOutOfOffice({ message: q("#oooMsg").value.trim(), from: isoDay(from), to: to ? isoDay(to) : "", notify, people: [...picked] });
                     oooDlg.close();
-                    Sahyog.toast?.("Out of office is on" + (b ? " until " + dayName(b) : "") + ". Colleagues see your note.", { kind: "success", title: "Out of office" });
+                    const planned = from > startOf(new Date());
+                    let text = (planned ? "Out of office is planned: " : "Out of office is on: ") + (noEnd ? (planned ? "from " + dayName(from) + ", until you turn it off" : "until you turn it off") : SN.oooRangeText(from, to)) + ".";
+                    if (r.mailed) text += ` Email sent to ${r.mailed} ${r.mailed === 1 ? "person" : "people"}.`;
+                    Sahyog.toast?.(text, { kind: "success", title: "Out of office" });
+                    if (r.mailNote) Sahyog.toast?.(r.mailNote, { kind: "warn", title: "Email" });
                 } catch (err) {
-                    Sahyog.toast?.(String(err && err.message || "").replace(/^.*HubException: /, "") || "That didn't work. Try again.", { kind: "error", title: "Out of office" });
+                    Sahyog.toast?.(err && err.message || "That didn't work. Try again.", { kind: "error", title: "Out of office" });
                 }
                 q("#oooSave").disabled = false;
             });
             q("#oooOff").addEventListener("click", async () => {
-                try { await Sahyog.setOutOfOffice(false); oooDlg.close(); Sahyog.toast?.("Welcome back. Out of office is off.", { kind: "success", title: "Out of office" }); }
-                catch { Sahyog.toast?.("That didn't work. Try again.", { kind: "error" }); }
+                const planned = q("#oooOff").dataset.planned === "1";
+                try {
+                    await Sahyog.setOutOfOffice(false); oooDlg.close();
+                    Sahyog.toast?.(planned ? "Your planned out of office is cancelled." : "Welcome back. Out of office is off.", { kind: "success", title: "Out of office" });
+                } catch { Sahyog.toast?.("That didn't work. Try again.", { kind: "error" }); }
             });
+            // the calendar pops out of the dialog: keep it on top, and close it with the dialog
+            oooDlg.addEventListener("close", () => { fp("oooFrom")?.close(); fp("oooTo")?.close(); });
         }
         const q = (s) => oooDlg.querySelector(s);
-        const tomorrow = startOf(new Date()); tomorrow.setDate(tomorrow.getDate() + 1);
-        q("#oooDate").min = isoDay(tomorrow);
+        const today = startOf(new Date());
         q("#oooMsg").value = cur ? (cur.message || "") : DEFAULT_NOTE;
-        if (cur && cur.untilUtc) { q("#oooDate").value = isoDay(new Date(cur.untilUtc)); oooDlg._pickWhen("pick"); }
-        else oooDlg._pickWhen(cur ? "none" : "tomorrow");
+        const noEndBox = q("#oooNoEnd");
+        window.ModernDatePickerWithLabel?._instances?.oooTo?.set("minDate", null);
+        if (cur) {
+            const r = SN.oooDays(cur);
+            const first = r.first < today ? today : r.first;
+            noEndBox.checked = !r.last; noEndBox.dispatchEvent(new Event("change"));
+            oooDlg._setDay("oooFrom", first); oooDlg._setDay("oooTo", r.last);
+        } else {
+            noEndBox.checked = false; noEndBox.dispatchEvent(new Event("change"));
+            oooDlg._setDay("oooFrom", today); oooDlg._setDay("oooTo", today);
+        }
+        oooDlg._resetPeople();
+        oooDlg._pickNotify("none");
+        oooDlg._sync();
+        const planned = !!(cur && cur.startUtc && new Date(cur.startUtc) > new Date());
         q("#oooOff").hidden = !cur;
+        q("#oooOff").dataset.planned = planned ? "1" : "";
+        q("#oooOff span").textContent = planned ? "Cancel planned out of office" : "I'm back: turn off";
         q("#oooSave span").textContent = cur ? "Save" : "Turn on";
         oooDlg.showModal();
         setTimeout(() => q("#oooMsg").focus(), 50);

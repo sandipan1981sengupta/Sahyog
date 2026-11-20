@@ -212,7 +212,7 @@
                         <div class="sn-sched-corner"><i class="fa fa-clock-o" aria-hidden="true"></i></div>
                         @foreach (var d in gridDays)
                         {
-                            <a class="sn-sched-dayhead @(d.IsToday ? "today" : "") @(Weekend(d.Date.DayOfWeek) ? "weekend" : "")" href="@PUrl("day", d.Date)" onclick="return snNav(this.href, '', event)" title="Open this day">
+                            <a class="sn-sched-dayhead @(d.IsToday ? "today" : "") @(Weekend(d.Date.DayOfWeek) ? "weekend" : "")" data-date="@d.Date.ToString("dd-MM-yyyy", inv)" href="@PUrl("day", d.Date)" onclick="return snNav(this.href, '', event)" title="Open this day">
                                 <span>@d.Date.ToString(view == "day" ? "dddd" : "ddd", inv)</span><b>@d.Date.Day</b>
                                 @if (d.Events.Count > 0) { <em>@d.Events.Count</em> }
                             </a>
