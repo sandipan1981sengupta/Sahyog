@@ -246,8 +246,9 @@
 
     // Both dark themes keep data-theme="dark" (all the dark styles); "Dark" adds sn-carbon (css/theme-dark.css).
     const THEMES = [
-        { id: "light", name: "Light", note: "Bright glass", color: "#2563EB" },
-        { id: "dark", name: "Dark", note: "Very dark grey glass", color: "#0E0E10" },
+        // color = the desktop app's title bar (− □ ×) and the phone browser bar, matching the page behind it
+        { id: "light", name: "Light", note: "Bright glass", color: "#E6ECFB" },
+        { id: "dark", name: "Dark", note: "Very dark grey glass", color: "#0B0B0C" },
         { id: "cloudwheel", name: "CloudWheel", note: "Deep blue night", color: "#0B1020" }
     ];
     const current = () => root.getAttribute("data-skin") || (root.getAttribute("data-theme") === "dark" ? "cloudwheel" : "light");
