@@ -14,14 +14,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#2563EB" />
     <title>@(ViewData["Title"] is string t ? $"{t} · ShankhNaad" : "ShankhNaad")</title>
-    @* Theme (light / dark) is applied before anything paints, so there is no flash. *@
+    @* Theme (Light / Dark / CloudWheel) is applied before anything paints, so there is no flash.
+       Both dark themes use data-theme="dark"; the very dark grey "Dark" adds the class sn-carbon (css/theme-dark.css). *@
     <script>
         (function () {
             var root = document.documentElement;
             var t = null;
-            try { t = localStorage.getItem("sn-theme"); } catch (e) { }
-            if (t !== "dark" && t !== "light") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-            root.setAttribute("data-theme", t);
+            try {
+                t = localStorage.getItem("sn-theme3");
+                // before there were three themes, "dark" meant the blue one that is now called CloudWheel
+                if (!t) { var old = localStorage.getItem("sn-theme"); if (old === "dark") t = "cloudwheel"; else if (old === "light") t = "light"; }
+            } catch (e) { }
+            if (t !== "dark" && t !== "light" && t !== "cloudwheel") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "cloudwheel" : "light";
+            root.setAttribute("data-theme", t === "light" ? "light" : "dark");
+            root.setAttribute("data-skin", t);
+            if (t === "dark") root.classList.add("sn-carbon");
 
             // Safari (Mac) and every browser on iPhone / iPad use WebKit: it redraws frosted glass far more slowly,
             // so css/safari.css gives it a lighter, still-glassy setup (see that file).
@@ -196,7 +203,7 @@
                               show-install="true"
                               install-text="Install desktop app"
                               chevron-background-color="#2563EB">
-                    <button type="button" class="sn-theme-btn" onclick="SN.toggleTheme(event)" aria-label="Switch light or dark theme" title="Light / dark theme">
+                    <button type="button" class="sn-theme-btn" onclick="SN.themeMenu(event)" aria-label="Theme: Light, Dark or CloudWheel" aria-haspopup="menu" title="Theme">
                         <i class="fa fa-moon-o sn-ic-moon" aria-hidden="true"></i><i class="fa fa-sun-o sn-ic-sun" aria-hidden="true"></i>
                     </button>
                     <span class="sn-pill" id="snConn" data-state="wait"><span class="sn-pill-dot"></span><span>Connecting…</span></span>

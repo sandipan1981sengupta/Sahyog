@@ -14,9 +14,11 @@ public sealed class AdminController : Controller
     private readonly ITenantService _tenants;
     private readonly IFileStorage _files;
     private readonly ILogger<AdminController> _log;
+    private readonly ILocationService _location;
 
-    public AdminController(ITenantService tenants, IFileStorage files, ILogger<AdminController> log)
+    public AdminController(ITenantService tenants, IFileStorage files, ILogger<AdminController> log, ILocationService location)
     {
+        _location = location;
         _tenants = tenants;
         _files = files;
         _log = log;
@@ -123,6 +125,17 @@ public sealed class AdminController : Controller
         return RedirectToAction(nameof(Index));
     }
 
+    /// <summary>Team location for this client: on / off. Off erases every stored location of that client.</summary>
+    [HttpPost("tenants/{id:guid}/location")]
+    public async Task<IActionResult> SetLocation(Guid id, bool on)
+    {
+        if (!await _location.SetEnabledAsync(id, on)) return NotFound();
+        TempData["Message"] = on
+            ? "Team location is on for this client. Each person chooses whether to share; their admins can add the office's internet address on the Team page."
+            : "Team location is off for this client. Stored locations were erased.";
+        return RedirectToAction(nameof(Index));
+    }
+
     [HttpPost("tenants/{id:guid}/active")]
     public async Task<IActionResult> ToggleActive(Guid id)
     {
@@ -157,9 +170,10 @@ public sealed class AdminController : Controller
     private async Task<AdminViewModel> BuildAsync(CreateTenantInput form, string? error = null)
     {
         var plans = await _tenants.GetPlansAsync();
+        var locationOn = await _location.EnabledTenantsAsync();
         var tenants = (await _tenants.ListAsync())
             .Select(t => new TenantRowVm(t.TenantId, t.Name, t.Slug, t.PlanName, t.ActiveUsers, t.MaxUsers,
-                t.StorageUsedBytes, t.StorageQuotaBytes, t.VideoProvider, t.IsActive, t.CreatedUtc))
+                t.StorageUsedBytes, t.StorageQuotaBytes, t.VideoProvider, t.IsActive, t.CreatedUtc, locationOn.Contains(t.TenantId)))
             .ToList();
 
         if (form.PlanId == 0 && plans.Count > 0) form.PlanId = plans[0].PlanId;

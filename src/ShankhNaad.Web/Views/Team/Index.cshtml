@@ -8,6 +8,15 @@
     var m = Model.NewMember;
     var me = User.UserId();
     string Email(string id) => Model.Emails.TryGetValue(id, out var e) ? e : "";
+    // team location column: "In office · Bengaluru", "Remote · Pune", "Not shared"
+    var locOn = Model.LocationEnabled;
+    string Loc(string id)
+    {
+        if (!Model.Locations.TryGetValue(id, out var l)) return "Not shared";
+        if (l.SeenUtc is null) return "Shared";
+        var where = l.InOffice switch { true => "In office", false => "Remote", _ => null };
+        return where is null ? (l.Place ?? "Shared") : l.City is { Length: > 0 } c ? $"{where} · {c}" : where;
+    }
 
     var rows = Model.People.Select(p => new Dictionary<string, object>
     {
@@ -19,6 +28,7 @@
         ["Role"] = p.Role ?? "Member",
         ["Status"] = p.Pending ? "Invited" : p.Online ? "Online" : "Offline",
         ["Pending"] = p.Pending,
+        ["Location"] = locOn ? Loc(p.Id) : "",
         ["Active"] = true
     }).Concat(Model.Inactive.Select(p => new Dictionary<string, object>
     {
@@ -30,6 +40,7 @@
         ["Role"] = p.Role ?? "Member",
         ["Status"] = "Inactive",
         ["Pending"] = false,
+        ["Location"] = "",
         ["Active"] = false
     })).ToList();
 
@@ -74,6 +85,11 @@
                        show-save="false" show-submit="false"
                        show-print="true" print-on-click="SN.print()">
             <action-btn text="My photo" icon-css="bi bi-person-bounding-box" icon-color="#7C3AED" tooltip="Add or change your profile photo" on-click="snPhotoFor(snMe, snMyName)"></action-btn>
+            <action-btn text="Profile" icon-css="bi bi-person-vcard-fill" icon-color="#2563EB" tooltip="@(locOn ? "Photo, details and location of the selected person" : "Photo and details of the selected person")" on-click="snPersonCard()"></action-btn>
+            @if (locOn && isAdmin)
+            {
+                <action-btn text="Office address" icon-css="bi bi-building-fill-check" icon-color="#DB2777" tooltip="The office's internet address: people connecting from it show as In office" on-click="snOfficeSettings()"></action-btn>
+            }
             @if (isAdmin)
             {
                 <action-btn text="Activate" icon-css="bi bi-person-check-fill" icon-color="#16A34A" tooltip="Let an inactive person sign in again" on-click="snRestorePerson()"></action-btn>
@@ -133,6 +149,10 @@
                     <badge value="Invited" color="#FEF3C7"></badge>
                     <badge value="Inactive" color="#FFE4E6"></badge>
                 </column>
+                @if (locOn)
+                {
+                    <column field="Location" header="Location" width="200px"></column>
+                }
                 @if (isAdmin)
                 {
                     <column field="Active" header="Active" type="toggle" width="100px" cell-align="center" header-align="center" filterable="false"></column>
@@ -324,6 +344,78 @@
     </div>
 </dialog>
 
+@* ---- one person: photo, details and (when switched on) where they are ---- *@
+<dialog id="personDialog" class="sn-dialog glass-strong sn-person-dialog" aria-labelledby="pcName">
+    <div class="sn-dlg-head">
+        <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="bi bi-person-vcard-fill" aria-hidden="true"></i></span><div><h2>Profile</h2><p id="pcSub">@(locOn ? "Details and location" : "Details")</p></div></div>
+        <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+    </div>
+    <div class="sn-dlg-body sn-pc">
+        <div class="sn-pc-who">
+            <span class="sn-pc-photo avatar sn-photo-big" id="pcPhoto"><span id="pcIni">?</span></span>
+            <div class="sn-pc-id">
+                <h3 id="pcName">-</h3>
+                <div class="sn-pc-tags"><span class="sn-pc-tag" id="pcRole">Member</span><span class="sn-pc-tag" id="pcStatus" data-status="Offline"><i></i><span>Offline</span></span></div>
+                <a class="sn-pc-mail" id="pcEmail" href="#"><i class="fa fa-envelope-o" aria-hidden="true"></i> <span></span></a>
+            </div>
+        </div>
+        @if (locOn)
+        {
+            <section class="sn-pc-loc" id="pcLoc" aria-live="polite">
+                <div class="sn-pc-loc-head">
+                    <span class="sn-pc-where" id="pcWhere" data-kind="none"><i class="bi bi-geo-alt-fill" aria-hidden="true"></i><span>Loading…</span></span>
+                    <small id="pcSeen"></small>
+                </div>
+                <div class="sn-pc-map" id="pcMap" hidden></div>
+                <dl class="sn-pc-kv" id="pcKv" hidden>
+                    <div id="pcRowAddr"><dt>Address</dt><dd id="pcAddr">-</dd></div>
+                    <div id="pcRowArea"><dt>Area</dt><dd id="pcArea">-</dd></div>
+                    <div><dt>City</dt><dd id="pcCity">-</dd></div>
+                    <div><dt>State</dt><dd id="pcRegion">-</dd></div>
+                    <div><dt>Country</dt><dd id="pcCountry">-</dd></div>
+                    <div id="pcRowAcc"><dt>Accuracy</dt><dd id="pcAcc">-</dd></div>
+                    <div id="pcRowCoord"><dt>Coordinates</dt><dd id="pcCoord">-</dd></div>
+                </dl>
+                <p class="sn-pc-empty" id="pcEmpty" hidden></p>
+                <div class="sn-pc-acts">
+                    <a class="cee-btn sn-btn-light" id="pcGmaps" href="#" target="_blank" rel="noopener" hidden><i class="bi bi-map" aria-hidden="true"></i> Open in Google Maps</a>
+                    <button type="button" class="cee-btn sn-btn-light" id="pcShareMe" hidden><i class="bi bi-geo-alt" aria-hidden="true"></i> <span>Share my location</span></button>
+                    <button type="button" class="cee-btn sn-btn-light" id="pcUpdate" hidden><i class="fa fa-refresh" aria-hidden="true"></i> Update my location now</button>
+                </div>
+            </section>
+        }
+    </div>
+</dialog>
+
+@if (locOn && isAdmin)
+{
+    @* ---- the office's internet address(es): people connecting from one show "In office" ---- *@
+    <dialog id="officeDialog" class="sn-dialog glass-strong">
+        <form id="officeForm" novalidate>
+            <div class="sn-dlg-head">
+                <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="bi bi-building-fill-check" aria-hidden="true"></i></span><div><h2>Office address</h2><p>People connecting from one of these show as <b>In office</b>; everyone else as <b>Remote</b>.</p></div></div>
+                <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+            </div>
+            <div class="sn-dlg-body">
+                <label class="sn-field-label" for="ofIps">Internet addresses of the office (one per line)</label>
+                <textarea id="ofIps" class="sn-textarea" rows="5" spellcheck="false" placeholder="203.0.113.10&#10;198.51.100.0/24"></textarea>
+                <div class="sn-of-me">
+                    <span>This computer is connecting from <b id="ofMyIp">…</b> <span class="sn-of-badge" id="ofMyBadge" hidden>In office</span></span>
+                    <button type="button" class="sn-link" id="ofAddMine"><i class="fa fa-plus" aria-hidden="true"></i> Add this address</button>
+                </div>
+                <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> Easiest: open this from a computer in the office and press <b>Add this address</b>. A range like 203.0.113.0/24 covers several. If ShankhNaad runs on a server inside the office, use the office network's range (for example 192.168.1.0/24).</span>
+            </div>
+            <div class="sn-dlg-foot">
+                <span class="muted small" id="ofFoot"></span>
+                <span style="display:flex;gap:10px">
+                    <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                    <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Save</button>
+                </span>
+            </div>
+        </form>
+    </dialog>
+}
+
 @section Scripts {
     <script>
         // ---- table heading: count badge + "online · admins · seats" line ----
@@ -336,6 +428,7 @@
         });
 
         var snIsAdmin = @(isAdmin ? "true" : "false");   // members only see the list
+        var snLocOn = @(locOn ? "true" : "false");        // team location switched on for this client (super admin)
 
         // /team?add=1 (from "Add people to the team" in the Schedule window) opens Add person straight away.
         if (snIsAdmin && new URLSearchParams(location.search).get("add") === "1") {
@@ -365,8 +458,31 @@
                     wrap.insertBefore(span, wrap.firstChild);
                     cell.appendChild(wrap);
                 });
+                if (snLocOn) decorateLocation();
                 Sahyog.paintPhotos && Sahyog.paintPhotos(table);
                 Sahyog.paintPresence && Sahyog.paintPresence();
+            }
+            // the Location column: a coloured pin you can click (opens the profile card)
+            function decorateLocation() {
+                var heads = Array.prototype.slice.call(table.querySelectorAll("thead th"));
+                var col = heads.findIndex(function (th) { return th.textContent.trim() === "Location"; });
+                if (col < 0) return;
+                table.querySelectorAll("tbody tr[data-row-id]").forEach(function (tr) {
+                    var td = tr.children[col];
+                    if (!td || td.querySelector(".sn-loc-cell")) return;
+                    var text = td.textContent.trim();
+                    if (!text) return;
+                    var kind = /^In office/.test(text) ? "office" : /^Remote/.test(text) ? "remote" : /^Not shared/.test(text) ? "none" : "shared";
+                    td.innerHTML = "";
+                    var wrap = document.createElement("span");
+                    wrap.className = "sn-loc-cell"; wrap.setAttribute("data-kind", kind);
+                    var btn = document.createElement("button");
+                    btn.type = "button"; btn.className = "sn-loc-cell-btn"; btn.title = "Open profile and location";
+                    btn.setAttribute("aria-label", "Open profile and location");
+                    btn.innerHTML = '<i class="bi bi-geo-alt-fill" aria-hidden="true"></i>';
+                    var t = document.createElement("span"); t.textContent = text;
+                    wrap.appendChild(btn); wrap.appendChild(t); td.appendChild(wrap);
+                });
             }
             new MutationObserver(decorate).observe(table, { childList: true, subtree: true });
             $(decorate);
@@ -646,6 +762,187 @@
             fetch("/team/" + snPhotoUser + "/photo/delete", { method: "POST", headers: { "RequestVerificationToken": Sahyog.antiforgery() } })
                 .then(function (r) { if (!r.ok) throw 0; Sahyog.setPhoto && Sahyog.setPhoto(snPhotoUser, null); document.getElementById("photoDialog").close(); Sahyog.toast("Photo removed.", { kind: "success" }); })
                 .catch(function () { Sahyog.toast("The photo wasn't removed. Try again.", { kind: "error" }); });
+        });
+
+        // ================= profile card: photo, details and location =================
+        var snMap = null, snMapLayer = null;
+        function snLoadLeaflet() {
+            if (window.L) return Promise.resolve(window.L);
+            if (window.__snLeaflet) return window.__snLeaflet;
+            window.__snLeaflet = new Promise(function (ok, fail) {
+                var css = document.createElement("link");
+                css.rel = "stylesheet"; css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+                document.head.appendChild(css);
+                var js = document.createElement("script");
+                js.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+                js.onload = function () { ok(window.L); };
+                js.onerror = function () { window.__snLeaflet = null; fail(); };
+                document.head.appendChild(js);
+            });
+            return window.__snLeaflet;
+        }
+        function snAgo(iso) {
+            if (!iso) return "";
+            var s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+            if (s < 90) return "just now";
+            if (s < 3600) return Math.round(s / 60) + " min ago";
+            if (s < 86400) return Math.round(s / 3600) + " h ago";
+            return new Date(iso).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+        }
+        function snSetText(id, v) { var el = document.getElementById(id); if (el) el.textContent = v || "-"; return el; }
+        function snPersonCard(row) {
+            row = row || SN.need("TeamTable", "a person");
+            if (!row) return;
+            var id = row.Id, av = snPeopleAv[id] || { i: "?", t: 0 };
+            var photo = document.getElementById("pcPhoto");
+            photo.className = "sn-pc-photo avatar sn-photo-big tone-" + av.t;
+            photo.setAttribute("data-user", id);
+            photo.style.backgroundImage = "";
+            document.getElementById("pcIni").textContent = av.i;
+            Sahyog.paintPhotos && Sahyog.paintPhotos(photo.parentElement);
+            snSetText("pcName", row.DisplayName || row.Name);
+            snSetText("pcRole", row.Role === "Admin" ? "Workspace admin" : "Member");
+            var st = document.getElementById("pcStatus");
+            st.setAttribute("data-status", row.Status); st.querySelector("span").textContent = row.Status;
+            var mail = document.getElementById("pcEmail");
+            mail.href = row.Email ? "mailto:" + row.Email : "#"; mail.querySelector("span").textContent = row.Email || "";
+            mail.hidden = !row.Email;
+            SN.open("personDialog");
+            if (snLocOn) snLoadLocation(id, row);
+        }
+        function snLoadLocation(id, row) {
+            var where = document.getElementById("pcWhere"), mapEl = document.getElementById("pcMap");
+            var kv = document.getElementById("pcKv"), empty = document.getElementById("pcEmpty");
+            var isMe = id === snMe;
+            where.setAttribute("data-kind", "none"); where.querySelector("span").textContent = "Loading…";
+            snSetText("pcSeen", ""); mapEl.hidden = true; kv.hidden = true; empty.hidden = true;
+            ["pcGmaps", "pcShareMe", "pcUpdate"].forEach(function (b) { document.getElementById(b).hidden = true; });
+            fetch("/location/person/" + id, { headers: { Accept: "application/json" } })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (d) {
+                    if (!d || !d.enabled) { where.querySelector("span").textContent = "Location isn't available"; return; }
+                    if (d.sharing !== true) {
+                        where.querySelector("span").textContent = "Not shared";
+                        empty.hidden = false;
+                        empty.textContent = isMe
+                            ? "You aren't sharing your location. Share it so your team can see whether you're in the office or remote."
+                            : (row.DisplayName || row.Name) + (d.sharing === false ? " chose not to share their location." : " hasn't chosen yet whether to share their location.");
+                        if (isMe) document.getElementById("pcShareMe").hidden = false;
+                        return;
+                    }
+                    var kind = d.inOffice === true ? "office" : d.inOffice === false ? "remote" : "shared";
+                    where.setAttribute("data-kind", kind);
+                    where.querySelector("span").textContent = (kind === "office" ? "In office" : kind === "remote" ? "Remote" : "Location shared")
+                        + (d.place ? " · " + d.place : "");
+                    snSetText("pcSeen", d.seenUtc ? (d.online ? "Online · checked in " : "Last seen ") + snAgo(d.seenUtc) : "Waiting for the first check-in");
+                    if (isMe) document.getElementById("pcUpdate").hidden = false;
+                    // details
+                    kv.hidden = false;
+                    document.getElementById("pcRowAddr").hidden = !d.address;
+                    document.getElementById("pcRowArea").hidden = !d.area;
+                    document.getElementById("pcRowAcc").hidden = !d.accuracy;
+                    document.getElementById("pcRowCoord").hidden = d.lat == null;
+                    snSetText("pcAddr", d.address); snSetText("pcArea", d.area); snSetText("pcCity", d.city);
+                    snSetText("pcRegion", d.region); snSetText("pcCountry", d.country);
+                    // only the rows that have something in them
+                    document.getElementById("pcCity").parentElement.hidden = !d.city;
+                    document.getElementById("pcRegion").parentElement.hidden = !d.region;
+                    document.getElementById("pcCountry").parentElement.hidden = !d.country;
+                    kv.hidden = !(d.address || d.area || d.city || d.region || d.country || d.accuracy || d.lat != null);
+                    snSetText("pcAcc", d.accuracy ? "± " + (d.accuracy >= 1000 ? (d.accuracy / 1000).toFixed(1) + " km" : d.accuracy + " m") + (d.preciseUtc ? " · " + snAgo(d.preciseUtc) : "") : "");
+                    snSetText("pcCoord", d.lat != null ? d.lat.toFixed(5) + ", " + d.lng.toFixed(5) : "");
+                    var notes = [];
+                    if (d.lat == null && d.canSeeMap) {
+                        // your own card: say exactly why and how to fix it
+                        var fix = isMe && SN.location && SN.location.howToFix ? SN.location.howToFix() : null;
+                        notes.push(isMe
+                            ? (fix || "No map position yet. Press Update my location now; allow location when the browser asks.")
+                            : "No map position yet: their browser or computer hasn't given a location (office / remote still works).");
+                    }
+                    if (snIsAdmin && d.officeSet === false)
+                        notes.push("Add your office's internet address (Office address, at the top) to show In office / Remote.");
+                    if (notes.length) { empty.hidden = false; empty.textContent = notes.join(" "); }
+                    if (d.lat == null) return;
+                    var g = document.getElementById("pcGmaps");
+                    g.href = "https://www.google.com/maps?q=" + d.lat + "," + d.lng; g.hidden = false;
+                    mapEl.hidden = false;
+                    snLoadLeaflet().then(function (L) {
+                        if (!snMap) {
+                            snMap = L.map(mapEl, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
+                            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(snMap);
+                        }
+                        if (snMapLayer) snMapLayer.remove();
+                        var pin = L.divIcon({ className: "sn-map-pin", iconSize: [46, 56], iconAnchor: [23, 54],
+                            html: '<span class="sn-map-pin-face avatar tone-' + ((snPeopleAv[id] || {}).t || 0) + '" data-user="' + id + '">' + ((snPeopleAv[id] || {}).i || "") + '</span>' });
+                        snMapLayer = L.layerGroup([
+                            L.circle([d.lat, d.lng], { radius: Math.min(d.accuracy || 30, 3000), color: "#7C3AED", weight: 1, fillColor: "#8B5CF6", fillOpacity: .12 }),
+                            L.marker([d.lat, d.lng], { icon: pin, title: row.DisplayName || row.Name })
+                        ]).addTo(snMap);
+                        setTimeout(function () {
+                            snMap.invalidateSize();
+                            snMap.setView([d.lat, d.lng], d.accuracy && d.accuracy > 800 ? 13 : 16);
+                            Sahyog.paintPhotos && Sahyog.paintPhotos(mapEl);
+                        }, 60);
+                    }).catch(function () { mapEl.hidden = true; empty.hidden = false; empty.textContent = "The map couldn't load (no internet access to the map service). The address is below."; });
+                })
+                .catch(function () { where.querySelector("span").textContent = "Couldn't load the location"; });
+        }
+        // the photo / name in a row, or the pin in the Location column, opens the card; members double-click a row
+        $(document).on("click", "#TeamTable .sn-grid-av, #TeamTable .sn-loc-cell-btn", function () {
+            var id = $(this).closest("tr").attr("data-row-id");
+            // the click also selects the row (the table handles that first); then open that person's card
+            setTimeout(function () { var r = SN.selected("TeamTable"); if (r && String(r.Id) === String(id)) snPersonCard(r); }, 30);
+        });
+        $(document).on("dblclick", "#TeamTable tbody tr", function () {
+            if (snIsAdmin) return;
+            setTimeout(function () { var row = SN.selected("TeamTable"); if (row) snPersonCard(row); }, 0);
+        });
+        // your own sharing, from your card
+        $("#pcShareMe").on("click", function () {
+            if (!window.SN || !SN.location) return;
+            SN.location.setSharing(true).then(function () { var r = SN.selected("TeamTable"); if (r) setTimeout(function () { snLoadLocation(r.Id, r); }, 1500); });
+        });
+        $("#pcUpdate").on("click", function () {
+            var b = this; b.disabled = true;
+            (SN.location ? SN.location.checkIn(true) : Promise.resolve(null)).then(function (res) {
+                var r = SN.selected("TeamTable"); if (r) snLoadLocation(r.Id, r);
+                if (res && res.position) Sahyog.toast("Your location was updated" + (res.place ? ": " + res.place : "") + ".", { kind: "success", title: "Location" });
+                else Sahyog.toast((res && res.problem) || "No map position this time. Office / remote was updated.", { kind: "warn", title: "No map position", ms: 12000 });
+            }).finally(function () { b.disabled = false; });
+        });
+
+        // ================= admins: the office's internet address =================
+        function snOfficeSettings() {
+            fetch("/location/office", { headers: { Accept: "application/json" } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    $("#ofIps").val(d.ips || "");
+                    $("#ofMyIp").text(d.myIp || "unknown");
+                    $("#ofMyBadge").prop("hidden", !d.myIpInOffice);
+                    $("#ofAddMine").prop("hidden", !d.myIp || d.myIpInOffice).data("ip", d.myIp);
+                    $("#ofFoot").text((d.ips || "").trim() ? "" : "No office address yet: everyone shows the city only.");
+                    SN.open("officeDialog");
+                })
+                .catch(function () { Sahyog.toast("Couldn't load the office settings.", { kind: "error" }); });
+        }
+        $("#ofAddMine").on("click", function () {
+            var ip = $(this).data("ip"), cur = $("#ofIps").val().trim();
+            if (!ip) return;
+            $("#ofIps").val((cur ? cur + "\n" : "") + ip);
+            $(this).prop("hidden", true);
+        });
+        $("#officeForm").on("submit", function (e) {
+            e.preventDefault();
+            var fd = new FormData(); fd.append("ips", $("#ofIps").val());
+            fetch("/location/office", { method: "POST", body: fd, headers: { "RequestVerificationToken": Sahyog.antiforgery() } })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+                .then(function (x) {
+                    if (!x.ok) { Sahyog.toast(x.d.error || "Not saved.", { kind: "error", title: "Office address" }); return; }
+                    document.getElementById("officeDialog").close();
+                    Sahyog.toast(x.d.count ? "Office address saved. People connecting from it show as In office." : "Office address cleared.", { kind: "success", title: "Office address" });
+                    SN.location && SN.location.checkIn(false);
+                })
+                .catch(function () { Sahyog.toast("Not saved. Check your connection.", { kind: "error" }); });
         });
     </script>
 }

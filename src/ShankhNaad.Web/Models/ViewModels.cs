@@ -260,7 +260,7 @@ public sealed class GuestJoinViewModel
 
 // ---------- Admin ----------
 
-public sealed record TenantRowVm(Guid Id, string Name, string Slug, string Plan, int Users, int MaxUsers, long StorageUsed, long StorageQuota, string Provider, bool IsActive, DateTime CreatedUtc);
+public sealed record TenantRowVm(Guid Id, string Name, string Slug, string Plan, int Users, int MaxUsers, long StorageUsed, long StorageQuota, string Provider, bool IsActive, DateTime CreatedUtc, bool LocationOn = false);
 
 public sealed class CreateTenantInput
 {
@@ -324,6 +324,10 @@ public sealed class TeamViewModel
     public string? Error { get; init; }
     /// <summary>True when this server can send email (welcome and set-password links).</summary>
     public bool CanEmail { get; init; }
+    /// <summary>Team location is switched on for this client (by the super admin).</summary>
+    public bool LocationEnabled { get; init; }
+    /// <summary>Latest location per user id (only people who share).</summary>
+    public Dictionary<string, UserLocationDto> Locations { get; init; } = new();
 }
 
 // ---------- First-time setup ----------

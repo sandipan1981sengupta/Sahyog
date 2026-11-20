@@ -26,6 +26,7 @@
         ["Since"] = t.CreatedUtc.ToString("dd MMM yyyy", inv),
         ["Status"] = t.IsActive ? "Active" : "Paused",
         ["Active"] = t.IsActive,
+        ["Location"] = t.LocationOn ? "On" : "Off",
         // used by the details panel only (no column)
         ["UsersText"] = $"{t.Users} of {t.MaxUsers}",
         ["UsersPct"] = t.MaxUsers > 0 ? Math.Min(100, (int)Math.Round(t.Users * 100.0 / t.MaxUsers)) : 0,
@@ -66,6 +67,7 @@
                        show-save="false" show-submit="false"
                        show-print="true" print-on-click="SN.print()">
             <action-btn text="Pause / Resume" icon-css="bi bi-pause-circle-fill" icon-color="#B45309" tooltip="Pause or resume the selected client" on-click="snToggleTenant()"></action-btn>
+            <action-btn text="Team location" icon-css="bi bi-geo-alt-fill" icon-color="#DB2777" tooltip="Switch team location on or off for the selected client" on-click="snToggleLocation()"></action-btn>
         </action-header>
     </div>
 
@@ -139,6 +141,10 @@
                     <column field="Storage" header="Storage" width="170px"></column>
                     <column field="Video" header="Video" width="110px"></column>
                     <column field="Since" header="Client since" width="130px"></column>
+                    <column field="Location" header="Team location" type="badge" width="130px">
+                        <badge value="On" color="#DCFCE7"></badge>
+                        <badge value="Off" color="#F1F5F9"></badge>
+                    </column>
                     <column field="Status" header="Status" type="badge" width="110px">
                         <badge value="Active" color="#DCFCE7"></badge>
                         <badge value="Paused" color="#FEF3C7"></badge>
@@ -179,6 +185,15 @@
                         <div><dt>Video</dt><dd id="selVideo">-</dd></div>
                         <div><dt>Client since</dt><dd id="selSince">-</dd></div>
                     </dl>
+
+                    <div class="sn-insp-section sn-loc-admin">
+                        <div class="sn-insp-label">Team location</div>
+                        <div class="sn-loc-switch">
+                            <span class="sn-loc-switch-ic"><i class="bi bi-geo-alt-fill" aria-hidden="true"></i></span>
+                            <span class="sn-loc-switch-txt"><b id="selLocState">Off</b><small id="selLocNote">People of this client can't share their location.</small></span>
+                            <button type="button" class="sn-switch" id="selLocBtn" role="switch" aria-checked="false" aria-label="Team location for this client" onclick="snToggleLocation()"><i></i></button>
+                        </div>
+                    </div>
 
                     <form method="post" asp-antiforgery="true" id="changePlanForm" action="#" class="sn-insp-section">
                         <div class="sn-insp-label">Change plan</div>
@@ -529,6 +544,10 @@
                     .find("i").attr("class", paused ? "fa fa-play-circle" : "fa fa-pause-circle").end()
                     .find("span").text(paused ? "Resume client" : "Pause client");
                 $("#selDelete").toggleClass("is-locked", !paused);
+                var locOn = row.Location === "On";
+                $("#selLocBtn").attr("aria-checked", locOn ? "true" : "false").toggleClass("on", locOn);
+                $("#selLocState").text(locOn ? "On" : "Off");
+                $("#selLocNote").text(locOn ? "Each person chooses to share. Their admins see office / remote, the city and a map." : "People of this client can't share their location.");
                 $("#selDeleteNote").prop("hidden", paused);
                 $insp.attr("data-state", "filled");
                 $insp.find(".sn-insp-body").removeClass("sn-in"); void $insp[0].offsetWidth; $insp.find(".sn-insp-body").addClass("sn-in");
@@ -635,6 +654,21 @@
             if (!planId) { Sahyog.toast("Pick the new plan first.", { kind: "info", title: "Choose a plan" }); return; }
             if (String(planId) === String(row.PlanId)) { Sahyog.toast(row.Name + " is already on the " + row.Plan + " plan. Pick a different plan to change it.", { kind: "info", title: "Already on this plan" }); return; }
             SN.post("/admin/tenants/" + row.Id + "/plan", { planId: planId });
+        }
+        // team location for the selected client (off erases what was stored)
+        function snToggleLocation() {
+            var row = SN.need("TenantTable", "a client");
+            if (!row) return;
+            var turningOn = row.Location !== "On";
+            SN.confirmPost("/admin/tenants/" + row.Id + "/location", {
+                title: turningOn ? "Switch on team location" : "Switch off team location",
+                text: turningOn
+                    ? "Switch on team location for " + row.Name + "? Each person is asked whether to share. Their admins then see who is in the office or remote, the city, and a map."
+                    : "Switch off team location for " + row.Name + "? Everything stored about where their people are is erased.",
+                confirmText: turningOn ? "Switch on" : "Switch off",
+                danger: !turningOn,
+                fields: { on: turningOn }
+            });
         }
         function snToggleTenant() {
             var row = SN.need("TenantTable", "a client");

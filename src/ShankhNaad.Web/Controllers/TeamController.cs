@@ -25,10 +25,13 @@ public sealed class TeamController : Controller
     private readonly IEmailDomainCheck _emailCheck;
     private readonly IHubContext<ChatHub> _hub;
     private readonly AppOptions _app;
+    private readonly ILocationService _location;
 
     public TeamController(ITenantService tenants, IUserService users, PresenceTracker presence,
-        IAccountEmailService mail, IEmailDomainCheck emailCheck, IHubContext<ChatHub> hub, IOptions<AppOptions> app)
+        IAccountEmailService mail, IEmailDomainCheck emailCheck, IHubContext<ChatHub> hub, IOptions<AppOptions> app,
+        ILocationService location)
     {
+        _location = location;
         _tenants = tenants;
         _users = users;
         _presence = presence;
@@ -301,6 +304,11 @@ public sealed class TeamController : Controller
         var limits = (await _tenants.GetLimitsAsync(TenantId))!;
         var online = _presence.OnlineUsers(TenantId);
         var all = await _users.ListByTenantAsync(TenantId);
+        // team location (only when the super admin switched it on for this client)
+        var locationOn = (await _location.GetTenantAsync(TenantId)).Enabled;
+        var locations = locationOn
+            ? (await _location.ListAsync(TenantId)).Where(l => l.Sharing == true).ToDictionary(l => l.UserId.ToString(), l => l)
+            : new Dictionary<string, UserLocationDto>();
 
         var me = User.UserId();
         // invited but never signed in (needs 13_InvitePending.sql; before that nobody shows as pending)
@@ -319,7 +327,9 @@ public sealed class TeamController : Controller
             Emails = all.ToDictionary(u => u.Id, u => u.Email),
             Message = TempData["Message"] as string,
             Error = error ?? TempData["Error"] as string,
-            CanEmail = _mail.CanSend
+            CanEmail = _mail.CanSend,
+            LocationEnabled = locationOn,
+            Locations = locations
         };
     }
 }

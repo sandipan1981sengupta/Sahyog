@@ -40,6 +40,7 @@ builder.Services.AddControllersWithViews(o => o.Filters.Add(new AutoValidateAnti
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 64 * 1024);
 // CSS / JS bundles for the layouts (Infrastructure/AssetBundles.cs), served at /bundles/…
 builder.Services.AddSingleton<AssetBundles>();
+builder.Services.AddSingleton<ShankhNaad.Web.Infrastructure.ReverseGeocoder>();   // team location: map position → place name
 
 // Compress CSS / JS / SVG (about 1.6 MB → about 300 KB per first visit). HTML pages are deliberately NOT
 // compressed: they carry the anti-forgery token, and compressing secrets over HTTPS opens the BREACH attack.

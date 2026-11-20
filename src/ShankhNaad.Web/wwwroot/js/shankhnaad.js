@@ -237,26 +237,39 @@
     if (window.SN.onPage) SN.onPage(escToClose); else escToClose();
 })();
 
-// ---------- light / dark theme ----------
+// ---------- themes: Light, Dark (very dark grey glass), CloudWheel (the blue dark) ----------
 (function () {
     "use strict";
     window.SN = window.SN || {};
     const root = document.documentElement;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+    // Both dark themes keep data-theme="dark" (all the dark styles); "Dark" adds sn-carbon (css/theme-dark.css).
+    const THEMES = [
+        { id: "light", name: "Light", note: "Bright glass", color: "#2563EB" },
+        { id: "dark", name: "Dark", note: "Very dark grey glass", color: "#0E0E10" },
+        { id: "cloudwheel", name: "CloudWheel", note: "Deep blue night", color: "#0B1020" }
+    ];
+    const current = () => root.getAttribute("data-skin") || (root.getAttribute("data-theme") === "dark" ? "cloudwheel" : "light");
+    const nameOf = (id) => (THEMES.find((t) => t.id === id) || THEMES[0]).name;
+    SN.theme = current;
+
     function apply(theme) {
-        root.setAttribute("data-theme", theme);
-        try { localStorage.setItem("sn-theme", theme); } catch (e) { }
+        root.setAttribute("data-theme", theme === "light" ? "light" : "dark");
+        root.setAttribute("data-skin", theme);
+        root.classList.toggle("sn-carbon", theme === "dark");
+        try { localStorage.setItem("sn-theme3", theme); localStorage.setItem("sn-theme", theme === "light" ? "light" : "dark"); } catch (e) { }
         const meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute("content", theme === "dark" ? "#0B1020" : "#2563EB");
+        if (meta) meta.setAttribute("content", (THEMES.find((t) => t.id === theme) || THEMES[0]).color);
         const label = document.querySelector("[data-strip-action='theme'] .sn-theme-label");
-        if (label) label.textContent = theme === "dark" ? "Light theme" : "Dark theme";
-        document.dispatchEvent(new CustomEvent("sn:theme", { detail: { theme } }));
+        if (label) label.textContent = "Theme: " + nameOf(theme);
+        document.querySelectorAll(".sn-theme-pop [data-theme-id]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.themeId === theme)));
+        document.dispatchEvent(new CustomEvent("sn:theme", { detail: { theme: root.getAttribute("data-theme"), skin: theme } }));
     }
 
-    /** Switches theme with a circle that grows from the button (falls back to a quick fade). */
-    SN.toggleTheme = (evt) => {
-        const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    /** Switches to a theme with a circle that grows from where you clicked (falls back to a quick change). */
+    SN.setTheme = (next, evt) => {
+        if (next === current()) return;
         if (reduce || !document.startViewTransition) { apply(next); return; }
         const x = evt && evt.clientX ? evt.clientX : window.innerWidth - 80;
         const y = evt && evt.clientY ? evt.clientY : 40;
@@ -270,7 +283,55 @@
         vt.finished.finally(() => root.classList.remove("sn-theme-switching"));
     };
 
-    // A "Dark theme" item in the user menu (the top-bar button is hidden on phones).
+    /** Cycles Light → Dark → CloudWheel (the user-menu item). */
+    SN.toggleTheme = (evt) => {
+        const i = THEMES.findIndex((t) => t.id === current());
+        SN.setTheme(THEMES[(i + 1) % THEMES.length].id, evt);
+    };
+
+    /** The top-bar button: a small menu with the three themes. */
+    let pop = null;
+    const closePop = () => { if (!pop) return; const p = pop; pop = null; p.classList.remove("in"); setTimeout(() => p.remove(), 180); document.removeEventListener("pointerdown", outside, true); };
+    const outside = (e) => { if (pop && !pop.contains(e.target) && !e.target.closest(".sn-theme-btn")) closePop(); };
+    SN.themeMenu = (evt) => {
+        if (pop) { closePop(); return; }
+        const btn = evt && evt.currentTarget ? evt.currentTarget : document.querySelector(".sn-theme-btn");
+        pop = document.createElement("div");
+        pop.className = "sn-theme-pop";
+        pop.setAttribute("role", "menu");
+        pop.setAttribute("aria-label", "Theme");
+        pop.innerHTML = `<div class="sn-theme-pop-t">Theme</div>` + THEMES.map((t) =>
+            `<button type="button" role="menuitemradio" aria-checked="${t.id === current()}" data-theme-id="${t.id}">
+                <span class="sn-theme-sw sn-sw-${t.id}" aria-hidden="true"><i></i><i></i></span>
+                <span class="sn-theme-pop-n"><b>${t.name}</b><small>${t.note}</small></span>
+                <i class="fa fa-check sn-theme-ok" aria-hidden="true"></i></button>`).join("");
+        document.body.appendChild(pop);
+        // under the button, its right edge lined up with the button's, kept inside the window
+        const r = btn ? btn.getBoundingClientRect() : { left: innerWidth - 60, right: innerWidth - 16, bottom: 64 };
+        const w = pop.offsetWidth || 250;
+        pop.style.top = Math.round(r.bottom + 8) + "px";
+        pop.style.left = Math.round(Math.min(Math.max(8, r.right - w), innerWidth - w - 8)) + "px";
+        pop.style.transformOrigin = (r.left + r.right) / 2 < innerWidth / 2 ? "top left" : "top right";
+        requestAnimationFrame(() => pop && pop.classList.add("in"));
+        pop.addEventListener("click", (e) => {
+            const b = e.target.closest("[data-theme-id]");
+            if (!b) return;
+            const id = b.dataset.themeId;
+            closePop();
+            SN.setTheme(id, e);
+        });
+        pop.addEventListener("keydown", (e) => {
+            const items = [...pop.querySelectorAll("[data-theme-id]")];
+            const i = items.indexOf(document.activeElement);
+            if (e.key === "Escape") { closePop(); btn && btn.focus(); }
+            if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+            if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+        });
+        (pop.querySelector('[aria-checked="true"]') || pop.querySelector("button")).focus();
+        document.addEventListener("pointerdown", outside, true);
+    };
+
+    // A "Theme: …" item in the user menu (the top-bar button is hidden on phones).
     document.addEventListener("DOMContentLoaded", () => {
         const dd = document.querySelector(".strip-user-dropdown[data-strip-user-dropdown]");
         if (!dd || dd.querySelector("[data-strip-action='theme']")) return;
@@ -280,7 +341,7 @@
         item.innerHTML = '<i class="fa fa-adjust" aria-hidden="true" style="width:18px;text-align:center;font-size:16px"></i><span class="sn-theme-label"></span>';
         const logout = dd.querySelector("[data-strip-action='logout']");
         dd.insertBefore(item, logout);
-        item.querySelector(".sn-theme-label").textContent = root.getAttribute("data-theme") === "dark" ? "Light theme" : "Dark theme";
+        item.querySelector(".sn-theme-label").textContent = "Theme: " + nameOf(current());
     });
     document.addEventListener("strip-header:action", (e) => {
         if (e.target !== document || !e.detail || e.detail.action !== "theme") return;
@@ -348,9 +409,13 @@
 
     // Follow the computer's setting until the person picks one.
     try {
-        if (!localStorage.getItem("sn-theme") && window.matchMedia) {
+        if (!localStorage.getItem("sn-theme3") && !localStorage.getItem("sn-theme") && window.matchMedia) {
             matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (m) => {
-                if (!localStorage.getItem("sn-theme")) root.setAttribute("data-theme", m.matches ? "dark" : "light");
+                if (!localStorage.getItem("sn-theme3")) {
+                    root.setAttribute("data-theme", m.matches ? "dark" : "light");
+                    root.setAttribute("data-skin", m.matches ? "cloudwheel" : "light");
+                    root.classList.remove("sn-carbon");
+                }
             });
         }
     } catch (e) { }

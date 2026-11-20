@@ -53,6 +53,7 @@ public sealed class AssetBundles
             "css/shankhnaad.css",
             "css/responsive.css",
             "css/safari.css",
+            "css/theme-dark.css",          // the "Dark" theme (very dark grey glass); generated, see the file
         },
         // _Layout: the Template 1 controls (before the SignalR library)
         ["controls.js"] = new[]
@@ -75,7 +76,7 @@ public sealed class AssetBundles
             "js/tooltip.js",
             "js/mobile.js",
             "js/site.js",
-            "js/meeting-alerts.js",
+            "js/meeting-alerts.js", "js/location.js",
             "js/shankhnaad.js",
             "js/people-picker.js",
             "js/pwa-install.js",
