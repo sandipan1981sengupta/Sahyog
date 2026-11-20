@@ -22,6 +22,9 @@ public interface ILocationService
     /// <summary>0 saved, 1 the client has it off, 2 this person doesn't share.</summary>
     Task<int> SaveAsync(Guid tenantId, Guid userId, LocationCheckIn checkIn);
     Task<List<UserLocationDto>> ListAsync(Guid tenantId);
+    /// <summary>How many sharing people connected from each internet address since a time, most first (31_OfficeSuggestion.sql).
+    /// Empty when that script hasn't been run yet.</summary>
+    Task<List<LocationIpCount>> IpCountsAsync(Guid tenantId, DateTime sinceUtc);
 }
 
 public sealed class LocationService : ILocationService
@@ -74,6 +77,16 @@ public sealed class LocationService : ILocationService
             result = p.AddOutput("@Result", SqlDbType.Int);
         });
         return result!.OutInt();
+    }
+
+    public async Task<List<LocationIpCount>> IpCountsAsync(Guid tenantId, DateTime sinceUtc)
+    {
+        try
+        {
+            return await _db.QueryAsync("dbo.sahyog_Location_IpCounts",
+                p => p.With("@TenantId", tenantId).AddDateTime2("@SinceUtc", sinceUtc), r => new LocationIpCount(r.S("Ip"), r.I("People")));
+        }
+        catch (SqlException) { return new(); }      // 31_OfficeSuggestion.sql not run yet: simply no suggestion
     }
 
     public Task<List<UserLocationDto>> ListAsync(Guid tenantId) =>

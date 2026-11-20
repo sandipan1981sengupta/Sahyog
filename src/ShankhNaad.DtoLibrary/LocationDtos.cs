@@ -25,3 +25,6 @@ public sealed record UserLocationDto(
 public sealed record LocationCheckIn(
     string? Ip, bool? InOffice, double? Lat, double? Lng, int? AccuracyM,
     string? Address, string? Area, string? City, string? Region, string? Country);
+
+/// <summary>How many people connected from one internet address (the office suggestion).</summary>
+public sealed record LocationIpCount(string Ip, int People);

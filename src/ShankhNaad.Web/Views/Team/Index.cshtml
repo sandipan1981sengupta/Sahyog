@@ -125,6 +125,19 @@
         <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(124,58,237,.1);color:#6d28d9"><i class="fa fa-hdd-o"></i></span><div><div class="sn-eyebrow">Storage</div><div class="sn-stat-val">@UserExtensions.FormatBytes(Model.Limits.StorageUsedBytes)</div></div></div>
     </div>
 
+    @if (locOn && isAdmin)
+    {
+        @* "4 people are connecting from 49.205.32.120. Is this your office?" (js below) *@
+        <div class="sn-office-hint glass" id="officeHint" hidden role="status">
+            <span class="sn-office-hint-ic"><i class="bi bi-building-fill-check" aria-hidden="true"></i></span>
+            <span class="sn-office-hint-t" id="officeHintT"></span>
+            <span class="sn-office-hint-acts">
+                <button type="button" class="cee-btn cee-btn-gradient" id="officeHintYes"><i class="fa fa-check" aria-hidden="true"></i> Yes, it's our office</button>
+                <button type="button" class="cee-btn sn-btn-light" id="officeHintNo">No</button>
+            </span>
+        </div>
+    }
+
     <div class="sn-row" style="flex:1 1 auto">
         <div class="sn-grow">
             <modern-table id="TeamTable" name="SelectedPerson"
@@ -397,13 +410,24 @@
                 <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
             </div>
             <div class="sn-dlg-body">
-                <label class="sn-field-label" for="ofIps">Internet addresses of the office (one per line)</label>
-                <textarea id="ofIps" class="sn-textarea" rows="5" spellcheck="false" placeholder="203.0.113.10&#10;198.51.100.0/24"></textarea>
-                <div class="sn-of-me">
-                    <span>This computer is connecting from <b id="ofMyIp">…</b> <span class="sn-of-badge" id="ofMyBadge" hidden>In office</span></span>
-                    <button type="button" class="sn-link" id="ofAddMine"><i class="fa fa-plus" aria-hidden="true"></i> Add this address</button>
+                @* the easy way: "this computer is in the office" (one click, saved straight away) *@
+                <div class="sn-of-quick" id="ofQuick" data-state="ask">
+                    <span class="sn-of-quick-ic"><i class="bi bi-pc-display" aria-hidden="true"></i></span>
+                    <div class="sn-of-quick-txt">
+                        <b id="ofQuickT">Is this computer in the office right now?</b>
+                        <small id="ofQuickS">Its internet address is <b id="ofMyIp">…</b>.</small>
+                    </div>
+                    <button type="button" class="cee-btn cee-btn-gradient" id="ofYes"><i class="fa fa-check" aria-hidden="true"></i> Yes, this is our office</button>
                 </div>
-                <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> Easiest: open this from a computer in the office and press <b>Add this address</b>. A range like 203.0.113.0/24 covers several. If ShankhNaad runs on a server inside the office, use the office network's range (for example 192.168.1.0/24).</span>
+                @* "4 people are connecting from …": most likely the office *@
+                <div class="sn-of-suggest" id="ofSuggest" hidden>
+                    <i class="bi bi-people-fill" aria-hidden="true"></i>
+                    <span id="ofSuggestT"></span>
+                    <button type="button" class="sn-link" id="ofSuggestAdd"><i class="fa fa-plus" aria-hidden="true"></i> Add it</button>
+                </div>
+                <label class="sn-field-label" for="ofIps">Office addresses <small>(one per line)</small></label>
+                <textarea id="ofIps" class="sn-textarea" rows="3" spellcheck="false" placeholder="None yet"></textarea>
+                <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> Not at the office right now? Open this later from an office computer and press <b>Yes, this is our office</b>. Don't do it from home: your home would count as the office. If the office has more than one internet connection, add each one.</span>
             </div>
             <div class="sn-dlg-foot">
                 <span class="muted small" id="ofFoot"></span>
@@ -912,37 +936,81 @@
         });
 
         // ================= admins: the office's internet address =================
+        var snOffice = null;           // what the server said last time (current list, this computer's address, a suggestion)
+        function snOfficeList() { return $("#ofIps").val().split(/[\n,;]+/).map(function (x) { return x.trim(); }).filter(Boolean); }
+        function snPaintOffice() {
+            var d = snOffice || {}, list = snOfficeList(), mine = d.myIp, inList = !!mine && list.indexOf(mine) >= 0;
+            var q = document.getElementById("ofQuick");
+            q.setAttribute("data-state", d.myIpInOffice || inList ? "yes" : mine ? "ask" : "unknown");
+            $("#ofMyIp").text(mine || "unknown");
+            $("#ofQuickT").text(d.myIpInOffice || inList ? "This computer is in the office" : "Is this computer in the office right now?");
+            $("#ofYes").prop("hidden", !mine || d.myIpInOffice || inList);
+            var sug = d.suggestIp && list.indexOf(d.suggestIp) < 0 && d.suggestIp !== mine;
+            $("#ofSuggest").prop("hidden", !sug);
+            if (sug) $("#ofSuggestT").text(d.suggestPeople + " people connected from " + d.suggestIp + " in the last hours. That's probably your office.");
+            $("#ofFoot").text(list.length ? "" : "No office address yet: everyone shows the city only.");
+        }
+        function snOfficeSave(list, done) {
+            var fd = new FormData(); fd.append("ips", list.join("\n"));
+            return fetch("/location/office", { method: "POST", body: fd, headers: { "RequestVerificationToken": Sahyog.antiforgery() } })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+                .then(function (x) {
+                    if (!x.ok) { Sahyog.toast(x.d.error || "Not saved.", { kind: "error", title: "Office address" }); return false; }
+                    Sahyog.toast(x.d.count ? "Office address saved. People connecting from it show as In office." : "Office address cleared.", { kind: "success", title: "Office address" });
+                    SN.location && SN.location.checkIn(true);
+                    done && done();
+                    return true;
+                })
+                .catch(function () { Sahyog.toast("Not saved. Check your connection.", { kind: "error" }); return false; });
+        }
         function snOfficeSettings() {
             fetch("/location/office", { headers: { Accept: "application/json" } })
                 .then(function (r) { return r.json(); })
-                .then(function (d) {
-                    $("#ofIps").val(d.ips || "");
-                    $("#ofMyIp").text(d.myIp || "unknown");
-                    $("#ofMyBadge").prop("hidden", !d.myIpInOffice);
-                    $("#ofAddMine").prop("hidden", !d.myIp || d.myIpInOffice).data("ip", d.myIp);
-                    $("#ofFoot").text((d.ips || "").trim() ? "" : "No office address yet: everyone shows the city only.");
-                    SN.open("officeDialog");
-                })
+                .then(function (d) { snOffice = d; $("#ofIps").val(d.ips || ""); snPaintOffice(); SN.open("officeDialog"); })
                 .catch(function () { Sahyog.toast("Couldn't load the office settings.", { kind: "error" }); });
         }
-        $("#ofAddMine").on("click", function () {
-            var ip = $(this).data("ip"), cur = $("#ofIps").val().trim();
+        $("#ofIps").on("input", snPaintOffice);
+        // one click: this computer's address becomes (one of) the office address(es), saved straight away
+        $("#ofYes").on("click", function () {
+            var list = snOfficeList(), ip = snOffice && snOffice.myIp;
             if (!ip) return;
-            $("#ofIps").val((cur ? cur + "\n" : "") + ip);
-            $(this).prop("hidden", true);
+            if (list.indexOf(ip) < 0) list.push(ip);
+            $("#ofIps").val(list.join("\n"));
+            snOfficeSave(list, function () { snOffice.myIpInOffice = true; snPaintOffice(); setTimeout(function () { document.getElementById("officeDialog").close(); }, 600); });
+        });
+        $("#ofSuggestAdd").on("click", function () {
+            var list = snOfficeList(), ip = snOffice && snOffice.suggestIp;
+            if (ip && list.indexOf(ip) < 0) { list.push(ip); $("#ofIps").val(list.join("\n")); snPaintOffice(); }
         });
         $("#officeForm").on("submit", function (e) {
             e.preventDefault();
-            var fd = new FormData(); fd.append("ips", $("#ofIps").val());
-            fetch("/location/office", { method: "POST", body: fd, headers: { "RequestVerificationToken": Sahyog.antiforgery() } })
-                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-                .then(function (x) {
-                    if (!x.ok) { Sahyog.toast(x.d.error || "Not saved.", { kind: "error", title: "Office address" }); return; }
-                    document.getElementById("officeDialog").close();
-                    Sahyog.toast(x.d.count ? "Office address saved. People connecting from it show as In office." : "Office address cleared.", { kind: "success", title: "Office address" });
-                    SN.location && SN.location.checkIn(false);
-                })
-                .catch(function () { Sahyog.toast("Not saved. Check your connection.", { kind: "error" }); });
+            snOfficeSave(snOfficeList(), function () { document.getElementById("officeDialog").close(); });
         });
+
+        // Team page: "4 people are connecting from 49.205.32.120. Is this your office?" (admins; "No" is remembered)
+        (function () {
+            var bar = document.getElementById("officeHint");
+            if (!bar) return;
+            var no = function (ip) { try { return localStorage.getItem("sn-office-no-" + ip) === "1"; } catch (e) { return false; } };
+            fetch("/location/office/suggestion", { headers: { Accept: "application/json" } })
+                .then(function (r) { return r.ok ? r.json() : {}; })
+                .then(function (d) {
+                    if (!d || !d.ip || no(d.ip)) return;
+                    $("#officeHintT").html("<b>" + d.people + " people</b> are connecting from <b>" + d.ip + "</b>. Is this your office's internet?");
+                    bar.hidden = false;
+                    $("#officeHintYes").on("click", function () {
+                        fetch("/location/office", { headers: { Accept: "application/json" } }).then(function (r) { return r.json(); }).then(function (o) {
+                            var list = (o.ips || "").split(/[\n,;]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+                            if (list.indexOf(d.ip) < 0) list.push(d.ip);
+                            snOfficeSave(list, function () { bar.hidden = true; setTimeout(function () { SN.reload && SN.reload(); }, 900); });
+                        });
+                    });
+                    $("#officeHintNo").on("click", function () {
+                        try { localStorage.setItem("sn-office-no-" + d.ip, "1"); } catch (e) { }
+                        bar.hidden = true;
+                    });
+                })
+                .catch(function () { });
+        })();
     </script>
 }

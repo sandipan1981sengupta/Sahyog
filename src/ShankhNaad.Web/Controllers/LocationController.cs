@@ -119,8 +119,29 @@ public sealed class LocationController : Controller
     {
         var t = await _location.GetTenantAsync(TenantId);
         var ip = TeamLocation.ClientIp(HttpContext);
-        return Json(new { enabled = t.Enabled, ips = t.OfficeIps ?? "", myIp = ip?.ToString(), myIpInOffice = TeamLocation.InOffice(ip, t.OfficeList) });
+        var s = await SuggestAsync(t);
+        return Json(new
+        {
+            enabled = t.Enabled, ips = t.OfficeIps ?? "", myIp = ip?.ToString(), myIpInOffice = TeamLocation.InOffice(ip, t.OfficeList),
+            suggestIp = s?.Ip, suggestPeople = s?.People
+        });
     }
+
+    /// <summary>Team page (admins): "4 people are connecting from 49.205.32.120. Is this your office?"</summary>
+    [HttpGet("office/suggestion")]
+    [Authorize(Roles = AppRoles.TenantAdmin)]
+    public async Task<IActionResult> OfficeSuggestion()
+    {
+        var t = await _location.GetTenantAsync(TenantId);
+        if (!t.Enabled) return Json(new { ip = (string?)null });
+        var s = await SuggestAsync(t);
+        return Json(new { ip = s?.Ip, people = s?.People ?? 0, officeSet = t.OfficeList.Count > 0 });
+    }
+
+    /// <summary>The address most people connected from in the last 12 hours (at least 2 people), if it isn't the office yet.</summary>
+    private async Task<LocationIpCount?> SuggestAsync(TenantLocationDto t) =>
+        (await _location.IpCountsAsync(TenantId, DateTime.UtcNow.AddHours(-12)))
+            .FirstOrDefault(c => c.People >= 2 && System.Net.IPAddress.TryParse(c.Ip, out var a) && !TeamLocation.InOffice(a, t.OfficeList));
 
     [HttpPost("office")]
     [Authorize(Roles = AppRoles.TenantAdmin)]
