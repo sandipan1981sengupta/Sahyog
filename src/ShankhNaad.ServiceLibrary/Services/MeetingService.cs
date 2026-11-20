@@ -18,6 +18,12 @@ public interface IMeetingService
     Task<DeleteMeetingResultDto> DeleteAsync(Guid tenantId, Guid meetingId, Guid userId, bool isAdmin);
     Task<GuestMeetingDto?> GetByGuestCodeAsync(string code);
     Task SendInvitesAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string hostName, string hostEmail, TimeZoneInfo zone);
+    /// <summary>Cancels a meeting (a repeating meeting: the whole series). It stays on calendars, marked cancelled.</summary>
+    Task<CancelMeetingStatus> CancelAsync(Guid tenantId, Guid meetingId, Guid userId, bool isAdmin, string? note);
+    /// <summary>Removes a cancelled meeting from one person's calendar.</summary>
+    Task<HideMeetingStatus> HideAsync(Guid tenantId, Guid meetingId, Guid userId);
+    /// <summary>Tells everyone invited (team and guests) that the meeting is cancelled, with a calendar cancellation (.ics).</summary>
+    Task<int> SendCancellationAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string cancelledBy, string hostEmail, TimeZoneInfo zone, string? note);
     string RoomUrl(Guid meetingId);
     string GuestUrl(string code);
 }
@@ -43,7 +49,11 @@ public sealed class MeetingService : IMeetingService
         IsAllDay = r.BOpt("IsAllDay"),
         ShowAsFree = r.BOpt("ShowAsFree"),
         RepeatDays = (byte)r.IOpt("RepeatDays"),
-        RepeatUntilUtc = r.UtcOpt("RepeatUntilUtc")
+        RepeatUntilUtc = r.UtcOpt("RepeatUntilUtc"),
+        // 34_MeetingCancel.sql: older databases don't return these columns
+        CancelledUtc = r.UtcOpt("CancelledUtc"),
+        CancelledByName = r.Has("CancelledByName") ? r.SN("CancelledByName") : null,
+        CancelNote = r.Has("CancelNote") ? r.SN("CancelNote") : null
     };
 
     private static InviteeDto MapInvitee(SqlDataReader r) => new(
@@ -113,6 +123,70 @@ public sealed class MeetingService : IMeetingService
         });
         DateTime? startUtc = start!.Value is DateTime d ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : null;
         return new DeleteMeetingResultDto((DeleteMeetingStatus)result!.OutInt(), startUtc);
+    }
+
+    private const int MissingProcedure = 2812;
+
+    public async Task<CancelMeetingStatus> CancelAsync(Guid tenantId, Guid meetingId, Guid userId, bool isAdmin, string? note)
+    {
+        SqlParameter? result = null;
+        try
+        {
+            await _db.ExecAsync("dbo.sahyog_Meeting_Cancel", p =>
+            {
+                p.With("@TenantId", tenantId).With("@MeetingId", meetingId).With("@UserId", userId).With("@IsAdmin", isAdmin)
+                 .AddText("@Note", string.IsNullOrWhiteSpace(note) ? null : note.Trim(), 500);
+                result = p.AddOutput("@Result", SqlDbType.Int);
+            });
+        }
+        catch (SqlException ex) when (ex.Number == MissingProcedure) { return CancelMeetingStatus.NeedsDatabase; }
+        return (CancelMeetingStatus)result!.OutInt();
+    }
+
+    public async Task<HideMeetingStatus> HideAsync(Guid tenantId, Guid meetingId, Guid userId)
+    {
+        SqlParameter? result = null;
+        try
+        {
+            await _db.ExecAsync("dbo.sahyog_Meeting_Hide", p =>
+            {
+                p.With("@TenantId", tenantId).With("@MeetingId", meetingId).With("@UserId", userId);
+                result = p.AddOutput("@Result", SqlDbType.Int);
+            });
+        }
+        catch (SqlException ex) when (ex.Number == MissingProcedure) { return HideMeetingStatus.NeedsDatabase; }
+        return (HideMeetingStatus)result!.OutInt();
+    }
+
+    public async Task<int> SendCancellationAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string cancelledBy, string hostEmail, TimeZoneInfo zone, string? note)
+    {
+        var emails = invitees.Select(i => i.UserId is not null ? i.Email : i.GuestEmail)
+            .Where(e => !string.IsNullOrWhiteSpace(e)).Select(e => e!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (!string.IsNullOrWhiteSpace(hostEmail) && !emails.Contains(hostEmail, StringComparer.OrdinalIgnoreCase)) emails.Add(hostEmail);   // the host's own calendar too
+        if (emails.Count == 0) return 0;
+
+        var startLocal = MeetingCalendar.ToLocal(meeting.StartUtc, zone);
+        var when = meeting.IsAllDay
+            ? $"{startLocal:dddd, d MMMM yyyy} · All day"
+            : $"{startLocal:dddd, d MMMM yyyy} · {startLocal:h:mm tt} – {startLocal.AddMinutes(meeting.DurationMinutes):h:mm tt}";
+        var repeat = MeetingCalendar.DescribeRepeat(meeting, zone);
+        var series = repeat is not null;
+        if (series) when += $" · {repeat}";
+        var noteHtml = string.IsNullOrWhiteSpace(note) ? "" :
+            $"""<p style="margin:0 0 18px;padding:14px 16px;border-radius:14px;background:#FEE2E2;color:#7F1D1D;font-style:italic">“{WebUtility.HtmlEncode(note.Trim()).Replace("\n", "<br>")}”</p>""";
+        var html = $"""
+            <div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:auto;padding:28px;border-radius:24px;background:#F8FAFC">
+              <p style="margin:0 0 6px;color:#B91C1C;font-size:13px;font-weight:600">{WebUtility.HtmlEncode(cancelledBy)} cancelled {(series ? "this meeting series (every meeting in it)" : "this meeting")}</p>
+              <h2 style="margin:0 0 12px;color:#0F172A;text-decoration:line-through">{WebUtility.HtmlEncode(meeting.Title)}</h2>
+              <p style="margin:0 0 18px;color:#334155">{WebUtility.HtmlEncode(when)}</p>
+              {noteHtml}
+              <p style="margin:0;color:#475569;font-size:13px">It's marked as cancelled in ShankhNaad, and the calendar file below removes it from Outlook or Google Calendar.</p>
+              <p style="margin:20px 0 0;color:#64748B;font-size:12px">ShankhNaad by CloudWheel Ltd</p>
+            </div>
+            """;
+        var ics = IcsBuilder.Build(meeting, meeting.HostName, hostEmail, emails, RoomUrl(meeting.MeetingId), cancel: true);
+        var subject = series ? $"Cancelled: {meeting.Title} (all meetings in the series)" : $"Cancelled: {meeting.Title} · {startLocal:d MMM, h:mm tt}";
+        return await _email.SendAsync(emails, subject, html, new EmailCalendarPart("cancel.ics", ics, "CANCEL")) ? emails.Count : 0;
     }
 
     public Task<GuestMeetingDto?> GetByGuestCodeAsync(string code) =>

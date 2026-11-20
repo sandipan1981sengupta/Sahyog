@@ -16,6 +16,13 @@ public sealed record MeetingDto(
     public byte RepeatDays { get; init; }
     /// <summary>Start of the last occurrence (UTC). Null = repeats with no end.</summary>
     public DateTime? RepeatUntilUtc { get; init; }
+    /// <summary>When it was cancelled (a repeating meeting: the whole series). Null = not cancelled. Needs 34_MeetingCancel.sql.</summary>
+    public DateTime? CancelledUtc { get; init; }
+    /// <summary>Who cancelled it (shown on the calendar).</summary>
+    public string? CancelledByName { get; init; }
+    /// <summary>The reason given when cancelling (optional).</summary>
+    public string? CancelNote { get; init; }
+    public bool IsCancelled => CancelledUtc is not null;
     public DateTime EndUtc => StartUtc.AddMinutes(DurationMinutes);
 }
 
@@ -61,5 +68,11 @@ public sealed record MeetingOccurrenceDto(MeetingDto Meeting, DateTime StartLoca
 public sealed record MeetingListDto(List<MeetingDto> Meetings, List<InviteeDto> Invitees);
 
 public enum DeleteMeetingStatus { Ok = 0, NotFound = 1, NotAllowed = 2 }
+
+/// <summary>Cancel a meeting (sahyog_Meeting_Cancel). NeedsDatabase = 34_MeetingCancel.sql not run yet.</summary>
+public enum CancelMeetingStatus { Ok = 0, NotFound = 1, NotAllowed = 2, AlreadyCancelled = 3, NeedsDatabase = 9 }
+
+/// <summary>Remove a cancelled meeting from my calendar (sahyog_Meeting_Hide).</summary>
+public enum HideMeetingStatus { Ok = 0, NotFound = 1, NotCancelled = 2, NeedsDatabase = 9 }
 
 public sealed record DeleteMeetingResultDto(DeleteMeetingStatus Status, DateTime? StartUtc);

@@ -11,11 +11,30 @@
     var weekKey = Model.WeekStart == thisWeek ? "this" : Model.WeekStart < thisWeek ? "prev" : "next";
     var inv = CultureInfo.InvariantCulture;
 
-    string Status(CalendarEventVm e) => e.EndLocal <= now ? "Ended" : e.StartLocal <= now ? "Live" : "Upcoming";
+    string Status(CalendarEventVm e) => e.IsCancelled ? "Cancelled" : e.EndLocal <= now ? "Ended" : e.StartLocal <= now ? "Live" : "Upcoming";
     var isAdmin = User.IsInRole(AppRoles.TenantAdmin);
     bool CanDel(CalendarEventVm e) => e.IsHost || isAdmin;
+    string By(CalendarEventVm e) => e.IsHost ? "you" : e.HostName;
+    // what the 🗑 on a meeting does: a cancelled one is removed from my calendar (anyone);
+    // the host / an admin cancels an upcoming meeting or a series (everyone is emailed) and deletes a single ended one
+    string ActKind(CalendarEventVm e) => e.IsCancelled ? "hide" : !CanDel(e) ? "" : e.Repeat is null && e.EndLocal <= now ? "delete" : "cancel";
+    string ActTip(string k, CalendarEventVm e) => k switch { "hide" => "Remove from my calendar", "delete" => "Delete meeting", _ => e.Repeat is null ? "Cancel meeting" : "Cancel the whole series" };
+    // hover text: when, who set it up, and whether it's cancelled
+    string EvTip(CalendarEventVm e) => $"{e.Title} · {(e.IsAllDay ? "all day" : e.StartLocal.ToString("HH:mm", inv) + "–" + e.EndLocal.ToString("HH:mm", inv))} · set up by {By(e)}"
+        + (e.Repeat is null ? "" : $" · {e.Repeat}")
+        + (e.IsCancelled ? $" · CANCELLED{(e.CancelledBy is null ? "" : " by " + e.CancelledBy)}{(string.IsNullOrWhiteSpace(e.CancelNote) ? "" : ": " + e.CancelNote)}" : $" · {Status(e)}");
+    const string TrashSvg = "<svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M4 7h16' /><path d='M10 11v6M14 11v6' /><path d='M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12' /><path d='M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7' /></svg>";
+    const string BanSvg = "<svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' aria-hidden='true'><circle cx='12' cy='12' r='8.5' /><path d='M6 6l12 12' /></svg>";
+    Microsoft.AspNetCore.Html.IHtmlContent ActBtn(CalendarEventVm e)
+    {
+        var k = ActKind(e);
+        if (k.Length == 0) return Microsoft.AspNetCore.Html.HtmlString.Empty;
+        var tip = ActTip(k, e);
+        var t = System.Net.WebUtility.HtmlEncode(e.Title);
+        return new Microsoft.AspNetCore.Html.HtmlString($"<span class='sn-ev-del act-{k}' role='button' tabindex='0' data-act='{k}' data-del='{e.MeetingId}' data-title='{t}' data-series='{(e.Repeat is null ? "" : "1")}' data-tip='{tip}' aria-label='{tip}: {t}'>{(k == "cancel" ? BanSvg : TrashSvg)}</span>");
+    }
     bool Weekend(DayOfWeek d) => d == DayOfWeek.Saturday || d == DayOfWeek.Sunday;
-    var periodWord = Model.View switch { "day" => "Today", "month" => "This month", "list" => "This week", _ => "This week" };
+    var periodWord = Model.View switch { "day" => "Today", "month" => "This month", "agenda" => "These 7 days", "list" => "This week", _ => "This week" };
     string DurText(int m) => m < 60 ? $"{m} min" : m % 60 == 0 ? $"{m / 60} hr" : $"{m / 60} hr {m % 60} min";
 
     // Rows for <modern-table>: one row per meeting this week.
@@ -27,9 +46,10 @@
         ["Day"] = e.StartLocal.ToString("ddd dd MMM", inv),
         ["Time"] = e.IsAllDay ? "All day" : $"{e.StartLocal.ToString("HH:mm", inv)} – {e.EndLocal.ToString("HH:mm", inv)}",
         ["Duration"] = e.IsAllDay ? (e.ShowAsFree ? "All day · free" : "All day · busy") : DurText((int)(e.EndLocal - e.StartLocal).TotalMinutes),
-        ["Host"] = e.People.Count > 0 ? e.People[0].Name : "",
+        ["Host"] = e.IsHost ? "You" : e.HostName,
         ["People"] = e.People.Count,
         ["Role"] = e.IsHost ? "Host" : "Invited",
+        ["Repeat"] = e.Repeat ?? "Once",
         ["Status"] = Status(e)
     }).ToList();
 
@@ -46,7 +66,7 @@
         .Select(t => (t.ToString("HH:mm", inv), t.ToString("HH:mm", inv))).ToList();
     var formTime = new TimeOnly(f.Time.Hour, f.Time.Minute >= 30 ? 30 : 0).ToString("HH:mm", inv);
 
-    var busy = events.Where(e => !(e.IsAllDay && e.ShowAsFree)).Select(e => new
+    var busy = events.Where(e => !e.IsCancelled && !(e.IsAllDay && e.ShowAsFree)).Select(e => new
     {
         date = e.StartLocal.ToString("dd-MM-yyyy", inv),
         start = e.IsAllDay ? 0 : e.StartLocal.Hour + e.StartLocal.Minute / 60.0,
@@ -94,13 +114,16 @@
     var anchor = Model.Anchor;
     var today = DateOnly.FromDateTime(now);
     var rangeEnd = Model.RangeStart.AddDays(Model.Days.Count - 1);
-    var prevDate = view switch { "day" => anchor.AddDays(-1), "month" => anchor.AddMonths(-1), _ => anchor.AddDays(-7) };
-    var nextDate = view switch { "day" => anchor.AddDays(1), "month" => anchor.AddMonths(1), _ => anchor.AddDays(7) };
+    var prevDate = view switch { "day" => anchor.AddDays(-1), "month" => anchor.AddMonths(-1), "agenda" => anchor.AddDays(-ShankhNaad.Web.Controllers.MeetingsController.AgendaDays), _ => anchor.AddDays(-7) };
+    var nextDate = view switch { "day" => anchor.AddDays(1), "month" => anchor.AddMonths(1), "agenda" => anchor.AddDays(ShankhNaad.Web.Controllers.MeetingsController.AgendaDays), _ => anchor.AddDays(7) };
     string PUrl(string v, DateOnly d) => $"/meetings?view={v}&date={d.ToString("yyyy-MM-dd", inv)}";
     var rangeLabel = view switch
     {
         "day" => anchor.ToString("dddd, d MMMM yyyy", inv),
         "month" => anchor.ToString("MMMM yyyy", inv),
+        "agenda" => Model.RangeStart.Month == rangeEnd.Month
+            ? $"{Model.RangeStart.Day} – {rangeEnd.ToString("d MMMM yyyy", inv)}"
+            : $"{Model.RangeStart.ToString("d MMM", inv)} – {rangeEnd.ToString("d MMM yyyy", inv)}",
         _ => Model.WeekStart.Month == weekEnd.Month
             ? $"{Model.WeekStart.Day} – {weekEnd.ToString("d MMMM yyyy", inv)}"
             : $"{Model.WeekStart.ToString("d MMM", inv)} – {weekEnd.ToString("d MMM yyyy", inv)}"
@@ -109,6 +132,7 @@
     {
         "day" => anchor == today,
         "month" => anchor.Year == today.Year && anchor.Month == today.Month,
+        "agenda" => anchor == today,
         _ => Model.WeekStart == thisWeek
     };
     var timeGrid = view is "day" or "week";
@@ -183,6 +207,7 @@
             <tab id="day" text="Day" active="@(view == "day")"></tab>
             <tab id="week" text="Week" active="@(view == "week")"></tab>
             <tab id="month" text="Month" active="@(view == "month")"></tab>
+            <tab id="agenda" text="Agenda" active="@(view == "agenda")"></tab>
             <tab id="list" text="List" active="@(view == "list")"></tab>
         </tab-control>
     </div>
@@ -227,9 +252,9 @@
                                 <div class="sn-allday-cell" data-date="@d.Date.ToString("dd-MM-yyyy", inv)">
                                     @foreach (var ev in d.Events.Where(x => x.IsAllDay))
                                     {
-                                        <button type="button" class="sn-ad tone-@ev.Tone @(ev.ShowAsFree ? "free" : "busy") st-@Status(ev).ToLowerInvariant()" data-id="@ev.MeetingId"
-                                                title="@ev.Title · all day · @(ev.ShowAsFree ? "free" : "busy")">
-                                            <i class="fa @(ev.ShowAsFree ? "fa-sun-o" : "fa-ban")" aria-hidden="true"></i> <span>@ev.Title</span>
+                                        <button type="button" class="sn-ad tone-@ev.Tone @(ev.ShowAsFree ? "free" : "busy") st-@Status(ev).ToLowerInvariant() @(ev.IsCancelled ? "is-cancelled" : "")" data-id="@ev.MeetingId"
+                                                title="@EvTip(ev) · @(ev.ShowAsFree ? "free" : "busy")">
+                                            <i class="fa @(ev.IsCancelled ? "fa-calendar-times-o" : ev.ShowAsFree ? "fa-sun-o" : "fa-ban")" aria-hidden="true"></i> <span>@(ev.IsCancelled ? "Cancelled: " : "")@ev.Title</span>
                                         </button>
                                     }
                                 </div>
@@ -259,17 +284,14 @@
                                         var endHr = ev.EndLocal.Date > ev.StartLocal.Date ? 24 : HourOf(ev.EndLocal);
                                         var len = Math.Max(.4, endHr - HourOf(ev.StartLocal));
                                         var w = 100.0 / lanes;
-                                        <button type="button" class="sn-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(len < .75 ? "short" : "") @(len < .5 ? "tiny" : "") @(CanDel(ev) ? "can-del" : "")"
+                                        <button type="button" class="sn-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(len < .75 ? "short" : "") @(len < .5 ? "tiny" : "") @(ActKind(ev).Length > 0 ? "can-del" : "") @(ev.IsCancelled ? "is-cancelled" : "")"
                                                 data-id="@ev.MeetingId"
                                                 style="top:calc(var(--hr) * @top.ToString("0.###", inv));height:calc(var(--hr) * @len.ToString("0.###", inv) - 3px);left:calc(@((lane * w).ToString("0.###", inv))% + 3px);width:calc(@w.ToString("0.###", inv)% - 6px)"
-                                                title="@ev.Title · @ev.StartLocal.ToString("HH:mm", inv)–@ev.EndLocal.ToString("HH:mm", inv) · @st">
-                                            <b class="sn-ev-title">@if (st == "Live") { <em class="sn-ev-live">Live</em> }@ev.Title</b>
-                                            <span class="sn-ev-time">@ev.StartLocal.ToString("HH:mm", inv) – @ev.EndLocal.ToString("HH:mm", inv)</span>
-                                            <span class="sn-ev-meta">@(ev.IsHost ? "You host" : "Invited") · @ev.People.Count @(ev.People.Count == 1 ? "person" : "people")</span>
-                                            @if (CanDel(ev))
-                                            {
-                                                <span class="sn-ev-del" role="button" tabindex="0" data-del="@ev.MeetingId" data-title="@ev.Title" data-tip="Delete meeting" aria-label="Delete @ev.Title"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7" /></svg></span>
-                                            }
+                                                title="@EvTip(ev)">
+                                            <b class="sn-ev-title">@if (st == "Live") { <em class="sn-ev-live">Live</em> }@if (ev.IsCancelled) { <em class="sn-ev-cancel">Cancelled</em> }@ev.Title</b>
+                                            <span class="sn-ev-time">@ev.StartLocal.ToString("HH:mm", inv) – @ev.EndLocal.ToString("HH:mm", inv)@if (ev.Repeat is not null) { <i class="fa fa-repeat sn-ev-rep" aria-hidden="true" title="@ev.Repeat"></i> }</span>
+                                            <span class="sn-ev-meta"><i class="fa fa-user-o" aria-hidden="true"></i> By @By(ev) · @ev.People.Count @(ev.People.Count == 1 ? "person" : "people")</span>
+                                            @ActBtn(ev)
                                         </button>
                                     }
                                     @if (d.IsToday && nowTop >= 0)
@@ -306,13 +328,10 @@
                                 @foreach (var ev in shown)
                                 {
                                     var st = Status(ev);
-                                    <button type="button" class="sn-mev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsAllDay ? (ev.ShowAsFree ? "allday free" : "allday busy") : "")" data-id="@ev.MeetingId"
-                                            title="@ev.Title · @(ev.IsAllDay ? "all day" : ev.StartLocal.ToString("HH:mm", inv) + "–" + ev.EndLocal.ToString("HH:mm", inv)) · @st">
-                                        <i></i><span class="t">@(ev.IsAllDay ? "All day" : ev.StartLocal.ToString("HH:mm", inv))</span> <span class="n">@ev.Title</span>
-                                        @if (CanDel(ev))
-                                        {
-                                            <span class="sn-ev-del" role="button" tabindex="0" data-del="@ev.MeetingId" data-title="@ev.Title" data-tip="Delete meeting" aria-label="Delete @ev.Title"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7" /></svg></span>
-                                        }
+                                    <button type="button" class="sn-mev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsAllDay ? (ev.ShowAsFree ? "allday free" : "allday busy") : "") @(ev.IsCancelled ? "is-cancelled" : "")" data-id="@ev.MeetingId"
+                                            title="@EvTip(ev)">
+                                        <i></i><span class="t">@(ev.IsAllDay ? "All day" : ev.StartLocal.ToString("HH:mm", inv))</span> <span class="n">@ev.Title</span>@if (!ev.IsHost && !ev.IsCancelled) { <span class="by">· @ev.HostName</span> }@if (ev.IsCancelled) { <span class="x">Cancelled</span> }
+                                        @ActBtn(ev)
                                     </button>
                                 }
                                 @if (d.Events.Count > shown.Count)
@@ -322,6 +341,81 @@
                             </div>
                         }
                     </div>
+                </section>
+            }
+            else if (view == "agenda")
+            {
+                @* ---------- Agenda: day by day, each meeting with its time, who set it up, the people and the agenda ---------- *@
+                <section id="viewSchedule" class="sn-view sn-agenda glass" aria-label="Agenda, day by day">
+                    @foreach (var d in Model.Days)
+                    {
+                        var dayEvents = d.Events.OrderByDescending(x => x.IsAllDay).ThenBy(x => x.StartLocal).ToList();
+                        var dmy = d.Date.ToString("dd-MM-yyyy", inv);
+                        <div class="sn-ag-day @(d.IsToday ? "today" : "") @(d.Date < today ? "past" : "") @(Weekend(d.Date.DayOfWeek) ? "weekend" : "")" data-date="@dmy">
+                            <a class="sn-ag-date" href="@PUrl("day", d.Date)" onclick="return snNav(this.href, '', event)" title="Open this day">
+                                <small>@d.Date.ToString("ddd", inv)</small><b>@d.Date.Day</b><small>@d.Date.ToString("MMM", inv)</small>
+                                @if (d.IsToday) { <em>Today</em> }
+                            </a>
+                            <div class="sn-ag-list">
+                                @if (dayEvents.Count == 0)
+                                {
+                                    <p class="sn-ag-empty"><span>No meetings</span>@if (d.Date >= today) { <text> · </text><button type="button" class="sn-link" data-ag-add="@dmy">Schedule one</button> }</p>
+                                }
+                                @foreach (var ev in dayEvents)
+                                {
+                                    var st = Status(ev);
+                                    var others = ev.People.Skip(1).ToList();
+                                    <article class="sn-ag-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsCancelled ? "is-cancelled" : "")" data-id="@ev.MeetingId" tabindex="0" title="@EvTip(ev)">
+                                        <div class="sn-ag-time">
+                                            @if (ev.IsAllDay) { <b>All day</b> }
+                                            else { <b>@ev.StartLocal.ToString("HH:mm", inv)</b><small>@ev.EndLocal.ToString("HH:mm", inv)</small> }
+                                        </div>
+                                        <div class="sn-ag-main">
+                                            <div class="sn-ag-title">
+                                                <b>@ev.Title</b>
+                                                @if (st == "Live") { <span class="sn-ag-badge live">Live</span> }
+                                                @if (ev.IsCancelled) { <span class="sn-ag-badge cancelled">Cancelled</span> }
+                                                @if (st == "Ended") { <span class="sn-ag-badge ended">Ended</span> }
+                                                @if (ev.Repeat is not null) { <span class="sn-ag-badge rep"><i class="fa fa-repeat" aria-hidden="true"></i> @ev.Repeat</span> }
+                                            </div>
+                                            <div class="sn-ag-meta">
+                                                <span><i class="fa fa-user-o" aria-hidden="true"></i> Set up by <b>@By(ev)</b></span>
+                                                <span><i class="fa fa-users" aria-hidden="true"></i> @ev.People.Count @(ev.People.Count == 1 ? "person" : "people")</span>
+                                                @if (!ev.IsAllDay) { <span><i class="fa fa-clock-o" aria-hidden="true"></i> @DurText((int)(ev.EndLocal - ev.StartLocal).TotalMinutes)</span> }
+                                            </div>
+                                            @if (ev.IsCancelled)
+                                            {
+                                                <div class="sn-ag-cancel"><i class="fa fa-calendar-times-o" aria-hidden="true"></i> <span>Cancelled</span>@(ev.CancelledBy is null ? "" : " by " + ev.CancelledBy)@if (!string.IsNullOrWhiteSpace(ev.CancelNote)) { <q>@ev.CancelNote</q> }</div>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(ev.Agenda))
+                                            {
+                                                <p class="sn-ag-agenda">@ev.Agenda</p>
+                                            }
+                                            @if (others.Count > 0)
+                                            {
+                                                <div class="sn-ag-people">
+                                                    <span class="stack-avatars">
+                                                        @foreach (var pp in others.Take(6))
+                                                        {
+                                                            <span class="avatar av-28 tone-@(pp.Tone) ring-white" title="@pp.Name">@pp.Initials</span>
+                                                        }
+                                                    </span>
+                                                    <span class="muted small">@string.Join(", ", others.Take(4).Select(x => x.Name))@(others.Count > 4 ? $" and {others.Count - 4} more" : "")</span>
+                                                </div>
+                                            }
+                                        </div>
+                                        <div class="sn-ag-acts">
+                                            @if (!ev.IsCancelled && st != "Ended")
+                                            {
+                                                <a class="cee-btn sn-btn-light sn-ag-join" href="/meetings/room/@ev.MeetingId" onclick="event.stopPropagation()"><i class="fa fa-video-camera" aria-hidden="true"></i> Join</a>
+                                            }
+                                            @ActBtn(ev)
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        </div>
+                    }
                 </section>
             }
 
@@ -341,7 +435,8 @@
                 <column field="Day" header="Day" width="120px"></column>
                 <column field="Time" header="Time" width="130px"></column>
                 <column field="Duration" header="Duration" width="100px"></column>
-                <column field="Host" header="Host" width="170px"></column>
+                <column field="Host" header="Set up by" width="170px"></column>
+                <column field="Repeat" header="Repeats" width="150px"></column>
                 <column field="People" header="People" width="90px" cell-align="right" header-align="right"></column>
                 <column field="Role" header="You are" type="badge" width="110px">
                     <badge value="Host" color="#DBEAFE"></badge>
@@ -351,6 +446,7 @@
                     <badge value="Live" color="#DCFCE7"></badge>
                     <badge value="Upcoming" color="#E0E7FF"></badge>
                     <badge value="Ended" color="#E2E8F0"></badge>
+                    <badge value="Cancelled" color="#FEE2E2"></badge>
                 </column>
             </modern-table>
             </section>
@@ -372,7 +468,7 @@
                     segs.Add((key, grad, pos, len));
                     pos += len + Gap;
                 }
-                var hours = events.Where(e => !e.IsAllDay).Sum(e => Math.Max(0, (e.EndLocal - e.StartLocal).TotalMinutes)) / 60.0;
+                var hours = events.Where(e => !e.IsAllDay && !e.IsCancelled).Sum(e => Math.Max(0, (e.EndLocal - e.StartLocal).TotalMinutes)) / 60.0;
                 var hoursText = hours < 1 ? $"{Math.Round(hours * 60)} min" : $"{hours:0.#} h";
                 var donePct = totalEv == 0 ? 0 : (int)Math.Round(ended * 100.0 / totalEv);
                 string F(double v) => v.ToString("0.##", inv);
@@ -498,7 +594,7 @@
                     <div class="sn-next">
                         <span class="sn-eyebrow" style="color:@(Model.UpNextMinutes <= 0 ? "#15803d" : "#475569")">@(Model.UpNextMinutes <= 0 ? "Happening now" : Model.UpNextMinutes < 60 ? $"Starts in {Model.UpNextMinutes} min" : next.StartLocal.ToString("ddd HH:mm", inv))</span>
                         <strong>@next.Title</strong>
-                        <span class="muted small">@next.StartLocal.ToString("HH:mm", inv) – @next.EndLocal.ToString("HH:mm", inv)</span>
+                        <span class="muted small">@next.StartLocal.ToString("HH:mm", inv) – @next.EndLocal.ToString("HH:mm", inv) · set up by @By(next)</span>
                         <div class="sn-next-foot">
                         <span class="stack-avatars">
                             @foreach (var p in next.People.Take(5))
@@ -689,6 +785,34 @@
     </form>
 </dialog>
 
+@* ---- cancel a meeting (a repeating one: the whole series). Everyone invited gets an email with a calendar cancellation. ---- *@
+<dialog id="cancelDialog" class="sn-dialog glass-strong sn-cancel-dlg" aria-labelledby="cancelT">
+    <form method="post" asp-antiforgery="true" action="/meetings" id="cancelForm">
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title">
+                <span class="sn-dlg-icon sn-cancel-ic"><i class="fa fa-calendar-times-o" aria-hidden="true"></i></span>
+                <div><h2 id="cancelT">Cancel meeting</h2><p>It stays on everyone's calendar, marked Cancelled.</p></div>
+            </div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body sn-cancel-body">
+            <p class="sn-cancel-what" id="cancelWhat"></p>
+            <label class="sn-field-label" for="cancelNote">Reason <span class="muted">(optional, everyone sees it)</span></label>
+            <textarea id="cancelNote" name="note" class="sn-textarea" rows="3" maxlength="500" placeholder="e.g. Moving this to next week"></textarea>
+            <label class="sn-ooo-noend sn-cancel-mail"><input type="checkbox" id="cancelMail" name="sendEmail" value="true" checked /> <span>Email everyone invited, with a calendar cancellation for Outlook / Google Calendar</span></label>
+            <input type="hidden" name="sendEmail" value="false" />
+            <input type="hidden" name="returnUrl" id="cancelReturn" />
+            <p class="sn-cancel-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> Each person can then remove it from their own calendar with the 🗑 on the meeting.</p>
+        </div>
+        <div class="sn-dlg-foot">
+            <span style="display:flex;gap:10px;margin-left:auto">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Keep meeting</button>
+                <button type="submit" class="cee-btn sn-btn-danger-soft sn-cancel-go" id="cancelSubmit"><i class="fa fa-ban" aria-hidden="true"></i> <span>Cancel meeting</span></button>
+            </span>
+        </div>
+    </form>
+</dialog>
+
 <script id="busyJson" type="application/json">@Html.Raw(JsonSerializer.Serialize(busy))</script>
 @* colleagues' names, so the calendar can show who is out of office on each day *@
 <script id="teamJson" type="application/json">@Html.Raw(JsonSerializer.Serialize(Model.Team.Where(p => !p.Pending).Select(p => new { id = p.Id, name = p.Name })))</script>
@@ -713,18 +837,52 @@
             if (row) SN.go("/meetings/room/" + row.MeetingId);
         }
         var SN_HERE = location.pathname + location.search;
+        // what the Delete button / 🗑 may do with each meeting on screen: cancel | delete | hide | "" (not yours)
+        var SN_ACTS = @Html.Raw(JsonSerializer.Serialize(events.GroupBy(e => e.MeetingId).ToDictionary(g => g.Key.ToString(), g => new { act = ActKind(g.First()), series = g.First().Repeat is not null, title = g.First().Title, by = g.First().HostName })));
         function snDeleteOne(id, title) {
             SN.confirmPost("/meetings/" + id + "/delete", {
                 title: "Delete meeting",
-                text: "Delete “" + title + "” for everyone? It's removed from everyone's calendar. Only the person who set it up (or a workspace admin) can do this.",
+                text: "Delete “" + title + "” for everyone? It's removed from everyone's calendar and nobody is emailed. Only the person who set it up (or a workspace admin) can do this.",
                 confirmText: "Delete meeting",
                 danger: true,
                 fields: { returnUrl: SN_HERE }
             });
         }
+        function snHideOne(id, title) {
+            SN.confirmPost("/meetings/" + id + "/hide", {
+                title: "Remove from my calendar",
+                text: "Remove the cancelled meeting “" + title + "” from your calendar? Only you stop seeing it; others keep it until they remove it.",
+                confirmText: "Remove",
+                fields: { returnUrl: SN_HERE }
+            });
+        }
+        // cancel: a window with an optional reason and "email everyone"
+        function snCancelOne(id, title, series) {
+            var dlg = document.getElementById("cancelDialog");
+            var form = document.getElementById("cancelForm");
+            form.action = "/meetings/" + id + "/cancel";
+            document.getElementById("cancelReturn").value = SN_HERE;
+            document.getElementById("cancelT").textContent = series ? "Cancel the whole series" : "Cancel meeting";
+            document.getElementById("cancelWhat").textContent = series
+                ? "Cancel every meeting in the series “" + title + "”? Past and future meetings in it are all marked cancelled."
+                : "Cancel “" + title + "”?";
+            document.getElementById("cancelSubmit").lastElementChild.textContent = series ? "Cancel series" : "Cancel meeting";
+            document.getElementById("cancelNote").value = "";
+            document.getElementById("cancelMail").checked = true;
+            dlg.showModal();
+            setTimeout(function () { document.getElementById("cancelNote").focus(); }, 60);
+        }
+        function snMeetingAct(act, id, title, series) {
+            if (act === "cancel") snCancelOne(id, title, series);
+            else if (act === "hide") snHideOne(id, title);
+            else if (act === "delete") snDeleteOne(id, title);
+        }
         function snCancelMeeting() {
             var row = SN.need("MeetingsTable", "a meeting (click it in the calendar)");
-            if (row) snDeleteOne(row.MeetingId, row.Title);
+            if (!row) return;
+            var a = SN_ACTS[row.MeetingId] || {};
+            if (!a.act) { Sahyog.toast("Only " + (a.by || "the person who set it up") + " (or a workspace admin) can cancel this meeting. Once it's cancelled you can remove it from your calendar.", { kind: "info", title: "Not your meeting" }); return; }
+            snMeetingAct(a.act, row.MeetingId, row.Title, a.series);
         }
         // every ended meeting in this period that you may delete
         var SN_ENDED = @Html.Raw(JsonSerializer.Serialize(events.Where(e => Status(e) == "Ended" && CanDel(e)).Select(e => e.MeetingId).Distinct()));
@@ -746,7 +904,7 @@
                 if (!b) return;
                 if (type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
                 e.preventDefault(); e.stopPropagation();
-                snDeleteOne(b.getAttribute("data-del"), b.getAttribute("data-title"));
+                snMeetingAct(b.getAttribute("data-act") || "delete", b.getAttribute("data-del"), b.getAttribute("data-title"), b.getAttribute("data-series") === "1");
             }, true);
         });
         document.addEventListener("pointerdown", function (e) { if (e.target.closest && e.target.closest(".sn-ev-del")) e.stopPropagation(); }, true);
@@ -832,14 +990,16 @@
             }
 
             // ---- one selection shared by the calendar and the grid ----
-            function mark(id) { $cal.find(".sn-ev, .sn-mev, .sn-ad").removeClass("selected").filter("[data-id='" + id + "']").addClass("selected"); }
-            $cal.on("click", ".sn-ev, .sn-mev, .sn-ad", function (e) {
+            function mark(id) { $cal.find(".sn-ev, .sn-mev, .sn-ad, .sn-ag-ev").removeClass("selected").filter("[data-id='" + id + "']").addClass("selected"); }
+            $cal.on("click", ".sn-ev, .sn-mev, .sn-ad, .sn-ag-ev", function (e) {
                 e.stopPropagation();
                 var id = $(this).data("id");
                 $("#MeetingsTable tr[data-row-id='" + id + "']").trigger("click");
                 mark(id);
             });
-            $cal.on("dblclick", ".sn-ev, .sn-mev, .sn-ad", function (e) { e.stopPropagation(); SN.go("/meetings/room/" + $(this).data("id")); });
+            $cal.on("dblclick", ".sn-ev, .sn-mev, .sn-ad, .sn-ag-ev", function (e) { e.stopPropagation(); if (!$(this).hasClass("is-cancelled")) SN.go("/meetings/room/" + $(this).data("id")); });
+            // agenda: "Schedule one" on an empty day
+            $cal.on("click", "[data-ag-add]", function (e) { e.stopPropagation(); openDay(this.closest(".sn-ag-day")); });
             $("#MeetingsTable").on("table:select", function (e, row) { mark(row.MeetingId); });
 
             // ---- click an empty slot or day: the Schedule window opens with that date and time ----

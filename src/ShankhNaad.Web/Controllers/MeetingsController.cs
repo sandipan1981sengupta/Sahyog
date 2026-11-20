@@ -40,7 +40,10 @@ public sealed class MeetingsController : Controller
 
     private Guid Me => User.UserGuid();
 
-    private static readonly string[] Views = { "day", "week", "month", "list" };
+    private static readonly string[] Views = { "day", "week", "month", "agenda", "list" };
+
+    /// <summary>How many days the Agenda page shows, starting from the chosen day.</summary>
+    public const int AgendaDays = 7;
 
     /// <summary>
     /// Meetings page. view = day | week | month | list (the last one used is kept in the "sn-mview" cookie);
@@ -273,7 +276,7 @@ public sealed class MeetingsController : Controller
         var nowLocal = MeetingCalendar.ToLocal(nowUtc, zone);
         var (meetings, _) = await _meetings.ListForUserAsync(tenantId, Me, nowUtc.AddHours(-1), nowUtc.AddHours(26));
         var me = Me.ToString();
-        var list = MeetingCalendar.Expand(meetings.Where(m => !m.IsInstant && !m.IsAllDay), nowLocal.AddMinutes(-10), nowLocal.AddHours(26), zone)
+        var list = MeetingCalendar.Expand(meetings.Where(m => !m.IsInstant && !m.IsAllDay && !m.IsCancelled), nowLocal.AddMinutes(-10), nowLocal.AddHours(26), zone)
             .Where(o => o.EndLocal > nowLocal)
             .OrderBy(o => o.StartLocal)
             .Take(50)
@@ -315,6 +318,11 @@ public sealed class MeetingsController : Controller
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var meeting = await _meetings.GetAsync(tenantId, id);
         if (meeting is null) return NotFound();
+        if (meeting.IsCancelled)
+        {
+            TempData["MeetingError"] = $"“{meeting.Title}” was cancelled{(meeting.CancelledByName is null ? "" : " by " + meeting.CancelledByName)}, so it can't be joined.";
+            return RedirectToAction(nameof(Index));
+        }
 
         var limits = (await _tenants.GetLimitsAsync(tenantId))!;
         if (_rooms.Count(id) >= limits.MaxMeetingParticipants && !_rooms.Contains(id, Me.ToString()))
@@ -373,6 +381,62 @@ public sealed class MeetingsController : Controller
         var limits = (await _tenants.GetLimitsAsync(tenantId))!;
         var local = MeetingCalendar.ToLocal(startUtc ?? DateTime.UtcNow, MeetingCalendar.FindZone(limits.TimeZoneId));
         return RedirectToAction(nameof(Index), new { week = WeekOf(DateOnly.FromDateTime(local)).ToString("yyyy-MM-dd") });
+    }
+
+    /// <summary>
+    /// Cancels a meeting (a repeating meeting: every meeting in the series). It stays on everyone's calendar, marked
+    /// cancelled, and everyone invited (team and guests) gets an email with a calendar cancellation.
+    /// </summary>
+    [HttpPost("{id:guid}/cancel")]
+    public async Task<IActionResult> Cancel(Guid id, string? note, bool? sendEmail, string? returnUrl)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        note = (note ?? "").Trim();
+        if (note.Length > 500) note = note[..500];
+        var status = await _meetings.CancelAsync(tenantId, id, Me, User.IsInRole(AppRoles.TenantAdmin), note);
+        switch (status)
+        {
+            case CancelMeetingStatus.NotFound: TempData["MeetingMsg"] = "That meeting was already deleted."; return Redirect(SafeReturn(returnUrl));
+            case CancelMeetingStatus.NotAllowed: TempData["MeetingError"] = "Only the person who set up the meeting (or a workspace admin) can cancel it."; return Redirect(SafeReturn(returnUrl));
+            case CancelMeetingStatus.AlreadyCancelled: TempData["MeetingMsg"] = "That meeting is already cancelled."; return Redirect(SafeReturn(returnUrl));
+            case CancelMeetingStatus.NeedsDatabase: TempData["MeetingError"] = "Cancelling meetings needs a database update (34_MeetingCancel.sql). Ask your administrator."; return Redirect(SafeReturn(returnUrl));
+        }
+
+        var meeting = await _meetings.GetAsync(tenantId, id);
+        var series = meeting is not null && meeting.Recurrence != MeetingRecurrence.None;
+        var mailed = 0;
+        if (meeting is not null && sendEmail != false)
+        {
+            var limits = (await _tenants.GetLimitsAsync(tenantId))!;
+            var invitees = await _meetings.GetInviteesAsync(tenantId, id);
+            var me = await _users.GetByIdAsync(Me);
+            var host = meeting.HostId == Me ? me : await _users.GetByIdAsync(meeting.HostId);
+            mailed = await _meetings.SendCancellationAsync(meeting, invitees, me?.DisplayName ?? User.DisplayName(), host?.Email ?? "",
+                MeetingCalendar.FindZone(limits.TimeZoneId), note.Length == 0 ? null : note);
+        }
+        // calendars that are open refresh themselves
+        await _hub.Clients.Group(ChatHub.TenantGroup(tenantId)).SendAsync("MeetingsChanged", id.ToString());
+
+        TempData["MeetingMsg"] = (series ? "The meeting series is cancelled (every meeting in it)." : "Meeting cancelled.")
+            + (mailed > 0 ? $" {mailed} {(mailed == 1 ? "person was" : "people were")} emailed." : "")
+            + " It stays on calendars marked as cancelled until each person removes it.";
+        return Redirect(SafeReturn(returnUrl));
+    }
+
+    /// <summary>Removes a cancelled meeting from my own calendar (anyone invited, or the host).</summary>
+    [HttpPost("{id:guid}/hide")]
+    public async Task<IActionResult> Hide(Guid id, string? returnUrl)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var status = await _meetings.HideAsync(tenantId, id, Me);
+        TempData[status == HideMeetingStatus.Ok ? "MeetingMsg" : "MeetingError"] = status switch
+        {
+            HideMeetingStatus.Ok => "Removed from your calendar.",
+            HideMeetingStatus.NotCancelled => "Only cancelled meetings can be removed from your calendar. Ask the host to cancel it.",
+            HideMeetingStatus.NeedsDatabase => "This needs a database update (34_MeetingCancel.sql). Ask your administrator.",
+            _ => "That meeting isn't on your calendar any more."
+        };
+        return Redirect(SafeReturn(returnUrl));
     }
 
     // ---------- files shared in a call's chat ----------
@@ -465,6 +529,8 @@ public sealed class MeetingsController : Controller
         {
             case "day":
                 rangeStart = anchor; rangeDays = 1; break;
+            case "agenda":
+                rangeStart = anchor; rangeDays = AgendaDays; break;
             case "month":
                 var first = new DateOnly(anchor.Year, anchor.Month, 1);
                 rangeStart = WeekOf(first);
@@ -503,10 +569,16 @@ public sealed class MeetingsController : Controller
             }
             var tone = m.IsInstant ? "slate" : m.HostId == me ? "blue" : "pink";
             var endLocal = InstantOver(m, o.StartLocal) && o.EndLocal > nowLocal ? nowLocal : o.EndLocal;
-            return new CalendarEventVm(m.MeetingId, m.Title, o.StartLocal, endLocal, tone, m.HostId == me, people, m.MeetingId == justId)
+            return new CalendarEventVm(m.MeetingId, m.Title, o.StartLocal, endLocal, m.IsCancelled ? "cancelled" : tone, m.HostId == me, people, m.MeetingId == justId)
             {
                 IsAllDay = m.IsAllDay,
-                ShowAsFree = m.ShowAsFree
+                ShowAsFree = m.ShowAsFree,
+                HostName = m.HostName,
+                Agenda = m.Agenda,
+                Repeat = MeetingCalendar.DescribeRepeat(m, zone),
+                IsCancelled = m.IsCancelled,
+                CancelledBy = m.CancelledByName,
+                CancelNote = m.CancelNote
             };
         }
 
@@ -518,7 +590,7 @@ public sealed class MeetingsController : Controller
             .ToList();
 
         var next = MeetingCalendar.Expand(meetings, nowLocal.AddHours(-2), nowLocal.AddDays(1), zone)
-            .Where(o => o.EndLocal > nowLocal && !o.Meeting.IsAllDay && !InstantOver(o.Meeting, o.StartLocal))
+            .Where(o => o.EndLocal > nowLocal && !o.Meeting.IsAllDay && !o.Meeting.IsCancelled && !InstantOver(o.Meeting, o.StartLocal))
             .OrderBy(o => o.StartLocal)
             .FirstOrDefault();
 

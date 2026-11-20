@@ -120,6 +120,15 @@ public sealed record CalendarEventVm(
 {
     public bool IsAllDay { get; init; }
     public bool ShowAsFree { get; init; }
+    /// <summary>Who set the meeting up.</summary>
+    public string HostName { get; init; } = "";
+    public string? Agenda { get; init; }
+    /// <summary>"Every Monday", "Every weekday" … null = once.</summary>
+    public string? Repeat { get; init; }
+    /// <summary>Cancelled (a repeating meeting: the whole series). Stays on the calendar, struck through.</summary>
+    public bool IsCancelled { get; init; }
+    public string? CancelledBy { get; init; }
+    public string? CancelNote { get; init; }
 }
 
 public sealed record CalendarDayVm(DateOnly Date, bool IsToday, List<CalendarEventVm> Events);

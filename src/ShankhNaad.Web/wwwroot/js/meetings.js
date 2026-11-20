@@ -284,7 +284,7 @@
         const S = window.Sahyog;
         if (!S?.oooOn) return;
         views.querySelectorAll(".sn-ooo-whos, .sn-ooo-block").forEach((x) => x.remove());
-        views.querySelectorAll(".sn-mcell[data-date], .sn-sched-col[data-date], .sn-sched-dayhead[data-date], .sn-allday-cell[data-date]").forEach((el) => {
+        views.querySelectorAll(".sn-mcell[data-date], .sn-sched-col[data-date], .sn-sched-dayhead[data-date], .sn-allday-cell[data-date], .sn-ag-day[data-date]").forEach((el) => {
             const day = parseDay(el.dataset.date);
             if (!day) return;
             const mine = me ? S.oooOn(me, day) : null;
@@ -299,17 +299,19 @@
                     band.className = "sn-ooo-band";
                     band.innerHTML = '<i class="fa fa-plane" aria-hidden="true"></i><span>Out of office</span>';
                     const top = el.classList.contains("sn-mcell") ? el.querySelector(".sn-mcell-top") : null;
-                    if (top) top.after(band); else el.appendChild(band);
+                    const list = el.classList.contains("sn-ag-day") ? el.querySelector(".sn-ag-list") : null;
+                    if (top) top.after(band); else if (list) list.prepend(band); else el.appendChild(band);
                 }
                 band.title = "Out of office" + (mine.message ? ": " + mine.message : "");
             }
-            if (!el.matches(".sn-mcell, .sn-sched-col")) return;
+            if (!el.matches(".sn-mcell, .sn-sched-col, .sn-ag-day")) return;
             // everyone else away that day (and you, when it's only some hours)
             const away = [];
             if (mine && myHours) away.push({ name: "You", o: mine });
             team.forEach((p) => { const o = S.oooOn(p.id, day); if (o) away.push({ name: p.name, o }); });
             if (!away.length) return;
-            const isMonth = el.classList.contains("sn-mcell");
+            const isAgenda = el.classList.contains("sn-ag-day");
+            const isMonth = el.classList.contains("sn-mcell") || isAgenda;   // chips (no time grid)
             const box = document.createElement("div");
             box.className = "sn-ooo-whos";
             away.forEach((a, i) => {
@@ -332,18 +334,46 @@
                     el.appendChild(b);
                     return;
                 }
-                if (isMonth && i >= MAX_CHIPS && away.length > MAX_CHIPS + 1) return;
+                if (isMonth && !isAgenda && i >= MAX_CHIPS && away.length > MAX_CHIPS + 1) return;
                 box.appendChild(chip(a.name, hours, titleOf(a.name, a.o)));
             });
-            if (isMonth && away.length > MAX_CHIPS + 1) {
+            if (isMonth && !isAgenda && away.length > MAX_CHIPS + 1) {
                 const more = away.slice(MAX_CHIPS);
                 box.appendChild(chip(`+${more.length} more away`, "", more.map((a) => titleOf(a.name, a.o)).join("\n")));
             }
             if (!box.childElementCount) return;
-            if (isMonth) { const after = el.querySelector(":scope > .sn-ooo-band") || el.querySelector(".sn-mcell-top"); if (after) after.after(box); else el.prepend(box); }
+            if (isAgenda) { const band = el.querySelector(".sn-ag-list > .sn-ooo-band"); if (band) band.after(box); else el.querySelector(".sn-ag-list")?.prepend(box); }
+            else if (isMonth) { const after = el.querySelector(":scope > .sn-ooo-band") || el.querySelector(".sn-mcell-top"); if (after) after.after(box); else el.prepend(box); }
             else el.appendChild(box);
         });
     }
     document.addEventListener("sahyog:ooo", mark);
     mark();
+})();
+
+// ShankhNaad · Meetings: cancelling (one press only), and calendars that refresh when someone cancels a meeting.
+(function () {
+    "use strict";
+    const form = document.getElementById("cancelForm");
+    form?.addEventListener("submit", () => {
+        const b = document.getElementById("cancelSubmit");
+        if (b) { b.disabled = true; b.lastElementChild.textContent = "Cancelling…"; }
+    });
+    document.getElementById("cancelDialog")?.addEventListener("close", () => {
+        const b = document.getElementById("cancelSubmit");
+        if (b) b.disabled = false;
+    });
+    // another person cancelled a meeting: reload the calendar quietly (not while a window is open)
+    let timer = 0;
+    const hub = window.Sahyog?.hub;
+    if (!hub || hub.__snMeetingsChanged) return;   // once per page load (the page can be opened again without a reload)
+    hub.__snMeetingsChanged = true;
+    hub.on("MeetingsChanged", () => {
+        clearTimeout(timer);
+        timer = setTimeout(function again() {
+            if (!document.querySelector(".sn-views")) return;              // left the Meetings page
+            if (document.querySelector("dialog[open]")) { timer = setTimeout(again, 4000); return; }
+            window.SN?.reload?.();
+        }, 1500);
+    });
 })();

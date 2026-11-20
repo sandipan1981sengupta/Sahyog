@@ -21,7 +21,8 @@ public sealed class SmtpOptions
     public string FromName { get; set; } = "ShankhNaad";
 }
 
-public sealed record EmailCalendarPart(string FileName, string IcsContent);
+/// <summary>An .ics calendar part. Method REQUEST = an invite; CANCEL = takes the event off people's calendars.</summary>
+public sealed record EmailCalendarPart(string FileName, string IcsContent, string Method = "REQUEST");
 
 public interface IAppEmailSender
 {
@@ -95,7 +96,7 @@ public sealed class SmtpEmailSender : IAppEmailSender
                 // the .ics invite Outlook / Google Calendar turn into an "Accept / Decline" event
                 var ics = body.Attachments.Add(calendar.FileName, Encoding.UTF8.GetBytes(calendar.IcsContent), new ContentType("text", "calendar"));
                 ics.ContentType.Charset = "utf-8";
-                ics.ContentType.Parameters.Add("method", "REQUEST");
+                ics.ContentType.Parameters.Add("method", calendar.Method);
             }
             message.Body = body.ToMessageBody();
 
@@ -121,7 +122,9 @@ public sealed class SmtpEmailSender : IAppEmailSender
 /// <summary>Builds the .ics calendar invite that Outlook and Google Calendar understand.</summary>
 public static class IcsBuilder
 {
-    public static string Build(MeetingDto meeting, string organizerName, string organizerEmail, IEnumerable<string> attendeeEmails, string joinUrl)
+    /// <param name="cancel">True: a cancellation (METHOD:CANCEL, same UID), so Outlook / Google Calendar remove the meeting
+    /// (the whole series for a repeating meeting) from the attendees' calendars.</param>
+    public static string Build(MeetingDto meeting, string organizerName, string organizerEmail, IEnumerable<string> attendeeEmails, string joinUrl, bool cancel = false)
     {
         static string Esc(string s) => s.Replace("\\", "\\\\").Replace(";", "\\;").Replace(",", "\\,").Replace("\r", "").Replace("\n", "\\n");
         static string Utc(DateTime d) => DateTime.SpecifyKind(d, DateTimeKind.Utc).ToString("yyyyMMdd'T'HHmmss'Z'");
@@ -130,10 +133,11 @@ public static class IcsBuilder
         sb.Append("BEGIN:VCALENDAR\r\n");
         sb.Append("PRODID:-//CloudWheel Ltd//ShankhNaad//EN\r\n");
         sb.Append("VERSION:2.0\r\n");
-        sb.Append("METHOD:REQUEST\r\n");
+        sb.Append(cancel ? "METHOD:CANCEL\r\n" : "METHOD:REQUEST\r\n");
         sb.Append("BEGIN:VEVENT\r\n");
         sb.Append($"UID:{meeting.MeetingId}@sahyog\r\n");
         sb.Append($"DTSTAMP:{Utc(DateTime.UtcNow)}\r\n");
+        if (cancel) sb.Append("SEQUENCE:1\r\nSTATUS:CANCELLED\r\n");
         sb.Append($"DTSTART:{Utc(meeting.StartUtc)}\r\n");
         sb.Append($"DTEND:{Utc(meeting.EndUtc)}\r\n");
         var until = meeting.RepeatUntilUtc is DateTime u ? $";UNTIL={Utc(u)}" : "";
@@ -146,14 +150,14 @@ public static class IcsBuilder
             var byDay = string.Join(",", Enumerable.Range(0, 7).Where(i => (meeting.RepeatDays & (1 << i)) != 0).Select(i => codes[i]));
             sb.Append($"RRULE:FREQ=WEEKLY;BYDAY={byDay}{until}\r\n");
         }
-        sb.Append($"SUMMARY:{Esc(meeting.Title)}\r\n");
+        sb.Append($"SUMMARY:{Esc(cancel ? "Cancelled: " + meeting.Title : meeting.Title)}\r\n");
         sb.Append($"DESCRIPTION:{Esc((meeting.Agenda ?? "") + "\n\nJoin: " + joinUrl)}\r\n");
         sb.Append($"LOCATION:{Esc(joinUrl)}\r\n");
         sb.Append($"URL:{joinUrl}\r\n");
         sb.Append($"ORGANIZER;CN={Esc(organizerName)}:mailto:{organizerEmail}\r\n");
         foreach (var email in attendeeEmails)
             sb.Append($"ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{email}\r\n");
-        sb.Append("BEGIN:VALARM\r\nTRIGGER:-PT5M\r\nACTION:DISPLAY\r\nDESCRIPTION:Meeting starts in 5 minutes\r\nEND:VALARM\r\n");
+        if (!cancel) sb.Append("BEGIN:VALARM\r\nTRIGGER:-PT5M\r\nACTION:DISPLAY\r\nDESCRIPTION:Meeting starts in 5 minutes\r\nEND:VALARM\r\n");
         sb.Append("END:VEVENT\r\n");
         sb.Append("END:VCALENDAR\r\n");
         return sb.ToString();
