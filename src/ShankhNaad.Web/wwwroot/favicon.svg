@@ -1,5 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2563EB"/><stop offset="1" stop-color="#DB2777"/></linearGradient></defs>
-  <rect width="64" height="64" rx="18" fill="url(#g)"/>
-  <g transform="translate(10 10) scale(1.75)" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9.5C4.5 6 7.3 3.5 11 3.5c4.7 0 8.5 3.8 8.5 8.5 0 2.3-1.1 4-2.8 5L13 21l-1.6-3.6C7.3 16.2 4.5 13.4 4.5 9.5zM9.2 9.3a2 2 0 1 1 2.3 2.4M13.6 14.2l3.1 1.4M12.3 16.4l2.3 1M18.8 3.2a4 4 0 0 1 1.9 2.4M20.6 1.6a6.5 6.5 0 0 1 2.9 3.9"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- ShankhNaad: the conch (shankh) and its sound (naad) -->
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3B82F6"/><stop offset=".55" stop-color="#8B5CF6"/><stop offset="1" stop-color="#EC4899"/></linearGradient></defs>
+  <rect width="100" height="100" rx="26" fill="url(#g)"/>
+  <g transform="translate(-5 -5)">
+<path d="M22 24 C34 22 58 28 70 42 C80 54 78 70 66 76 C58 80 50 76 46 68 C40 56 32 40 22 24 Z" fill="#fff"/>
+<path d="M41 27 C40 34 37 40 34 44 M57 31 C56 42 50 52 44 60" fill="none" stroke="rgba(91,33,182,.45)" stroke-width="2.6" stroke-linecap="round"/>
+<path d="M70 50 C76 58 74 70 66 74 C60 77 54 74 52 70 C60 66 66 60 70 50 Z" fill="url(#g)" opacity=".9"/>
+<path d="M81 67 Q87 75 81 84" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+<path d="M89 61 Q99 75 89 92" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".6"/>
+</g>
 </svg>

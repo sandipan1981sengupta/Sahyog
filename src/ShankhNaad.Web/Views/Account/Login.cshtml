@@ -11,11 +11,11 @@
 
     <div class="sn-float sn-float-a glass-clear" aria-hidden="true">
         <span class="sn-float-ic live"><i class="fa fa-video-camera"></i></span>
-        <span><b>Daily stand-up</b><small>Live · your team is in</small></span>
+        <span><b>Daily stand-up</b><small>Live · your team is in the call</small></span>
     </div>
     <div class="sn-float sn-float-b glass-clear" aria-hidden="true">
         <span class="sn-float-ic"><i class="fa fa-comments"></i></span>
-        <span><b>New messages</b><small>Waiting in #general</small></span>
+        <span><b>3 new messages</b><small>Waiting in #general</small></span>
     </div>
 
     <form method="post" asp-action="Login" class="sn-window glass-clear" novalidate>
@@ -23,6 +23,7 @@
             <div>
                 <div class="sn-eyebrow">Welcome back</div>
                 <h2>Sign in</h2>
+                <p class="sn-window-sub">to your team's ShankhNaad workspace</p>
             </div>
             <span class="sn-lock"><i class="fa fa-lock" aria-hidden="true"></i></span>
         </div>
@@ -57,12 +58,12 @@
 
         <button type="submit" class="cee-btn cee-btn-gradient sn-signin">Sign in <i class="fa fa-arrow-right" aria-hidden="true"></i></button>
 
-        <div class="sn-divider"><span></span>Secured with encryption<span></span></div>
+        <div class="sn-divider"><span></span><i class="fa fa-shield" aria-hidden="true"></i> Secured with encryption<span></span></div>
         <p class="sn-small center">New here? Ask your workspace admin for an invite.</p>
-        <p class="sn-small center">Installing ShankhNaad for the first time? <a href="/setup">Run setup</a></p>
-        <p class="sn-small center" data-install-only><button type="button" class="link-btn" onclick="SN.installApp()"><i class="fa fa-desktop" aria-hidden="true"></i> Install ShankhNaad as a desktop app</button></p>
+        <p class="sn-small center" data-install-only><button type="button" class="sn-install-btn" onclick="SN.installApp()"><i class="fa fa-desktop" aria-hidden="true"></i> Install the desktop app</button></p>
     </form>
 </div>
+<p class="sn-setup-link">Installing ShankhNaad for the first time? <a href="/setup">Run setup</a></p>
 
 @section Scripts {
     <script>

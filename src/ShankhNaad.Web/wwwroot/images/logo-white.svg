@@ -1,1 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><title>ShankhNaad</title><path d="M4.5 9.5C4.5 6 7.3 3.5 11 3.5c4.7 0 8.5 3.8 8.5 8.5 0 2.3-1.1 4-2.8 5L13 21l-1.6-3.6C7.3 16.2 4.5 13.4 4.5 9.5zM9.2 9.3a2 2 0 1 1 2.3 2.4M13.6 14.2l3.1 1.4M12.3 16.4l2.3 1M18.8 3.2a4 4 0 0 1 1.9 2.4M20.6 1.6a6.5 6.5 0 0 1 2.9 3.9"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- ShankhNaad conch, white (for coloured backgrounds) -->
+  <g transform="translate(-5 -5)">
+<path d="M22 24 C34 22 58 28 70 42 C80 54 78 70 66 76 C58 80 50 76 46 68 C40 56 32 40 22 24 Z" fill="#fff"/>
+<path d="M41 27 C40 34 37 40 34 44 M57 31 C56 42 50 52 44 60" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="2.6" stroke-linecap="round"/>
+<path d="M70 50 C76 58 74 70 66 74 C60 77 54 74 52 70 C60 66 66 60 70 50 Z" fill="rgba(255,255,255,.35)" opacity=".9"/>
+<path d="M81 67 Q87 75 81 84" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+<path d="M89 61 Q99 75 89 92" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".6"/>
+</g>
+</svg>

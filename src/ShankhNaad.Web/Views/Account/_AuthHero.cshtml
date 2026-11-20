@@ -1,37 +1,31 @@
-@* Left side of the sign-in pages: brand, one line, three points, the verse. Shared by Login, Forgot and Set password. *@
+@* Left side of the sign-in pages: logo, name, what it's for (Team chat · Calls · Meetings), one line, three points, the verse.
+   Shared by Login, Forgot and Set password. *@
 <section class="sn-hero">
-    <strip-header heading="SHANKHNAAD" css-class="sn-brand"
-                  subheading="BY CLOUDWHEEL LTD"
-                  icon-src="/images/logo.svg"
-                  icon-size="84"
-                  icon-image-size="74%"
-                  icon-background-color="rgba(255,255,255,.55)"
-                  icon-border-color="rgba(255,255,255,.9)"
-                  heading-font-size="52"
-                  heading-font-weight="900"
-                  heading-font-family="Roboto, system-ui, sans-serif"
-                  heading-gradient-start="#2563EB"
-                  heading-gradient-mid="#6D28D9"
-                  heading-gradient-end="#DB2777"
-                  heading-gradient-start-hold-percent="10"
-                  heading-gradient-mid-stop-percent="55"
-                  heading-fallback-color="#1D4ED8"
-                  subheading-font-size="12"
-                  subheading-font-weight="700"
-                  subheading-font-family="Roboto, system-ui, sans-serif"
-                  subheading-gradient-start="#475569"
-                  subheading-gradient-end="#475569"></strip-header>
+    <div class="sn-brand-row">
+        <span class="sn-brand-tile"><img src="~/images/logo.svg" alt="" width="84" height="84" /></span>
+        <div class="sn-brand-text">
+            <h1 class="sn-wordmark">SHANKHNAAD</h1>
+            <ul class="sn-purpose" aria-label="What ShankhNaad is for">
+                <li><span class="sn-purpose-ic chat"><i class="fa fa-comments" aria-hidden="true"></i></span>Team chat</li>
+                <li><span class="sn-purpose-ic call"><i class="fa fa-phone" aria-hidden="true"></i></span>Calls</li>
+                <li><span class="sn-purpose-ic meet"><i class="fa fa-video-camera" aria-hidden="true"></i></span>Meetings</li>
+            </ul>
+        </div>
+    </div>
 
-    <p class="sn-hero-line">Chat, call and meet with your whole team, <span class="sn-grad-text">in one secure place.</span></p>
+    <div class="sn-hero-intro">
+        <p class="sn-by">By CloudWheel Ltd</p>
+        <p class="sn-hero-line">Chat, call and meet with your whole team, <span class="sn-grad-text">in one secure place.</span></p>
+    </div>
 
     <ul class="sn-points">
-        <li><span class="sn-point-ic glass"><i class="fa fa-comments-o" aria-hidden="true"></i></span><span><b>Groups and one-to-one chats</b><small>Real-time chat with files, read ticks and unread counts</small></span></li>
-        <li><span class="sn-point-ic glass"><i class="fa fa-video-camera" aria-hidden="true"></i></span><span><b>Video meetings</b><small>Guest links, lobby, screen share and captions</small></span></li>
-        <li><span class="sn-point-ic glass"><i class="fa fa-shield" aria-hidden="true"></i></span><span><b>Plans per client</b><small>Users, storage and meeting limits by plan</small></span></li>
+        <li><span class="sn-point-ic chat"><i class="fa fa-comments-o" aria-hidden="true"></i></span><span><b>Groups and one-to-one chats</b><small>Files, read ticks, replies and reactions in real time</small></span></li>
+        <li><span class="sn-point-ic call"><i class="fa fa-video-camera" aria-hidden="true"></i></span><span><b>Calls and video meetings</b><small>Ring people, guest links, lobby, screen share, captions</small></span></li>
+        <li><span class="sn-point-ic safe"><i class="fa fa-shield" aria-hidden="true"></i></span><span><b>Private to your company</b><small>Encrypted, on your own server, limits per plan</small></span></li>
     </ul>
 
     <blockquote class="sn-verse">
         <em>Sam gacchadhvam sam vadadhvam, sam vo manamsi janatam.</em>
-        <span>“Walk together, speak together, let your minds be in harmony.” — Rig Veda 10.191.2</span>
+        <span>“Walk together, speak together, let your minds be in harmony.” · Rig Veda 10.191.2</span>
     </blockquote>
 </section>

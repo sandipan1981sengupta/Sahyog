@@ -132,3 +132,91 @@ html.sn-still .sn-reveal, html.sn-still .sn-reveal > .sn-reveal-in { transition:
 .sn-who-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
 .sn-who-row span { color: #64748B; }
 .sn-who-row b { color: #0B1220; word-break: break-all; text-align: right; }
+
+/* =====================================================================
+   Nov 2026 · refined sign-in (layout A): logo + name + "Team chat · Calls · Meetings",
+   cleaner window, floating cards outside the window, "Run setup" at the bottom of the page
+   ===================================================================== */
+.sn-hero { gap: 30px; max-width: 600px; flex-basis: 520px; }
+.sn-brand-row { display: flex; align-items: center; gap: 22px; }
+.sn-brand-tile { flex: none; padding: 10px; border-radius: 32px; background: rgba(255, 255, 255, .7); border: 1px solid rgba(255, 255, 255, .95);
+    box-shadow: 0 18px 40px -22px rgba(124, 58, 237, .8); line-height: 0; }
+.sn-brand-tile img { width: 84px; height: 84px; display: block; }
+.sn-brand-text { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sn-wordmark { margin: 0; font: 900 60px/0.95 Roboto, system-ui, sans-serif; letter-spacing: -.01em;
+    background: linear-gradient(90deg, #2563EB 0%, #7C3AED 50%, #DB2777 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+.sn-purpose { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.sn-purpose li { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 5px; border-radius: 999px; font-size: 14px; font-weight: 700;
+    color: #1E293B; background: rgba(255, 255, 255, .78); border: 1px solid rgba(255, 255, 255, .95); box-shadow: 0 8px 20px -14px rgba(30, 41, 99, .5); }
+.sn-purpose-ic { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 12px; }
+.sn-purpose-ic.chat { background: #2563EB; }
+.sn-purpose-ic.call { background: #7C3AED; }
+.sn-purpose-ic.meet { background: #DB2777; }
+.sn-hero-intro { display: flex; flex-direction: column; gap: 8px; }
+.sn-by { margin: 0; font-size: 12.5px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: #64748B; }
+.sn-hero-line { font-size: 36px; line-height: 1.18; font-weight: 800; }
+.sn-points { gap: 10px; }
+.sn-points li { padding: 13px 16px; border-radius: 18px; background: rgba(255, 255, 255, .55); border: 1px solid rgba(255, 255, 255, .8); }
+.sn-point-ic { width: 42px; height: 42px; border-radius: 13px !important; background: rgba(37, 99, 235, .1); color: #1D4ED8; border: 0; box-shadow: none; }
+.sn-point-ic.call { background: rgba(124, 58, 237, .1); color: #6D28D9; }
+.sn-point-ic.safe { background: rgba(219, 39, 119, .1); color: #BE185D; }
+.sn-verse { background: rgba(255, 255, 255, .5); border-color: rgba(255, 255, 255, .8); }
+.sn-verse em { font-size: 15.5px; font-weight: 700; }
+
+/* the window */
+.sn-window { gap: 18px; padding: 36px 36px 30px; border-radius: 32px; }
+.sn-window .sn-eyebrow { color: #7C3AED; letter-spacing: .16em; font-weight: 800; }
+.sn-window-sub { margin: 4px 0 0; font-size: 14px; color: #64748B; }
+.sn-lock { color: #2563EB; background: rgba(37, 99, 235, .1); border-color: rgba(37, 99, 235, .12); }
+.sn-signin { text-transform: none !important; letter-spacing: 0 !important; font-weight: 700 !important; border-radius: 16px !important;
+    background: linear-gradient(100deg, #2563EB 0%, #7C3AED 55%, #DB2777 100%) !important;
+    box-shadow: 0 16px 34px -14px rgba(124, 58, 237, .9), inset 0 1px 0 rgba(255, 255, 255, .3) !important; }
+.sn-divider i { color: #64748B; margin-right: -6px; }
+.sn-install-btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 12px; cursor: pointer;
+    border: 1px solid rgba(37, 99, 235, .25); background: rgba(37, 99, 235, .06); color: #1D4ED8; font: 700 13.5px Roboto, system-ui, sans-serif; }
+.sn-install-btn:hover { background: rgba(37, 99, 235, .12); }
+/* floating cards: outside the window, never over its fields */
+.sn-float { background: rgba(255, 255, 255, .9); border: 1px solid #fff; box-shadow: 0 16px 34px -18px rgba(30, 41, 99, .6); }
+.sn-float b { font-size: 14px; }
+.sn-float small { font-size: 12.5px; color: #475569; }
+.sn-float-ic { width: 38px; height: 38px; }
+.sn-float-a { left: -80px; top: -52px; }
+.sn-float-b { right: -90px; bottom: -30px; }
+/* "Run setup": quietly at the bottom of the page */
+.auth-wrap { position: relative; }
+.sn-setup-link { position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; text-align: center; font-size: 12.5px; color: #64748B; }
+.sn-setup-link a { color: #2563EB; font-weight: 700; text-decoration: none; }
+.sn-setup-link a:hover { text-decoration: underline; }
+
+@media (max-width: 1100px) { .sn-wordmark { font-size: 50px; } .sn-hero-line { font-size: 30px; } }
+@media (max-width: 900px) {
+    .sn-brand-row { justify-content: center; gap: 14px; }
+    .sn-brand-text { align-items: flex-start; text-align: left; }
+    .sn-hero-intro { align-items: center; }
+    .sn-hero-line { font-size: 22px; }
+    .sn-setup-link { position: static; }
+}
+@media (max-width: 560px) {
+    .sn-brand-tile { padding: 6px; border-radius: 20px; }
+    .sn-brand-tile img { width: 54px; height: 54px; }
+    .sn-wordmark { font-size: 30px; }
+    .sn-purpose { gap: 6px; }
+    .sn-purpose li { height: 30px; font-size: 12.5px; padding: 0 10px 0 4px; gap: 6px; }
+    .sn-purpose-ic { width: 22px; height: 22px; font-size: 10.5px; }
+    .sn-by { font-size: 11px; }
+    .sn-hero-line { font-size: 18px; }
+}
+@media (max-width: 360px) { .sn-wordmark { font-size: 25px; } .sn-purpose li:last-child { display: none; } }
+/* "Keep me signed in" and "Forgot password?" on one line */
+.sn-window-row-split { flex-wrap: nowrap; }
+.sn-window-row-split > .modern-checkbox-wrapper { width: auto !important; flex: 0 1 auto; min-width: 0; }
+@media (max-width: 900px) {
+    .sn-hero { flex: none; flex-basis: auto; }
+    .sn-setup-link { width: 100%; padding: 0 16px; box-sizing: border-box; }
+}
+@media (max-width: 340px) { .sn-window-row-split { flex-wrap: wrap; } }
+/* keep the floating cards inside narrower windows; "Run setup" above the coloured circles */
+@media (max-width: 1400px) { .sn-float-b { right: -28px; bottom: -48px; } .sn-float-a { left: -48px; } }
+.sn-setup-link { z-index: 3; }
+@media (max-width: 900px) { .sn-setup-link { position: relative; } }
+@media (max-width: 900px) { .sn-setup-link { width: auto; align-self: center; padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, .78); } }
