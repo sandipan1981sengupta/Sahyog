@@ -40,6 +40,8 @@ builder.Services.AddControllersWithViews(o => o.Filters.Add(new AutoValidateAnti
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 64 * 1024);
 // CSS / JS bundles for the layouts (Infrastructure/AssetBundles.cs), served at /bundles/…
 builder.Services.AddSingleton<AssetBundles>();
+// our .js / .css / .svg: minified safely and compressed once at the best level, kept in memory (Infrastructure/OptimizedAssets.cs)
+builder.Services.AddSingleton<OptimizedAssets>();
 builder.Services.AddSingleton<ShankhNaad.Web.Infrastructure.ReverseGeocoder>();   // team location: map position → place name
 
 // Compress CSS / JS / SVG (about 1.6 MB → about 300 KB per first visit). HTML pages are deliberately NOT
@@ -90,6 +92,9 @@ app.Use(async (ctx, next) =>
     }
     await next();
 });
+// .js / .css / .svg from wwwroot: answered ready-made (minified once, Brotli / gzip once); before the compression
+// below, which still handles everything else it compresses (the app manifest)
+app.Use(OptimizedAssets.Middleware(app.Services.GetRequiredService<OptimizedAssets>(), contentTypes));
 app.UseResponseCompression();
 // Browser caching. Before this, CSS/JS/fonts were sent with no caching rule, so Safari asked the server
 // again for ~40 files on every page change (Chrome/Edge hid this by fetching pages in advance).
@@ -116,16 +121,20 @@ app.UseRouting();
 
 // The bundles: /bundles/layout.css?v=<hash> and so on. The hash changes with the content,
 // so a matching ?v= is cached for a year; anything else is checked again each time.
-app.MapGet("/bundles/{name}", (string name, HttpContext ctx, AssetBundles bundles) =>
+app.MapGet("/bundles/{name}", async (string name, HttpContext ctx, AssetBundles bundles) =>
 {
-    if (!AssetBundles.Definitions.ContainsKey(name)) return Results.NotFound();
-    var (bytes, hash) = bundles.Get(name);
-    var etag = $"\"{hash}\"";
-    ctx.Response.Headers.ETag = etag;
-    ctx.Response.Headers.CacheControl = ctx.Request.Query["v"] == hash ? "public, max-age=31536000, immutable" : "no-cache";
-    if (ctx.Request.Headers.IfNoneMatch == etag) return Results.StatusCode(StatusCodes.Status304NotModified);
-    return Results.Bytes(bytes, AssetBundles.ContentType(name));
+    if (!AssetBundles.Definitions.ContainsKey(name)) { ctx.Response.StatusCode = StatusCodes.Status404NotFound; return; }
+    var (_, hash) = bundles.Get(name);
+    var packed = bundles.GetPacked(name);                   // minified + Brotli / gzip, made once per change
+    await OptimizedAssets.SendAsync(ctx, packed, AssetBundles.ContentType(name),
+        ctx.Request.Query["v"] == hash ? "public, max-age=31536000, immutable" : "no-cache");
 }).AllowAnonymous();
+// get the bundles ready (minify + compress) as the app starts, so the first visitor doesn't wait for it
+_ = Task.Run(() =>
+{
+    var bundles = app.Services.GetRequiredService<AssetBundles>();
+    foreach (var name in AssetBundles.Definitions.Keys) { try { bundles.Get(name); } catch { } }
+});
 app.UseAuthentication();
 app.UseAuthorization();
 

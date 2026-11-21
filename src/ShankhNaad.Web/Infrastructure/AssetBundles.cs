@@ -10,15 +10,17 @@ namespace ShankhNaad.Web.Infrastructure;
 /// CSS / JS bundles: the ~45 style and script files of the layouts are served as 4 files
 /// (/bundles/layout.css, /bundles/controls.js, /bundles/app.js, and the sign-in page's own two).
 ///
-/// - Same order as the separate files had, nothing minified (the server compresses them, see Program.cs),
-///   so the code in the browser is exactly the code in wwwroot.
+/// - Same order as the separate files had. Our own files are minified safely (comments and spaces only,
+///   <see cref="AssetMinifier"/>; libraries under lib/ are left as they are), and each bundle is compressed once
+///   at the best level (Brotli and gzip) and kept in memory (<see cref="OptimizedAssets"/>).
 /// - Each bundle URL carries a hash of its content (?v=…), so browsers keep it for a year and fetch it
 ///   again only after a file in it has changed.
 /// - A changed file is picked up straight away (no rebuild or restart): the bundle is rebuilt when any
 ///   of its files is newer than the bundle.
 /// - CSS: relative url(...) (fonts, images) are rewritten so they still point to the right place.
 /// - JS: files are joined with ";" so one file's last line can never run into the next file.
-/// - "App:BundleAssets": false in appsettings serves the separate files again (handy for debugging).
+/// - "App:BundleAssets": false in appsettings serves the separate files again (handy for debugging);
+///   "App:MinifyAssets": false keeps every file exactly as written (still compressed).
 /// </summary>
 public sealed class AssetBundles
 {
@@ -109,10 +111,11 @@ public sealed class AssetBundles
         },
     };
 
-    private sealed record Built(byte[] Bytes, string Hash, DateTime NewestSourceUtc);
+    private sealed record Built(byte[] Bytes, string Hash, DateTime NewestSourceUtc, OptimizedAssets.Item Packed);
 
     private readonly IWebHostEnvironment _env;
     private readonly bool _enabled;
+    private readonly bool _minify;
     private readonly ConcurrentDictionary<string, Built> _built = new();
     private readonly ConcurrentDictionary<string, (DateTime Stamp, string Hash)> _fileHashes = new();
     private readonly object _gate = new();
@@ -121,6 +124,7 @@ public sealed class AssetBundles
     {
         _env = env;
         _enabled = config.GetValue("App:BundleAssets", true);
+        _minify = config.GetValue("App:MinifyAssets", true);
     }
 
     public static string ContentType(string name) =>
@@ -141,17 +145,27 @@ public sealed class AssetBundles
     /// <summary>The bundle's content and hash (built on first use, rebuilt when one of its files changes).</summary>
     public (byte[] Bytes, string Hash) Get(string name)
     {
+        var b = GetBuilt(name);
+        return (b.Bytes, b.Hash);
+    }
+
+    /// <summary>The bundle minified and compressed (Brotli / gzip), ready to send.</summary>
+    public OptimizedAssets.Item GetPacked(string name) => GetBuilt(name).Packed;
+
+    private Built GetBuilt(string name)
+    {
         var files = Definitions[name];
         var newest = files.Select(f => File.GetLastWriteTimeUtc(PathOf(f))).Max();
-        if (_built.TryGetValue(name, out var b) && b.NewestSourceUtc >= newest) return (b.Bytes, b.Hash);
+        if (_built.TryGetValue(name, out var b) && b.NewestSourceUtc >= newest) return b;
         lock (_gate)
         {
-            if (_built.TryGetValue(name, out b) && b.NewestSourceUtc >= newest) return (b.Bytes, b.Hash);
+            if (_built.TryGetValue(name, out b) && b.NewestSourceUtc >= newest) return b;
             var text = Build(name, files);
             var bytes = new UTF8Encoding(false).GetBytes(text);
-            var built = new Built(bytes, HashOf(bytes), newest);
+            var hash = HashOf(bytes);
+            var built = new Built(bytes, hash, newest, OptimizedAssets.Pack(bytes, newest, bytes.Length) with { ETag = $"\"{hash}\"" });
             _built[name] = built;
-            return (built.Bytes, built.Hash);
+            return built;
         }
     }
 
@@ -184,6 +198,7 @@ public sealed class AssetBundles
             var text = File.ReadAllText(PathOf(file));
             if (text.Length > 0 && text[0] == '﻿') text = text[1..];   // a byte-order mark in the middle of a bundle breaks CSS
             text = SourceMap.Replace(text, "");                               // maps point next to the original file, not to the bundle
+            if (_minify) text = AssetMinifier.Minify(file, text);             // our own files only (comments, spaces)
             if (css)
             {
                 text = RebaseUrls(text, file);
