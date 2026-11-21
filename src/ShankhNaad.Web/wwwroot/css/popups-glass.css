@@ -27,7 +27,7 @@ html[data-skin="kesari"] {
     --pop-list-bg: rgba(255, 252, 247, .95);
 }
 html[data-theme="dark"] {
-    --pop-bg: rgba(18, 26, 52, .46);
+    --pop-bg: rgba(18, 26, 52, .4);
     --pop-edge: rgba(148, 163, 255, .18);
     --pop-shine: rgba(199, 210, 254, .08);
     --pop-shadow: 0 28px 70px -24px rgba(2, 6, 23, .9);
@@ -36,7 +36,7 @@ html[data-theme="dark"] {
     --pop-list-bg: rgba(16, 23, 46, .92);
 }
 html[data-theme="dark"].sn-carbon {
-    --pop-bg: rgba(30, 30, 34, .48);
+    --pop-bg: rgba(30, 30, 34, .42);
     --pop-edge: rgba(255, 255, 255, .09);
     --pop-shine: rgba(255, 255, 255, .06);
     --pop-shadow: 0 28px 70px -24px rgba(0, 0, 0, .85);
@@ -141,3 +141,15 @@ html body.sn-body .sn-theme-pop.sn-theme-pop.sn-theme-pop {
 }
 html.sn-webkit body.sn-body .strip-user-dropdown[data-strip-user-dropdown][data-strip-user-dropdown][data-strip-user-dropdown],
 html.sn-webkit body.sn-body .sn-theme-pop.sn-theme-pop.sn-theme-pop { backdrop-filter: blur(20px) saturate(170%) !important; -webkit-backdrop-filter: blur(20px) saturate(170%) !important; }
+
+/* ---- Meetings in CloudWheel and Dark: the schedule / month / agenda panels a bit more see-through than other panels ---- */
+html:not(.sn-webkit)[data-theme="dark"] body.sn-body.sn-body .sn-sched.sn-sched,
+html:not(.sn-webkit)[data-theme="dark"] body.sn-body.sn-body .sn-month.sn-month,
+html:not(.sn-webkit)[data-theme="dark"] body.sn-body.sn-body .sn-agenda.sn-agenda {
+    background: linear-gradient(150deg, rgba(30, 37, 66, .52) 0%, rgba(17, 22, 44, .42) 50%, rgba(27, 31, 60, .48) 100%) !important;
+}
+html:not(.sn-webkit)[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-sched.sn-sched,
+html:not(.sn-webkit)[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-month.sn-month,
+html:not(.sn-webkit)[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-agenda.sn-agenda {
+    background: linear-gradient(150deg, rgba(42, 42, 46, .52) 0%, rgba(26, 26, 29, .42) 50%, rgba(36, 36, 40, .48) 100%) !important;
+}

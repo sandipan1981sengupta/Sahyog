@@ -25,7 +25,7 @@ def bundle_sources():
     themes and the popup glass are left out."""
     text = open(os.path.join(ROOT, "Infrastructure", "AssetBundles.cs"), encoding="utf-8").read()
     block = text[text.index('["layout.css"]'):]
-    block = block[:block.index("};")]
+    block = block[:block.index("}")]                 # only the layout list, not the bundles after it
     files = re.findall(r'"css/([^"]+\.css)"', block)
     skip = {"theme-dark.css", "theme-kesari.css", "popups-glass.css", "safari.css"}
     return [f for f in files if f not in skip]

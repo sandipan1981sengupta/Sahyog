@@ -1264,6 +1264,7 @@
         (function () {
             var NOW = new Date(@now.Year, @(now.Month - 1), @now.Day, @now.Hour, @now.Minute);
             var $cal = $("#viewSchedule");
+            document.documentElement.classList.remove("sn-leaving", "sn-leaving-next", "sn-leaving-prev");   // left over from the last view change
             var READY_AT = Date.now() + 700;          // no "add" window while the page is still arriving
             var down = null;                           // where the press started
             $cal.on("pointerdown", function (e) { down = { x: e.clientX, y: e.clientY, target: e.target, t: Date.now() }; });

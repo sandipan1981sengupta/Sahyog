@@ -437,13 +437,14 @@
             return;
         }
 
-        if (quiet) { root.classList.add("sn-quiet"); await swap(res, { quiet: true, push: false }, res.prep); await nextFrame(); await nextFrame(); root.classList.remove("sn-quiet"); return; }
+        if (quiet) { root.classList.add("sn-quiet"); await swap(res, { quiet: true, push: false }, res.prep); undoLeave(); await nextFrame(); await nextFrame(); root.classList.remove("sn-quiet"); return; }
 
         if (vt) {
             root.classList.add("sn-arrive");
             let transition = null;
             const update = async () => {
                 await swap(res, { push: opts.push, vt: true }, res.prep);
+                undoLeave();          // a page may have set "leaving" itself (Meetings view / week buttons); never keep it on the new page
                 SN._arrive?.(transition);
             };
             try { transition = document.startViewTransition({ update, types: dir ? [dir] : [] }); }

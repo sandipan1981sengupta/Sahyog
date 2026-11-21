@@ -22,3 +22,26 @@ html[data-skin="kesari"] .sn-rail .rr-logo { background: linear-gradient(135deg,
 html[data-skin="kesari"] .sn-body .sn-person-row .sn-row-more, html[data-skin="kesari"] .sn-body .sn-team-row .sn-row-more { color: #C2410C; border-color: rgba(234, 88, 12, .28); background: rgba(255, 247, 237, .85); }
 html[data-skin="kesari"] .sn-body .sn-person-row .sn-row-more:hover, html[data-skin="kesari"] .sn-body .sn-person-row .sn-row-more.on,
 html[data-skin="kesari"] .sn-body .sn-team-row .sn-row-more:hover, html[data-skin="kesari"] .sn-body .sn-team-row .sn-row-more.on { background: linear-gradient(135deg, #FF9933, #EA580C); color: #FFFFFF; border-color: transparent; box-shadow: 0 8px 18px -8px rgba(234, 88, 12, .8); }
+
+/* dialog title icon: white on the saffron | green tile (a saffron icon on it could not be seen) */
+html[data-skin="kesari"] .sn-body .sn-dialog .sn-dlg-icon,
+html[data-skin="kesari"] .sn-body .sn-dialog .sn-dlg-icon i { color: #FFFFFF !important; }
+html[data-skin="kesari"] .sn-body .sn-dialog .sn-dlg-icon { text-shadow: 0 1px 2px rgba(60, 30, 0, .25); box-shadow: 0 10px 22px -10px rgba(234, 88, 12, .6), inset 0 1px 0 rgba(255, 255, 255, .35) !important; }
+
+/* page heading icons (Chat, Team, Meetings, Calls, Files…): the blue | purple | pink gradient comes from the
+   action-header tag helper's own style, so it is replaced here with saffron → deep saffron → green */
+html[data-skin="kesari"] .action-header-wrapper .hdr-left i.hdr-main-icon {
+    background-image: linear-gradient(135deg, #FB923C 0%, #EA580C 55%, #15803D 100%) !important;
+}
+html[data-skin="kesari"] .action-header-wrapper .hdr-icon-wrap::before {
+    background: linear-gradient(135deg, #FB923C 0%, #EA580C 55%, #15803D 100%) !important; background-size: 220% 220% !important;
+}
+html[data-skin="kesari"] .sn-body .sn-head .hdr-icon-wrap { background-color: rgba(234, 88, 12, .07) !important; }
+
+/* gauges (Meetings "upcoming", Team "seats", Team "storage"): SVG gradient stops follow the theme */
+html[data-skin="kesari"] #gUp stop:nth-child(1), html[data-skin="kesari"] #gSeats stop:nth-child(1) { stop-color: #FB923C; }
+html[data-skin="kesari"] #gUp stop:nth-child(2), html[data-skin="kesari"] #gSeats stop:nth-child(2) { stop-color: #EA580C; }
+html[data-skin="kesari"] #gUp stop:nth-child(3), html[data-skin="kesari"] #gSeats stop:nth-child(3) { stop-color: #15803D; }
+html[data-skin="kesari"] #gStore stop:nth-child(1) { stop-color: #EA580C; }
+html[data-skin="kesari"] #gStore stop:nth-child(2) { stop-color: #F59E0B; }
+html[data-skin="kesari"] #gStore stop:nth-child(3) { stop-color: #16A34A; }
