@@ -35,11 +35,116 @@
     let hub = null;
     if (!cfg.isGuest && window.signalR) {
         hub = new signalR.HubConnectionBuilder().withUrl("/hubs/chat").withAutomaticReconnect().build();
-        hub.start().catch(() => { });
     }
+    const hubReady = hub ? hub.start().catch(() => { }) : Promise.resolve();
     const report = (method) => {
         if (hub && hub.state === "Connected") hub.invoke(method, cfg.meetingId).catch(() => { });
     };
+
+    // ---------- team: photos and who is online / on a call / in this call (signed-in people only) ----------
+    // People panel, top-bar faces and the Inbox use it. Avatars with data-user get the person's photo;
+    // [data-st-user] dots and labels show Available (green), On a call (red), In this call (red), Offline (grey).
+    const lcid = (x) => String(x ?? "").trim().toLowerCase();
+    const team = { byName: new Map(), names: new Map(), inCall: new Set(), online: new Set(), busy: new Set(), photos: {}, loaded: false, listeners: [] };
+    team.idForName = (name) => {
+        const n = lcid(String(name || "").replace(/\s*\(guest\)/i, ""));
+        if (!n) return "";
+        if (n === lcid(String(cfg.displayName || "").replace(/\s*\(guest\)/i, "")) && cfg.userId) return lcid(cfg.userId);
+        return team.byName.get(n) || "";
+    };
+    team.state = (id) => {
+        id = lcid(id);
+        if (!id) return ["off", "Offline"];
+        if (team.inCall.has(id) || (id === lcid(cfg.userId))) return ["in", "In this call"];
+        if (team.busy.has(id)) return ["busy", "On a call"];
+        if (team.online.has(id)) return ["on", "Available"];
+        return ["off", "Offline"];
+    };
+    team.paintPhotos = (root) => {
+        const els = (root || document).querySelectorAll(".avatar[data-user]");
+        const paint = (el) => {
+            const id = lcid(el.getAttribute("data-user"));
+            const v = id && team.photos[id];
+            if (v) {
+                el.style.setProperty("background-image", `url("/team/photo/${id}?v=${v}")`, "important");
+                el.style.setProperty("background-size", "cover", "important");
+                el.style.setProperty("background-position", "center", "important");
+                el.classList.add("has-photo");
+            } else if (el.classList.contains("has-photo")) {
+                el.style.removeProperty("background-image"); el.classList.remove("has-photo");
+            }
+        };
+        els.forEach(paint);
+        if (root && root.matches && root.matches(".avatar[data-user]")) paint(root);
+    };
+    team.paintStatus = (root) => {
+        (root || document).querySelectorAll("[data-st-user]").forEach((el) => {
+            const [st, label] = team.state(el.getAttribute("data-st-user"));
+            if (el.classList.contains("st-label")) { el.textContent = label; el.className = `st-label st-${st}`; }
+            else { el.className = `st-dot ${st}`; el.title = label; }
+        });
+    };
+    const teamChanged = () => { team.paintStatus(); team.listeners.forEach((f) => { try { f(); } catch { } }); };
+    if (hub) {
+        let peopleT = null;
+        team.loadPeople = () => {
+            clearTimeout(peopleT);
+            peopleT = setTimeout(async () => {
+                if (hub.state !== "Connected") return;
+                try {
+                    const list = await hub.invoke("PeopleForCall", cfg.meetingId) || [];
+                    team.byName = new Map(); team.inCall = new Set();
+                    list.forEach((p) => {
+                        const id = lcid(p.userId);
+                        team.byName.set(lcid(p.name), id);
+                        team.names.set(id, p.name);
+                        if (p.inCall) team.inCall.add(id);
+                        if (p.online) team.online.add(id); else team.online.delete(id);
+                        if (p.busy) team.busy.add(id); else team.busy.delete(id);
+                    });
+                    team.loaded = true;
+                    window.__snRefreshPeople?.();
+                    teamChanged();
+                } catch { }
+            }, 250);
+        };
+        const loadPresence = async () => {
+            try {
+                const [on, busy] = await Promise.all([hub.invoke("OnlineUsers"), hub.invoke("BusyUsers")]);
+                team.online = new Set((on || []).map(lcid));
+                team.busy = new Set((busy || []).map(lcid));
+                teamChanged();
+            } catch { }
+        };
+        hub.on("PresenceChanged", (id, isOnline) => {
+            id = lcid(id);
+            if (isOnline) team.online.add(id); else { team.online.delete(id); team.busy.delete(id); team.inCall.delete(id); }
+            teamChanged();
+        });
+        hub.on("BusyChanged", (id, busy) => {
+            id = lcid(id);
+            if (busy) team.busy.add(id); else { team.busy.delete(id); team.inCall.delete(id); }
+            teamChanged();
+            team.loadPeople();          // joined or left a call: maybe this one
+        });
+        hub.on("PhotoChanged", (id, version) => {
+            id = lcid(id);
+            if (version) team.photos[id] = version; else delete team.photos[id];
+            team.paintPhotos();
+        });
+        hubReady.then(() => { loadPresence(); team.loadPeople(); });
+        hub.onreconnected?.(() => { loadPresence(); team.loadPeople(); });
+        fetch("/team/photos", { headers: { Accept: "application/json" }, credentials: "same-origin" })
+            .then((r) => (r.ok ? r.json() : {}))
+            .then((map) => { Object.entries(map || {}).forEach(([k, v]) => { team.photos[lcid(k)] = v; }); team.paintPhotos(); })
+            .catch(() => { });
+        // avatars drawn later (people list, inbox, messages) get their photo and status as they appear
+        new MutationObserver((changes) => changes.forEach((c) => c.addedNodes.forEach((n) => {
+            if (n.nodeType !== 1) return;
+            if (Object.keys(team.photos).length) team.paintPhotos(n);
+            if (n.matches?.("[data-st-user]") || n.querySelector?.("[data-st-user]")) team.paintStatus(n.parentNode || n);
+        }))).observe(document.body, { childList: true, subtree: true });
+    } else team.loadPeople = () => { };
 
     // ---------- JaaS ----------
     const api = new JitsiMeetExternalAPI(cfg.domain, {
@@ -129,11 +234,12 @@
             const guest = /\(guest\)/i.test(name);
             const clean = name.replace(/\s*\(guest\)/i, "");
             const isMe = clean.trim().toLowerCase() === me;
+            const uid = guest ? "" : isMe ? lcid(cfg.userId) : team.idForName(clean);
             const role = p.role === "moderator" ? '<span class="role host">Host</span>' : guest ? '<span class="role guest">Guest</span>' : "";
             const hand = hands.has(p.id) ? '<span class="pr-hand" title="Raised a hand" aria-label="Raised a hand">&#9995;</span>' : "";
             const canShow = p.id && !isMe;
             return `<div class="people-row ${speakerId && p.id === speakerId ? "speaking" : ""} ${hands.has(p.id) ? "hand-up" : ""} ${canShow ? "can-show" : ""}" data-pid="${esc(p.id || "")}" style="--i:${i}"${canShow ? ` role="button" tabindex="0" title="Show ${esc(clean)} on the big video"` : ""}>
-                        <span class="pr-av"><span class="avatar av-36 tone-${guest ? 3 : i % 6}">${esc(initials(clean))}</span></span>
+                        <span class="pr-av"><span class="avatar av-36 tone-${guest ? 3 : i % 6}"${uid ? ` data-user="${esc(uid)}"` : ""}>${esc(initials(clean))}</span><i class="st-dot in" title="In this call"></i></span>
                         <span class="pr-name"><span class="pr-n">${esc(clean)}</span>${isMe ? '<small class="pr-you">You</small>' : ""}</span>
                         ${hand}
                         <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -145,10 +251,13 @@
         const stack = $("avatarStack");
         if (stack) stack.innerHTML = people.slice(0, 3).map((p, i) => {
             const nm = (p.displayName || "Guest").replace(/\s*\(guest\)/i, "");
-            return `<span class="avatar tone-${/\(guest\)/i.test(p.displayName || "") ? 3 : i % 6}">${esc(initials(nm))}</span>`;
+            const g = /\(guest\)/i.test(p.displayName || ""), uid = g ? "" : team.idForName(nm);
+            return `<span class="avatar tone-${g ? 3 : i % 6}"${uid ? ` data-user="${esc(uid)}"` : ""} title="${esc(nm)}">${esc(initials(nm))}</span>`;
         }).join("");
         peopleById = new Map(people.map((p) => [p.id, (p.displayName || "Guest").replace(/\s*\(guest\)/i, "")]));
+        team.paintPhotos($("peopleList")); if (stack) team.paintPhotos(stack);
     }
+    window.__snRefreshPeople = () => refreshPeople();
 
     // ---------- dock ----------
     const setBtn = (id, on, cls, label, labelId, labelText) => {
@@ -202,9 +311,27 @@
     };
     const setPanel = (open, remember = true) => {
         panelOpen = open;
+        if (!open) setMax(false);
         if (remember) { autoHidden = false; try { localStorage.setItem("sn-room-panel", open ? "1" : "0"); } catch { } }
         paintPanel(true);
     };
+    // ---------- chat made bigger: the Chat or Inbox takes the room and the video shrinks to a corner ----------
+    let panelMax = false;
+    function setMax(on) {
+        on = !!on && pane !== "people";
+        if (on === panelMax) return;
+        panelMax = on;
+        document.body.classList.toggle("panel-max", on);
+        const b = $("panelMaxBtn");
+        if (b) {
+            b.setAttribute("aria-pressed", String(on));
+            b.setAttribute("aria-label", on ? "Make the chat smaller (back to the video)" : "Make the chat bigger");
+            b.title = on ? "Make the chat smaller: back to the video (Esc)" : "Make the chat bigger (the video gets small)";
+        }
+    }
+    window.__snSetMax = setMax;
+    $("panelMaxBtn")?.addEventListener("click", () => setMax(!panelMax));
+    $("stageRestore")?.addEventListener("click", () => setMax(false));
     peek.onclick = () => setPanel(true);
     $("panelScrim")?.addEventListener("click", () => setPanel(false, !smallScreen()));
     paintPanel(false);
@@ -359,6 +486,8 @@
     };
     const showPane = (name) => {
         pane = name;
+        panel.dataset.pane = name;
+        if (name === "people") setMax(false);
         $("panePeople").hidden = name !== "people";
         $("paneChat").hidden = name !== "chat";
         if ($("paneMsgs")) $("paneMsgs").hidden = name !== "msgs";
@@ -377,7 +506,12 @@
     };
     window.__snTogglePane = togglePane;
     // Esc while working in the panel closes it (on a phone, tapping outside it does too)
-    panel.addEventListener("keydown", (e) => { if (e.key === "Escape" && panelOpen) { e.stopPropagation(); setPanel(false); } });
+    panel.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape" || !panelOpen || e.defaultPrevented) return;
+        e.stopPropagation();
+        if (panelMax) setMax(false); else setPanel(false);          // Esc: first back to the video, then close
+    });
+    panel.dataset.pane = pane;
     Object.entries(PANE_BTN).forEach(([name, id]) => { if ($(id)) $(id).onclick = () => togglePane(name); });
     // keep the buttons in step when the panel is hidden or shown some other way (P, full screen, a shared screen)
     new MutationObserver(paintPaneBtns).observe(document.body, { attributes: true, attributeFilter: ["class"] });
@@ -722,7 +856,15 @@
         setBtn("shareBtn", on, "sharing", on ? "Stop sharing your screen" : "Share your screen", "shareLabel", on ? "Stop share" : "Share");
         // teammates see "Presenting" on your picture while you share
         if (hub && hub.state === "Connected") hub.invoke("SetPresenting", cfg.meetingId, !!on).catch(() => { });
+        // the browser puts its own "…is sharing your screen · Stop sharing · Hide" bar at the bottom of the screen,
+        // right over the controls: move the controls (and the panel's message box) up while you share
+        document.body.classList.toggle("is-sharing", !!on);
+        if (on && !shareTipShown) {
+            shareTipShown = true;
+            notice("You're sharing your screen", "Controls moved up above your browser's sharing bar. Click Hide on that bar to tuck it away.", "joined");
+        }
     });
+    let shareTipShown = false;
     api.addListener("tileViewChanged", ({ enabled }) => {
         tileOn = !!enabled;
         setBtn("tileBtn", tileOn, "active");
@@ -763,6 +905,7 @@
         .observe($("peopleCount"), { childList: true, characterData: true, subtree: true });
     ["participantJoined", "participantLeft", "displayNameChange", "participantRoleChanged"].forEach((ev) =>
         api.addListener(ev, refreshPeople));
+    ["participantJoined", "participantLeft"].forEach((ev) => api.addListener(ev, () => setTimeout(team.loadPeople, 1200)));
     // ---------- joined / left (Jitsi's own pop-ups are off) ----------
     api.addListener("participantJoined", ({ displayName }) => displayName && notice(`${displayName.replace(/\s*\(guest\)/i, "")} joined`, null, "joined"));
     const leftShown = new Map();      // name → when "left the call" was shown (the server also says it, with a note)
@@ -1028,13 +1171,22 @@
             [$("msgsUnread"), $("msgsBadge")].forEach((x) => { if (x) { x.textContent = n > 99 ? "99+" : String(n); x.hidden = n === 0; } });
             if ($("msgsBadge") && panelOpen && pane === "msgs") $("msgsBadge").hidden = true;    // you're looking at them
         };
+        // status of the person in a one-to-one chat: live (team) once known, else what the list said
+        const stOf = (c) => {
+            const id = lcid(c.userId);
+            if (team.online.size || team.loaded) return team.state(id);
+            return c.online ? ["on", "Available"] : ["off", "Offline"];
+        };
         const paintList = () => {
             const el = $("mxList");
             el.innerHTML = !chats.length
                 ? `<div class="mx-empty">${loaded ? "No chats yet." : "Loading your chats…"}</div>`
                 : chats.map((c) => `<button type="button" class="mx-row ${c.unread ? "unread" : ""} ${open && sameId(open.id, c.id) ? "on" : ""}" data-id="${esc(c.id)}">`
-                    + `<span class="avatar av-36 tone-${Number(c.tone) || 0}">${esc(c.initials)}</span>`
-                    + `<span class="mx-n"><b>${esc(c.name)}</b><small>${c.isDirect ? (c.online ? "Online" : "Offline") : "Group"}</small></span>`
+                    + (c.isDirect && c.userId
+                        ? `<span class="mx-av"><span class="avatar av-36 tone-${Number(c.tone) || 0}" data-user="${esc(lcid(c.userId))}">${esc(c.initials)}</span><i class="st-dot ${stOf(c)[0]}" data-st-user="${esc(lcid(c.userId))}" title="${stOf(c)[1]}"></i></span>`
+                        : `<span class="mx-av"><span class="avatar av-36 tone-${Number(c.tone) || 0}">${esc(c.initials)}</span></span>`)
+                    + `<span class="mx-n"><b>${esc(c.name)}</b>${c.isDirect && c.userId
+                        ? `<small class="st-label st-${stOf(c)[0]}" data-st-user="${esc(lcid(c.userId))}">${stOf(c)[1]}</small>` : "<small>Group</small>"}</span>`
                     + `<span class="mx-t"><small>${when(c.lastUtc)}</small>${c.unread ? `<em>${c.unread > 99 ? "99+" : c.unread}</em>` : ""}</span></button>`).join("");
             paintCounts();
         };
@@ -1046,22 +1198,195 @@
             loaded = true;
             paintList();
         }
+        // ----- one message: reply quote, text, file, "Edited", reactions, and its actions (react · reply · edit · delete) -----
+        const msgs = new Map();             // id → message, for reply / edit
+        const reacts = new Map();           // id → [{ emoji, userId, name }]
+        const QUICK = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+        const isMineMsg = (m) => String(m.senderId).toLowerCase() === me;
+        const plainOf = (m) => {
+            const b = unFwd(m.body);
+            return isCallCard(m.body) ? "📞 Call" : isGifCard(b.replace(/^↪ /, "")) ? "🎞️ GIF" : b || (m.attachment ? "📎 " + m.attachment.fileName : "");
+        };
+        const canEdit = (m) => isMineMsg(m) && !!m.body && !isCallCard(m.body) && !isGifCard(m.body) && !/^\[\[fwd:/.test(m.body);
+        const ICON = {
+            react: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01" /></svg>',
+            reply: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 6 6v5" /></svg>',
+            edit: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>',
+            del: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>'
+        };
+        const bodyHtml = (m) => isCallCard(m.body) ? "&#128222; Call"
+            : isGifCard(unFwd(m.body).replace(/^↪ /, "")) ? "&#127902;&#65039; GIF"
+            : esc(unFwd(m.body)).replace(/\n/g, "<br>");
         const msgHtml = (m) => {
-            const mine = String(m.senderId).toLowerCase() === me;
-            const body = isCallCard(m.body) ? "&#128222; Call" : isGifCard(unFwd(m.body).replace(/^↪ /, "")) ? "&#127902;&#65039; GIF" : esc(unFwd(m.body)).replace(/\n/g, "<br>");
+            const mine = isMineMsg(m);
+            const body = bodyHtml(m);
             const file = m.attachment ? `<a class="mx-file" href="${esc(m.attachment.url)}" target="_blank" rel="noopener">&#128206; ${esc(m.attachment.fileName)}</a>` : "";
             const who = !mine && open && !open.isDirect ? `<small class="mx-who">${esc(m.senderName)}</small>` : "";
             const where = m.fromGroup && open && open.isDirect ? `<small class="mx-who">in ${esc(m.fromGroup)}</small>` : "";
-            return `<div class="mx-m ${mine ? "mine" : ""}" data-mid="${esc(m.id)}">${who}${where}${body ? `<span class="mx-b">${body}</span>` : ""}${file}<small class="mx-time">${when(m.sentUtc)}</small></div>`;
+            const quote = m.replyToId
+                ? `<button type="button" class="mx-q" data-jump="${esc(m.replyToId)}" title="Show the message this replies to"><b>${esc(m.replyToSender || "Deleted message")}</b><span>${esc(m.replyToSender ? (m.replyToText || "") : "The original was deleted")}</span></button>` : "";
+            const acts = `<span class="mx-acts" role="toolbar" aria-label="Message actions">`
+                + `<button type="button" data-mx="react" title="React" aria-label="React">${ICON.react}</button>`
+                + (m.fromGroup ? "" : `<button type="button" data-mx="reply" title="Reply" aria-label="Reply">${ICON.reply}</button>`)
+                + (canEdit(m) ? `<button type="button" data-mx="edit" title="Edit" aria-label="Edit">${ICON.edit}</button>` : "")
+                + (mine ? `<button type="button" data-mx="del" class="danger" title="Delete" aria-label="Delete">${ICON.del}</button>` : "")
+                + `</span>`;
+            return `<div class="mx-m ${mine ? "mine" : ""}" data-mid="${esc(m.id)}">${acts}${who}${where}${quote}${body ? `<span class="mx-b">${body}</span>` : ""}${file}`
+                + `<small class="mx-time">${m.editedUtc ? '<i class="mx-ed" title="Edited">Edited</i> · ' : ""}${when(m.sentUtc)}</small>`
+                + `<span class="mx-reacts" data-mid="${esc(m.id)}"></span></div>`;
+        };
+        const msgEl = (id) => $("mxMsgs").querySelector(`.mx-m[data-mid="${CSS.escape(String(id))}"]`);
+        const paintReacts = (id, bump) => {
+            const box = $("mxMsgs").querySelector(`.mx-reacts[data-mid="${CSS.escape(String(id))}"]`);
+            if (!box) return;
+            const groups = new Map();
+            (reacts.get(Number(id)) || []).forEach((r) => { if (!groups.has(r.emoji)) groups.set(r.emoji, []); groups.get(r.emoji).push(r); });
+            box.innerHTML = [...groups].map(([emoji, who]) => {
+                const minePick = who.some((r) => lcid(r.userId) === me);
+                const names = who.map((r) => lcid(r.userId) === me ? "You" : r.name).join(", ");
+                return `<button type="button" class="mx-rc${minePick ? " mine" : ""}${bump ? " bump" : ""}" data-rc="${emoji}" title="${esc(names)}" aria-pressed="${minePick}"><span>${emoji}</span><b>${who.length}</b></button>`;
+            }).join("");
+            box.classList.toggle("has", groups.size > 0);
+        };
+        const loadReacts = async (ids) => {
+            if (!ids.length) return;
+            try {
+                const r = await fetch(`/chat/reactions?ids=${ids.join(",")}`, { headers: { Accept: "application/json" }, credentials: "same-origin" });
+                if (!r.ok) return;
+                const by = new Map();
+                (await r.json()).forEach((x) => { const k = Number(x.messageId); if (!by.has(k)) by.set(k, []); by.get(k).push(x); });
+                by.forEach((list, id) => { reacts.set(id, list); paintReacts(id, false); });
+            } catch { }
+        };
+        const react = async (id, emoji) => {
+            id = Number(id);
+            const list = (reacts.get(id) || []).slice();
+            const i = list.findIndex((r) => r.emoji === emoji && lcid(r.userId) === me);
+            if (i >= 0) list.splice(i, 1); else list.push({ messageId: id, emoji, userId: me, name: "You" });
+            reacts.set(id, list); paintReacts(id, true);                 // straight away; the server's answer corrects it
+            try {
+                const err = await hub.invoke("ReactToMessage", id, emoji);
+                if (err) { toast(err); loadReacts([id]); }
+            } catch { loadReacts([id]); }
         };
         const append = (m) => {
             if (shown.has(m.id)) return;
             shown.add(m.id);
+            msgs.set(Number(m.id), m);
             const box = $("mxMsgs");
+            const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
             box.querySelector(".mx-empty")?.remove();
             box.insertAdjacentHTML("beforeend", msgHtml(m));
-            box.scrollTop = box.scrollHeight;
+            if (atEnd || isMineMsg(m)) box.scrollTop = box.scrollHeight;
         };
+        const removeMsg = (id) => {
+            msgEl(id)?.remove();
+            msgs.delete(Number(id)); reacts.delete(Number(id));
+            if (ctx && Number(ctx.id) === Number(id)) setCtx(null);
+            // replies to it now say the original was deleted
+            $("mxMsgs").querySelectorAll(`.mx-q[data-jump="${CSS.escape(String(id))}"]`).forEach((q) => { q.innerHTML = "<b>Deleted message</b><span>The original was deleted</span>"; });
+        };
+        const applyEdit = (m) => {
+            if (!shown.has(m.id)) return;
+            const old = msgs.get(Number(m.id)) || {};
+            const next = { ...old, ...m };
+            msgs.set(Number(m.id), next);
+            const el = msgEl(m.id);
+            if (!el) return;
+            const keep = el.querySelector(".mx-reacts")?.innerHTML || "";
+            el.outerHTML = msgHtml(next);
+            const fresh = msgEl(m.id);
+            const box = fresh?.querySelector(".mx-reacts");
+            if (box) { box.innerHTML = keep; box.classList.toggle("has", !!keep.trim()); }
+            fresh?.classList.add("flash");
+        };
+
+        // ----- reply / edit: a bar above the message box -----
+        let ctx = null;                     // { kind: "reply" | "edit", id }
+        const setCtx = (c) => {
+            ctx = c;
+            const bar = $("mxCtx"), input = $("mxInput");
+            if (!c) {
+                bar.hidden = true;
+                if (input.dataset.editing) { input.value = ""; delete input.dataset.editing; }
+                input.placeholder = "Reply…";
+                return;
+            }
+            const m = msgs.get(Number(c.id));
+            if (!m) { ctx = null; bar.hidden = true; return; }
+            $("mxCtxTitle").textContent = c.kind === "edit" ? "Editing your message" : `Replying to ${isMineMsg(m) ? "yourself" : m.senderName}`;
+            const t = plainOf(m);
+            $("mxCtxText").textContent = t.length > 90 ? t.slice(0, 90) + "…" : t;
+            bar.dataset.kind = c.kind;
+            bar.hidden = false;
+            if (c.kind === "edit") { input.value = unFwd(m.body); input.dataset.editing = "1"; input.placeholder = "Edit your message…"; }
+            else { if (input.dataset.editing) { input.value = ""; delete input.dataset.editing; } input.placeholder = `Reply to ${isMineMsg(m) ? "yourself" : m.senderName}…`; }
+            setTimeout(() => { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }, 30);
+        };
+        $("mxCtxX").onclick = () => setCtx(null);
+        $("mxInput").addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && ctx) { e.preventDefault(); e.stopPropagation(); setCtx(null); }
+            if (e.key === "ArrowUp" && !e.target.value && !ctx) {        // ↑ in an empty box: edit your last message
+                const last = [...msgs.values()].reverse().find(canEdit);
+                if (last) { e.preventDefault(); setCtx({ kind: "edit", id: last.id }); }
+            }
+        });
+        const token = () => document.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
+        const postForm = async (url, fields) => {
+            const fd = new FormData();
+            Object.entries(fields || {}).forEach(([k, v]) => fd.append(k, v));
+            fd.append("__RequestVerificationToken", token());
+            const r = await fetch(url, { method: "POST", body: fd, headers: { RequestVerificationToken: token(), Accept: "application/json" }, credentials: "same-origin" });
+            let d = null; try { d = await r.json(); } catch { }
+            if (!r.ok) throw new Error(d?.error || "Something went wrong. Try again.");
+            return d;
+        };
+
+        // ----- the quick emoji row (one at a time) -----
+        const closePicker = () => $("mxMsgs").querySelectorAll(".mx-pick").forEach((p) => p.remove());
+        const openPicker = (el) => {
+            const had = el.querySelector(".mx-pick");
+            closePicker();
+            if (had) return;
+            el.insertAdjacentHTML("beforeend", `<span class="mx-pick" role="menu" aria-label="Pick a reaction">${QUICK.map((e) => `<button type="button" data-pick="${e}" role="menuitem">${e}</button>`).join("")}</span>`);
+        };
+        let delArmed = null, delT = null;
+        $("mxMsgs").addEventListener("click", async (e) => {
+            const el = e.target.closest(".mx-m");
+            const pick = e.target.closest("[data-pick]");
+            if (pick && el) { closePicker(); react(el.dataset.mid, pick.dataset.pick); return; }
+            const chip = e.target.closest("[data-rc]");
+            if (chip && el) { react(el.dataset.mid, chip.dataset.rc); return; }
+            const jump = e.target.closest(".mx-q[data-jump]");
+            if (jump) {
+                const t = msgEl(jump.dataset.jump);
+                if (t) { t.scrollIntoView({ block: "center", behavior: "smooth" }); t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash"); }
+                else toast("That message is further back. Open the chat to see it.");
+                return;
+            }
+            const act = e.target.closest("[data-mx]");
+            if (!act || !el) { if (!e.target.closest(".mx-pick")) closePicker(); return; }
+            const id = el.dataset.mid, m = msgs.get(Number(id));
+            if (!m) return;
+            if (act.dataset.mx === "react") { openPicker(el); return; }
+            closePicker();
+            if (act.dataset.mx === "reply") setCtx({ kind: "reply", id });
+            else if (act.dataset.mx === "edit") setCtx({ kind: "edit", id });
+            else if (act.dataset.mx === "del") {
+                // press once to arm (it turns red and says "Delete?"), again to delete
+                if (delArmed !== act) {
+                    delArmed?.classList.remove("armed");
+                    delArmed = act; act.classList.add("armed"); act.title = "Press again to delete";
+                    clearTimeout(delT); delT = setTimeout(() => { act.classList.remove("armed"); act.title = "Delete"; delArmed = null; }, 3500);
+                    return;
+                }
+                delArmed = null; clearTimeout(delT);
+                el.classList.add("going");
+                try { await postForm(`/chat/messages/${id}/delete`); removeMsg(id); }
+                catch (err) { el.classList.remove("going"); act.classList.remove("armed"); toast(err.message); }
+            }
+        });
+        document.addEventListener("click", (e) => { if (!e.target.closest("#mxMsgs")) closePicker(); });
         const visible = () => panelOpen && pane === "msgs" && !document.hidden;
         const markRead = (c) => {
             if (c.unread) { c.unread = 0; paintList(); }
@@ -1080,6 +1405,12 @@
             const av = $("mxAv");
             av.textContent = c.initials;
             av.className = `avatar av-32 tone-${Number(c.tone) || 0}`;
+            av.style.removeProperty("background-image");
+            if (c.isDirect && c.userId) { av.setAttribute("data-user", lcid(c.userId)); team.paintPhotos(av); } else av.removeAttribute("data-user");
+            const hd = $("mxName").parentNode;
+            hd.querySelector(".mx-hst")?.remove();
+            if (c.isDirect && c.userId) $("mxName").insertAdjacentHTML("afterend", `<small class="mx-hst st-label" data-st-user="${esc(lcid(c.userId))}"></small>`), team.paintStatus(hd);
+            msgs.clear(); reacts.clear(); setCtx(null);
             $("mxOpen").href = `/chat/${c.id}`;
             $("mxMsgs").innerHTML = `<div class="mx-empty">Loading…</div>`;
             try {
@@ -1088,24 +1419,36 @@
                 if (open !== c) return;
                 $("mxMsgs").innerHTML = d && d.messages.length ? "" : `<div class="mx-empty">${d ? "No messages yet. Say hello!" : "Couldn't load the messages."}</div>`;
                 (d?.messages || []).forEach(append);
+                $("mxMsgs").scrollTop = $("mxMsgs").scrollHeight;
+                loadReacts((d?.messages || []).map((m) => m.id));
             } catch { $("mxMsgs").innerHTML = `<div class="mx-empty">Couldn't load the messages.</div>`; }
             markRead(c);
             setTimeout(() => $("mxInput").focus(), 50);
         }
-        const backToList = () => { open = null; $("mxChat").hidden = true; $("mxList").hidden = false; paintList(); };
+        const backToList = () => { setCtx(null); open = null; $("mxChat").hidden = true; $("mxList").hidden = false; paintList(); };
         $("mxBack").onclick = backToList;
         $("mxList").addEventListener("click", (e) => { const b = e.target.closest(".mx-row"); if (b) openChat(b.dataset.id); });
         $("mxForm").addEventListener("submit", async (e) => {
             e.preventDefault();
             const input = $("mxInput"), text = input.value.trim();
             if (!text || !open) return;
+            if (ctx && ctx.kind === "edit") {
+                const id = ctx.id, m = msgs.get(Number(id));
+                if (m && text === unFwd(m.body).trim()) { setCtx(null); return; }     // nothing changed
+                try { const upd = await postForm(`/chat/messages/${id}/edit`, { body: text }); setCtx(null); input.value = ""; if (upd) applyEdit(upd); }
+                catch (err) { toast(err.message); }
+                return;
+            }
+            const replyTo = ctx && ctx.kind === "reply" ? Number(ctx.id) : null;
             input.value = "";
+            setCtx(null);
             try {
-                const m = await hub.invoke("SendMessage", open.id, text, null);
+                const m = await hub.invoke("SendMessage", open.id, text, replyTo);
+                if (!m) throw new Error();
                 append(m);
                 open.lastUtc = m.sentUtc;
                 toTop(open);
-            } catch { input.value = text; toast("Couldn't send. Check your connection and try again."); }
+            } catch { input.value = text; if (replyTo) setCtx({ kind: "reply", id: replyTo }); toast("Couldn't send. Check your connection and try again."); }
         });
         const openMessages = (id) => { setPanel(true); showPane("msgs"); if (id) openChat(id); };
         window.__snMsgsShown = () => { if (!loaded) loadChats(); else paintList(); if (open) markRead(open); };
@@ -1126,6 +1469,15 @@
                     { text: "Open", onClick: () => openMessages(m.channelId) });
             }
         });
+        hub.on("MessageEdited", (m) => { if (m && open) applyEdit(m); });
+        hub.on("MessageDeleted", (cid, mid) => { if (open && shown.has(Number(mid))) removeMsg(mid); });
+        hub.on("MessageReactions", (id, list) => {
+            if (!open || !shown.has(Number(id))) return;
+            reacts.set(Number(id), list || []);
+            paintReacts(Number(id), true);
+        });
+        team.listeners.push(() => { if (!$("mxList").hidden) paintList(); });
+
         // M opens Messages (when the page, not the video, has the keyboard)
         document.addEventListener("keydown", (e) => {
             if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, textarea, [contenteditable]")) return;

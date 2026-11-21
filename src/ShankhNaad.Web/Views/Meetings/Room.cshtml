@@ -117,6 +117,11 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
                     <span><b id="peekCount">1</b> in call</span>
                 </button>
+                @* chat made bigger: the video shrinks to this corner; this brings it back *@
+                <button type="button" class="stage-restore" id="stageRestore" title="Back to the video">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
+                    <span>Back to video</span>
+                </button>
                 <div class="stage-loading" id="stageLoading">
                     <div class="orbit"><i></i><i></i><i></i><span class="avatar av-96 tone-@(Model.Tone)">@Model.Initials</span></div>
                     <p>Connecting you to the meeting…</p>
@@ -134,6 +139,10 @@
                     {
                         <h2 class="ph-t" data-for="msgs" hidden>Inbox <span class="pt-n new" id="msgsUnread" hidden>0</span></h2>
                     }
+                    <button type="button" class="panel-max-btn" id="panelMaxBtn" aria-pressed="false" aria-label="Make the chat bigger" title="Make the chat bigger (the video gets small)">
+                        <svg class="pm-grow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
+                        <svg class="pm-shrink" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" /></svg>
+                    </button>
                     <small class="ph-sub" id="paneSub">In this call</small>
                 </div>
                 <div class="pane" id="panePeople">
@@ -194,6 +203,13 @@
                                 </a>
                             </div>
                             <div class="mx-msgs" id="mxMsgs" aria-live="polite"></div>
+                            @* replying to / editing a message: shown above the box, ✕ cancels *@
+                            <div class="mx-ctx" id="mxCtx" hidden>
+                                <span class="mx-ctx-t"><b id="mxCtxTitle"></b><small id="mxCtxText"></small></span>
+                                <button type="button" class="mx-ctx-x" id="mxCtxX" aria-label="Cancel" title="Cancel (Esc)">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                                </button>
+                            </div>
                             <form class="cc-compose mx-compose" id="mxForm" autocomplete="off">
                                 <input type="text" id="mxInput" maxlength="4000" placeholder="Reply…" aria-label="Your reply" />
                                 <button type="submit" class="cc-send" aria-label="Send" title="Send (Enter)">

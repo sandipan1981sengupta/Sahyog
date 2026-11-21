@@ -403,6 +403,8 @@
         target.classList.remove("msg-flash"); void target.offsetWidth; target.classList.add("msg-flash");
     });
     // ---------- forward a message to other chats ----------
+    // (a window from an earlier visit to this page lost its listeners when the page was left: start fresh)
+    document.querySelectorAll(".sn-fwd-dlg, .gif-panel").forEach((x) => x.remove());
     let fwdDlg = null;
     function openForward(id) {
         const el = list.querySelector(`.msg[data-id="${id}"]`);

@@ -748,6 +748,7 @@ public sealed class MeetingsController : Controller
             Status = status,
             InRoom = _rooms.Count(id),
             MyResponse = people.FirstOrDefault(p => p.Key == me && !p.IsHost)?.Response ?? MeetingResponse.None,
+            MyNote = people.FirstOrDefault(p => p.Key == me && !p.IsHost)?.Note,
             CanRespond = invited && !meeting.IsCancelled && !dateCancelled && end > nowLocal,
             People = people,
             FullPage = fullPage
@@ -795,8 +796,11 @@ public sealed class MeetingsController : Controller
                 RespondStatus.NeedsDatabase => "Answers need a database update (36_MeetingResponses.sql). Ask your administrator.",
                 _ => "That meeting was deleted."
             } });
-        // the host sees it straight away (their calendar / details refresh)
-        await _hub.Clients.User(meeting.HostId.ToString()).SendAsync("MeetingResponse", id.ToString(), User.DisplayName(), (int)answer);
+        // the organizer sees it straight away, with the reason (a pop-up, and their calendar / details refresh)
+        var reason = string.IsNullOrWhiteSpace(note) ? "" : note.Trim();
+        if (reason.Length > 300) reason = reason[..300];
+        await _hub.Clients.User(meeting.HostId.ToString()).SendAsync("MeetingResponse", id.ToString(), User.DisplayName(), (int)answer,
+            reason, meeting.Title, day is DateOnly forDay ? forDay.ToString("ddd d MMM", CultureInfo.InvariantCulture) : meeting.Recurrence != MeetingRecurrence.None ? "every date" : "");
         await _hub.Clients.Group(ChatHub.TenantGroup(tenantId)).SendAsync("MeetingsChanged", id.ToString());
         var word = answer switch { MeetingResponse.Accepted => "accepted", MeetingResponse.Maybe => "said maybe to", _ => "declined" };
         return Json(new { ok = true, message = $"You {word} “{meeting.Title}”{(day is DateOnly d ? $" on {d:ddd d MMM}" : meeting.Recurrence != MeetingRecurrence.None ? " (every date)" : "")}." });
@@ -844,7 +848,8 @@ public sealed class MeetingsController : Controller
             if (!saved) error = status == RespondStatus.NotInvited ? "You're no longer invited to this meeting." : "Your answer couldn't be saved. Try again later.";
             if (saved)
             {
-                await _hub.Clients.User(meeting.HostId.ToString()).SendAsync("MeetingResponse", meetingId.ToString(), person ?? "Someone", (int)chosen);
+                await _hub.Clients.User(meeting.HostId.ToString()).SendAsync("MeetingResponse", meetingId.ToString(), person ?? "Someone", (int)chosen,
+                    "", meeting.Title, repeat is null ? "" : "every date");
                 await _hub.Clients.Group(ChatHub.TenantGroup(tenantId)).SendAsync("MeetingsChanged", meetingId.ToString());
             }
         }
@@ -978,6 +983,7 @@ public sealed class MeetingsController : Controller
         var rangeToUtc = MeetingCalendar.ToUtc(toLocal > nowLocal.AddDays(1) ? toLocal : nowLocal.AddDays(1), zone);
         var (meetings, invitees) = await _meetings.ListForUserAsync(tenantId, me, rangeFromUtc, rangeToUtc);
         meetings = await _meetings.WithExceptionsAsync(tenantId, meetings);     // moved / cancelled single dates
+        var answers = await _meetings.GetResponsesAsync(tenantId, meetings.Select(m => m.MeetingId));   // Accept / Maybe / Decline
         var inviteesByMeeting = invitees.ToLookup(i => i.MeetingId);   // (replaced below if the "next meeting" hint needs a later period)
         // calls and "Meet now" meetings are on the Calls page; the calendar shows them only while someone is in them
         meetings = meetings.Where(m => !m.IsInstant || _rooms.Count(m.MeetingId) > 0).ToList();
@@ -996,6 +1002,27 @@ public sealed class MeetingsController : Controller
             }
             var tone = m.IsInstant ? "slate" : m.HostId == me ? "blue" : "pink";
             var endLocal = InstantOver(m, o.StartLocal) && o.EndLocal > nowLocal ? nowLocal : o.EndLocal;
+
+            // everyone's answer for this date (a date's own answer wins over the series answer)
+            var occ = o.OccurrenceDate ?? DateOnly.FromDateTime(o.StartLocal);
+            int yes = 0, maybe = 0, no = 0, waiting = 0;
+            var notes = new List<AnswerNoteVm>();
+            var mine = MeetingResponse.None;
+            foreach (var i in inviteesByMeeting[m.MeetingId])
+            {
+                if (i.UserId == m.HostId) continue;
+                var key = i.UserId is Guid u ? MeetingResponseDto.KeyOf(u) : string.IsNullOrWhiteSpace(i.GuestEmail) ? null : MeetingResponseDto.KeyOf(i.GuestEmail);
+                if (key is null) continue;
+                var a = MeetingResponseDto.For(answers, key, occ);
+                var r = a?.Response ?? MeetingResponse.None;
+                if (r == MeetingResponse.Accepted) yes++;
+                else if (r == MeetingResponse.Maybe) maybe++;
+                else if (r == MeetingResponse.Declined) no++;
+                else waiting++;
+                if (r is MeetingResponse.Maybe or MeetingResponse.Declined)
+                    notes.Add(new AnswerNoteVm(i.UserId is not null ? i.DisplayName ?? "Team member" : i.GuestEmail ?? "Guest", r, a?.Note));
+                if (i.UserId == me) mine = r;
+            }
             return new CalendarEventVm(m.MeetingId, m.Title, o.StartLocal, endLocal, m.IsCancelled ? "cancelled" : tone, m.HostId == me, people, m.MeetingId == justId)
             {
                 IsAllDay = m.IsAllDay,
@@ -1009,7 +1036,13 @@ public sealed class MeetingsController : Controller
                 OccurrenceDate = o.OccurrenceDate ?? DateOnly.FromDateTime(o.StartLocal),
                 IsMoved = o.IsMoved,
                 SeriesStartLocal = MeetingCalendar.ToLocal(m.StartUtc, zone),
-                SeriesMinutes = m.DurationMinutes
+                SeriesMinutes = m.DurationMinutes,
+                Accepted = yes,
+                Maybe = maybe,
+                Declined = no,
+                Waiting = waiting,
+                Answers = notes.OrderByDescending(x => x.Response).ThenBy(x => x.Name).ToList(),
+                MyResponse = mine
             };
         }
 

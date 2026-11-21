@@ -453,9 +453,19 @@
     };
     hub.on("IncomingCall", showIncoming);
     // someone answered one of my meetings (Accept / Maybe / Decline): a short note, on any page
-    hub.on("MeetingResponse", (meetingId, who, answer) => {
+    // e.g. "Manjunath declined “Project planning” (Wed 25 Nov): Clash with the client call"
+    hub.on("MeetingResponse", (meetingId, who, answer, reason, title, when) => {
         const word = answer === 1 ? "accepted" : answer === 2 ? "said maybe to" : "declined";
-        Sahyog.toast?.(`${who} ${word} your meeting.`, { kind: answer === 3 ? "warn" : "info", title: "Meeting answer" });
+        const what = title ? `“${title}”${when ? ` (${when})` : ""}` : "your meeting";
+        const text = `${who} ${word} ${what}${reason ? `: ${reason}` : "."}`;
+        Sahyog.toast?.(text, { kind: answer === 3 ? "warn" : answer === 2 ? "info" : "success", title: answer === 1 ? "Meeting accepted" : answer === 2 ? "Maybe" : "Meeting declined" });
+        // also a desktop alert while this tab is in the background
+        if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+            try {
+                const n = new Notification(`${who} ${word} ${title ? "“" + title + "”" : "your meeting"}`, { body: reason || (when ? `For ${when}` : ""), tag: `answer-${meetingId}-${who}` });
+                n.onclick = () => { window.focus(); location.href = `/meetings/${meetingId}/view`; n.close(); };
+            } catch { }
+        }
     });
     /** Shows the ringing card for a meeting reminder (js/meeting-alerts.js). */
     Sahyog.ringMeeting = (call) => {

@@ -366,8 +366,8 @@
     // another person cancelled a meeting: reload the calendar quietly (not while a window is open)
     let timer = 0;
     const hub = window.Sahyog?.hub;
-    if (!hub || hub.__snMeetingsChanged) return;   // once per page load (the page can be opened again without a reload)
-    hub.__snMeetingsChanged = true;
+    // set up on every visit: leaving the page removes this handler (sn-nav.js), so there's never a second copy
+    if (!hub) return;
     hub.on("MeetingsChanged", () => {
         clearTimeout(timer);
         timer = setTimeout(function again() {

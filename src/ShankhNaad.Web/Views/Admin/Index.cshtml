@@ -39,7 +39,7 @@
     }).ToList();
 
     var planItems = Model.Plans.Select(p => (p.PlanId.ToString(inv), $"{p.Name} · {p.MaxUsers} users · {UserExtensions.FormatBytes(p.StorageQuotaMb * 1024L * 1024L)}")).ToList();
-    var heightItems = new[] { 360, 540, 720, 1080 }.Select(h => (h.ToString(inv), $"{h}p")).ToList();
+        var heightItems = new[] { 360, 540, 720, 1080 }.Select(h => (h.ToString(inv), $"{h}p")).ToList();
     var providerItems = new List<(string, string)> { ("JaaS", "JaaS (8x8)"), ("LiveKit", "LiveKit") };
     var totalUsers = Model.Tenants.Sum(t => t.Users);
     var totalStorage = Model.Tenants.Sum(t => t.StorageUsed);
@@ -84,35 +84,25 @@
     <section class="sn-kpis glass" aria-label="Summary">
         <div class="sn-kpi">
             <span class="sn-kpi-ic blue"><i class="fa fa-building-o" aria-hidden="true"></i></span>
-            <div>
-                <div class="sn-kpi-label">Clients</div><div class="sn-kpi-val">@Model.Tenants.Count</div>
-                <div class="sn-kpi-sub"><span class="sn-dot" style="background:#16a34a"></span> @activeCount active · @(Model.Tenants.Count - activeCount) paused</div>
-            </div>
+            <div><div class="sn-kpi-label">Clients</div><div class="sn-kpi-val">@Model.Tenants.Count</div>
+                <div class="sn-kpi-sub"><span class="sn-dot" style="background:#16a34a"></span> @activeCount active · @(Model.Tenants.Count - activeCount) paused</div></div>
         </div>
         <div class="sn-kpi">
             <span class="sn-kpi-ic violet"><i class="fa fa-users" aria-hidden="true"></i></span>
-            <div>
-                <div class="sn-kpi-label">Users</div><div class="sn-kpi-val">@totalUsers</div>
-                <div class="sn-kpi-sub">of @totalSeats seats in plans</div>
-            </div>
+            <div><div class="sn-kpi-label">Users</div><div class="sn-kpi-val">@totalUsers</div>
+                <div class="sn-kpi-sub">of @totalSeats seats in plans</div></div>
         </div>
         <div class="sn-kpi">
             <span class="sn-kpi-ic pink"><i class="fa fa-hdd-o" aria-hidden="true"></i></span>
-            <div class="sn-kpi-grow">
-                <div class="sn-kpi-label">Storage</div><div class="sn-kpi-val">@UserExtensions.FormatBytes(totalStorage)</div>
+            <div class="sn-kpi-grow"><div class="sn-kpi-label">Storage</div><div class="sn-kpi-val">@UserExtensions.FormatBytes(totalStorage)</div>
                 <div class="sn-store-bar sn-kpi-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@totalUse.Pct.ToString("0.#", inv)"
-                     title="@UserExtensions.FormatBytes(totalStorage) of @UserExtensions.FormatBytes(totalQuota) used">
-                    <i class="@totalUse.Level" style="width:@(totalUse.Bar.ToString("0.##", inv))%"></i>
-                </div>
-                <div class="sn-kpi-sub"><span class="sn-store-pct @totalUse.Level">@totalUse.Text</span> of @UserExtensions.FormatBytes(totalQuota) · @UserExtensions.FormatBytes(Math.Max(0L, totalQuota - totalStorage)) free</div>
-            </div>
+                     title="@UserExtensions.FormatBytes(totalStorage) of @UserExtensions.FormatBytes(totalQuota) used"><i class="@totalUse.Level" style="width:@(totalUse.Bar.ToString("0.##", inv))%"></i></div>
+                <div class="sn-kpi-sub"><span class="sn-store-pct @totalUse.Level">@totalUse.Text</span> of @UserExtensions.FormatBytes(totalQuota) · @UserExtensions.FormatBytes(Math.Max(0L, totalQuota - totalStorage)) free</div></div>
         </div>
         <div class="sn-kpi">
             <span class="sn-kpi-ic green"><i class="fa fa-sliders" aria-hidden="true"></i></span>
-            <div>
-                <div class="sn-kpi-label">Plans</div><div class="sn-kpi-val">@Model.Plans.Count</div>
-                <div class="sn-kpi-sub">@string.Join(" · ", Model.Plans.Select(p => p.Name))</div>
-            </div>
+            <div><div class="sn-kpi-label">Plans</div><div class="sn-kpi-val">@Model.Plans.Count</div>
+                <div class="sn-kpi-sub">@string.Join(" · ", Model.Plans.Select(p => p.Name))</div></div>
         </div>
     </section>
 
@@ -404,7 +394,7 @@
 
 @section Scripts {
     <script>
-        (function() {
+        (function () {
             var $insp = $("#clientInspector");
             // ---- tabs: Clients / Plans (remembered in the address, so saving a plan comes back to Plans) ----
             var hints = { clients: "Select a client to see its details and change its plan.", plans: "Edit a plan and press Save. Every client on that plan gets the new limits." };
@@ -412,9 +402,9 @@
             // buttons that act on the selected client: hidden on the Plans tab (Refresh and Print stay)
             var CLIENT_ONLY = ["new client", "edit", "delete", "export", "pause / resume", "team location"];
             function clientButtons() {
-                return $("#AdminHeader .hdr-btn").filter(function() {
+                return $("#AdminHeader .hdr-btn").filter(function () {
                     var label = ($(this).attr("aria-label") || $(this).text() || "").replace(/\s+/g, " ").trim().toLowerCase();
-                    return CLIENT_ONLY.some(function(w) { return label === w || label.indexOf(w) === 0; });
+                    return CLIENT_ONLY.some(function (w) { return label === w || label.indexOf(w) === 0; });
                 });
             }
             // Header fold: the client buttons are gathered into the Refresh button one after another
@@ -429,19 +419,19 @@
             function rowOf($b) { return $b.length ? $b[0].parentElement : null; }
             function others($b) {
                 var row = rowOf($b);
-                return row ? Array.prototype.filter.call(row.children, function(el) { return $b.index(el) < 0 && !el.hidden; }) : [];
+                return row ? Array.prototype.filter.call(row.children, function (el) { return $b.index(el) < 0 && !el.hidden; }) : [];
             }
             function anchorBtn($b) {   // Refresh: the first header button that stays
-                return others($b).filter(function(el) { return el.classList.contains("hdr-btn"); })[0] || null;
+                return others($b).filter(function (el) { return el.classList.contains("hdr-btn"); })[0] || null;
             }
             function centerX(el) { var r = el.getBoundingClientRect(); return r.left + r.width / 2; }
-            function stopAll() { running.forEach(function(a) { try { a.cancel(); } catch (e) { } }); running = []; }
+            function stopAll() { running.forEach(function (a) { try { a.cancel(); } catch (e) { } }); running = []; }
             function glide(list, before) {
-                list.forEach(function(el, i) {
+                list.forEach(function (el, i) {
                     var dx = before[i] - el.getBoundingClientRect().left;
                     if (Math.abs(dx) < 1) return;
                     running.push(el.animate([{ transform: "translateX(" + dx + "px)" }, { transform: "none" }],
-                        { duration: 520, easing: IN }));
+                                            { duration: 520, easing: IN }));
                 });
             }
             function foldHeader(plans, instant) {
@@ -451,21 +441,21 @@
                 if (!$b.length) return;
                 stopAll();
                 var stay = others($b);
-                $b.each(function() { settle(this); });
+                $b.each(function () { settle(this); });
                 stay.forEach(settle);
-                $b.each(function() {
+                $b.each(function () {
                     this.tabIndex = plans ? -1 : 0;
                     if (plans) { this.setAttribute("aria-hidden", "true"); this.blur(); } else this.removeAttribute("aria-hidden");
                 });
                 var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-                if (instant || reduce || !Element.prototype.animate) { $b.each(function() { this.hidden = plans; }); return; }
+                if (instant || reduce || !Element.prototype.animate) { $b.each(function () { this.hidden = plans; }); return; }
 
                 var anchor = anchorBtn($b);
                 var ax = anchor ? centerX(anchor) : null;
                 if (plans) {
                     // 1) gathered into Refresh, the nearest first
                     var n = $b.length, done = [];
-                    $b.each(function(i) {
+                    $b.each(function (i) {
                         var dx = ax === null ? -20 : ax - centerX(this);
                         var a = this.animate([
                             { transform: "none", opacity: 1, filter: "blur(0)" },
@@ -474,25 +464,25 @@
                         ], { duration: 460, delay: i * 45, easing: OUT, fill: "forwards" });
                         running.push(a); done.push(a.finished);
                     });
-                    Promise.all(done).then(function() {
+                    Promise.all(done).then(function () {
                         if (!folded) return;
                         // 2) out of the layout; Print (and the divider) slide over to close the gap
-                        var before = stay.map(function(el) { return el.getBoundingClientRect().left; });
-                        $b.each(function() { this.hidden = true; });
+                        var before = stay.map(function (el) { return el.getBoundingClientRect().left; });
+                        $b.each(function () { this.hidden = true; });
                         stopAll();
                         glide(stay, before);
                         // Refresh gives a small "caught them" pulse
                         if (anchor) running.push(anchor.animate([{ transform: "scale(1)" }, { transform: "scale(1.07)" }, { transform: "scale(1)" }],
-                            { duration: 380, easing: "ease-out" }));
-                    }).catch(function() { });
+                                                                { duration: 380, easing: "ease-out" }));
+                    }).catch(function () { });
                 } else {
                     // 1) make room: the staying buttons slide to their places
-                    var before = stay.map(function(el) { return el.getBoundingClientRect().left; });
-                    $b.each(function() { this.hidden = false; });
+                    var before = stay.map(function (el) { return el.getBoundingClientRect().left; });
+                    $b.each(function () { this.hidden = false; });
                     glide(stay, before);
                     // 2) the client buttons fan out of Refresh, one after another
                     ax = anchor ? centerX(anchor) : null;
-                    $b.each(function(i) {
+                    $b.each(function (i) {
                         var dx = ax === null ? -20 : ax - centerX(this);
                         running.push(this.animate([
                             { transform: "translateX(" + dx + "px) scale(.5)", opacity: 0, filter: "blur(3px)" },
@@ -509,13 +499,13 @@
                 $("#adminHint").text(hints[id] || "");
                 history.replaceState(null, "", id === "plans" ? "#plans" : location.pathname + location.search);
             }
-            $("#adminTabs").on("tabcontrol:select", function(e, id) { showPane(id); });
-            $(function() {
+            $("#adminTabs").on("tabcontrol:select", function (e, id) { showPane(id); });
+            $(function () {
                 if (location.hash === "#plans") { foldHeader(true, true); var api = $("#adminTabs").data("tc-api"); if (api) api.select("plans"); showPane("plans"); }
             });
 
             // ---- table heading: count badge + "active · paused" line under "All clients" ----
-            $(function() {
+            $(function () {
                 SN.tableHeading("TenantTable", @Model.Tenants.Count, [
                     { text: "@activeCount active", dot: "live" },
                     { text: "@(Model.Tenants.Count - activeCount) paused", dot: "paused" }
@@ -523,12 +513,12 @@
             });
 
             // ---- details panel ----
-            window.snFillInspector = function(row) {
+            window.snFillInspector = function (row) {
                 if (!row) { $insp.attr("data-state", "empty"); return; }
                 var url = row.Slug + ".shankhnaad.app";
                 $("#selName").text(row.Name);
                 $("#selUrl").attr("data-url", url).find("span").text(url);
-                $("#selIni").text((row.Name || "?").split(/\s+/).map(function(w) { return w.charAt(0); }).slice(0, 2).join("").toUpperCase());
+                $("#selIni").text((row.Name || "?").split(/\s+/).map(function (w) { return w.charAt(0); }).slice(0, 2).join("").toUpperCase());
                 $("#selStatus").text(row.Status).attr("data-status", row.Status);
                 $("#selUsers").text(row.UsersText);
                 $("#selUsersBar").css("width", (row.UsersPct || 0) + "%");
@@ -541,7 +531,7 @@
                 $("#selVideo").text(row.Video);
                 $("#selSince").text(row.Since);
                 // "New plan" starts on the client's current plan
-                var $planOpt = $("#selPlan .ddwl-option").filter(function() { return String($(this).data("value")) === String(row.PlanId); });
+                var $planOpt = $("#selPlan .ddwl-option").filter(function () { return String($(this).data("value")) === String(row.PlanId); });
                 if ($planOpt.length) { $planOpt.first().trigger("click"); $("#selPlan").removeClass("open"); }
                 else {
                     $("#selPlan_value").val("");
@@ -563,7 +553,7 @@
                 $insp.attr("data-state", "filled");
                 $insp.find(".sn-insp-body").removeClass("sn-in"); void $insp[0].offsetWidth; $insp.find(".sn-insp-body").addClass("sn-in");
             };
-            $("#TenantTable").on("table:select", function(e, row) { snFillInspector(row); });
+            $("#TenantTable").on("table:select", function (e, row) { snFillInspector(row); });
         })();
 
         function snEditTenant() {
@@ -575,10 +565,10 @@
             $("#eSlug").val(row.Slug).attr("data-original", row.Slug).trigger("input");
             $("#eSlugWarn").prop("hidden", true);
             SN.open("editTenantDialog");
-            setTimeout(function() { $("#eName").trigger("focus"); }, 300);
+            setTimeout(function () { $("#eName").trigger("focus"); }, 300);
         }
         // workspace name: keep it valid while typing and warn that sign-in changes
-        $(document).on("input", "#eSlug", function() {
+        $(document).on("input", "#eSlug", function () {
             var v = this.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
             if (v !== this.value) this.value = v;
             var original = this.getAttribute("data-original") || "";
@@ -586,7 +576,7 @@
             $("#eSlugWarn").prop("hidden", !changed).find("span")
                 .text(changed ? "Everyone in this client must sign in with workspace “" + v + "” from now on. Tell them before you save." : "");
         });
-        $("#editTenantForm").on("submit", function(e) {
+        $("#editTenantForm").on("submit", function (e) {
             var name = $.trim($("#eName").val()), slug = $.trim($("#eSlug").val());
             if (!name || !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug)) {
                 e.preventDefault();
@@ -609,13 +599,13 @@
             $("#dConfirm").val("").trigger("input");
             $("#dSubmit").prop("disabled", true);
             SN.open("deleteTenantDialog");
-            setTimeout(function() { $("#dConfirm").trigger("focus"); }, 300);
+            setTimeout(function () { $("#dConfirm").trigger("focus"); }, 300);
         }
-        $(document).on("input", "#dConfirm", function() {
+        $(document).on("input", "#dConfirm", function () {
             var want = $("#deleteTenantForm").data("slug") || "";
             $("#dSubmit").prop("disabled", $.trim(this.value).toLowerCase() !== want);
         });
-        $("#deleteTenantForm").on("submit", function(e) {
+        $("#deleteTenantForm").on("submit", function (e) {
             if ($("#dSubmit").prop("disabled")) { e.preventDefault(); return; }
             $("#dSubmit").prop("disabled", true).html('<i class="fa fa-spinner fa-spin" aria-hidden="true"></i> Deleting…');
         });
@@ -628,7 +618,7 @@
             var seq = ++fsSeq, age = fsAge();
             $("#fsResult").removeClass("none").text("Checking…");
             $("#fsSubmit").prop("disabled", true);
-            $.getJSON("/admin/tenants/" + fsTenant + "/files", { age: age }).done(function(d) {
+            $.getJSON("/admin/tenants/" + fsTenant + "/files", { age: age }).done(function (d) {
                 if (seq !== fsSeq) return;            // an older answer arrived late
                 $("#fsTotal").text(d.totalText + " in " + d.totalFiles + " file" + (d.totalFiles === 1 ? "" : "s"));
                 if (d.files === 0) {
@@ -637,7 +627,7 @@
                     $("#fsResult").text("This removes " + d.files + " file" + (d.files === 1 ? "" : "s") + " and frees " + d.text + ".");
                     $("#fsSubmit").prop("disabled", false).find("span").text("Remove " + d.files + " file" + (d.files === 1 ? "" : "s"));
                 }
-            }).fail(function() {
+            }).fail(function () {
                 if (seq === fsSeq) $("#fsResult").addClass("none").text("Couldn't check the files. Try again.");
             });
         }
@@ -653,7 +643,7 @@
             fsPreview();
         }
         $(document).on("change", 'input[name="age"]', fsPreview);
-        $("#freeSpaceForm").on("submit", function(e) {
+        $("#freeSpaceForm").on("submit", function (e) {
             if ($("#fsSubmit").prop("disabled")) { e.preventDefault(); return; }
             $("#fsSubmit").prop("disabled", true).html('<i class="fa fa-spinner fa-spin" aria-hidden="true"></i> Removing…');
         });

@@ -1187,3 +1187,101 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0 !important; height: 
     .stage-wait { gap: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { .sw-rings i, #micBtn.talking:not(.off) { animation: none; } }
+
+/* =====================================================================
+   Call room · photos and status dots (People, top bar, Inbox) — js/room.js "team"
+   ===================================================================== */
+.room-body .avatar.has-photo { color: transparent !important; background-size: cover !important; background-position: center !important; background-repeat: no-repeat !important; }
+.pr-av, .mx-av { position: relative; flex: none; display: inline-flex; }
+.mx-av { padding: 0; }
+.st-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #0D1328; background: #64748B; pointer-events: auto; }
+.st-dot.on { background: #22C55E; }
+.st-dot.busy, .st-dot.in { background: #EF4444; }
+.st-dot.in { box-shadow: 0 0 0 0 rgba(239, 68, 68, .6); animation: stInCall 2.4s ease-out infinite; }
+@keyframes stInCall { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, .55); } 70%, 100% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } }
+@media (prefers-reduced-motion: reduce) { .st-dot.in { animation: none; } }
+.st-label.st-on { color: #4ADE80 !important; }
+.st-label.st-busy, .st-label.st-in { color: #F87171 !important; }
+.st-label.st-off { color: #94A3B8 !important; }
+.mx-head .mx-hst { flex: none; font-size: 11px; font-weight: 600; }
+.mx-head b { flex: 1 1 auto; }
+
+/* sharing your screen: the browser's own sharing bar sits at the bottom of the screen; lift the controls and the panel above it */
+.room { transition: padding-bottom .35s cubic-bezier(.22, 1, .36, 1); }
+.is-sharing .room { padding-bottom: 72px; }
+@media (max-width: 900px) { .is-sharing .room { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); } }
+
+/* =====================================================================
+   Call room · Inbox chat: reply, edit, delete, reactions
+   ===================================================================== */
+.mx-m { position: relative; }
+.mx-acts { position: absolute; top: -14px; left: 6px; display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: #1B2340; border: 1px solid rgba(255, 255, 255, .14);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .45); opacity: 0; transform: translateY(4px); pointer-events: none; transition: opacity .15s ease, transform .15s ease; z-index: 3; }
+.mx-m.mine .mx-acts { left: auto; right: 6px; }
+.mx-m:hover .mx-acts, .mx-m:focus-within .mx-acts { opacity: 1; transform: none; pointer-events: auto; }
+.mx-acts button { width: 26px; height: 26px; border: 0; border-radius: 8px; display: grid; place-items: center; background: transparent; color: #CBD5E1; cursor: pointer; }
+.mx-acts button:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+.mx-acts button.danger:hover, .mx-acts button.armed { background: #DC2626; color: #fff; }
+.mx-acts button.armed { width: auto; padding: 0 8px; }
+.mx-acts button.armed::after { content: "Delete?"; font: 700 11px Inter, sans-serif; margin-left: 4px; }
+.mx-m.going { opacity: .4; pointer-events: none; }
+.mx-m.flash { animation: mxFlash 1.4s ease; }
+@keyframes mxFlash { 0%, 40% { box-shadow: 0 0 0 2px #A78BFA, 0 0 22px rgba(167, 139, 250, .55); } 100% { box-shadow: none; } }
+.mx-q { display: flex; flex-direction: column; gap: 1px; text-align: left; max-width: 100%; padding: 5px 9px; margin: 0 0 2px; border: 0; border-left: 3px solid #A78BFA; border-radius: 8px;
+    background: rgba(0, 0, 0, .22); color: inherit; font: inherit; cursor: pointer; }
+.mx-q b { font-size: 11px; color: #C4B5FD; }
+.mx-q span { font-size: 12px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-ed { font-style: normal; }
+.mx-reacts { display: none; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.mx-reacts.has { display: flex; }
+.mx-rc { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .16); background: rgba(0, 0, 0, .25);
+    color: #E2E8F0; font: 700 11.5px Inter, sans-serif; cursor: pointer; }
+.mx-rc span { font-size: 14px; line-height: 1; }
+.mx-rc.mine { border-color: #A78BFA; background: rgba(167, 139, 250, .25); color: #fff; }
+.mx-rc.bump { animation: mxBump .35s ease; }
+@keyframes mxBump { 50% { transform: scale(1.18); } }
+.mx-pick { position: absolute; top: -48px; left: 0; z-index: 4; display: flex; gap: 2px; padding: 4px; border-radius: 999px; background: #1B2340; border: 1px solid rgba(255, 255, 255, .16); box-shadow: 0 12px 28px rgba(0, 0, 0, .5); }
+.mx-m.mine .mx-pick { left: auto; right: 0; }
+.mx-pick button { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: transparent; font-size: 17px; cursor: pointer; transition: transform .12s ease, background .12s ease; }
+.mx-pick button:hover { transform: scale(1.22); background: rgba(255, 255, 255, .1); }
+.mx-msgs { padding-top: 22px; }
+.mx-m:first-child .mx-pick { top: auto; bottom: -46px; }
+.mx-ctx { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; border-radius: 12px; border-left: 3px solid #A78BFA; background: rgba(167, 139, 250, .12); }
+.mx-ctx[hidden] { display: none; }
+.mx-ctx[data-kind="edit"] { border-left-color: #FBBF24; background: rgba(251, 191, 36, .1); }
+.mx-ctx-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mx-ctx-t b { font-size: 11.5px; color: #fff; }
+.mx-ctx-t small { font-size: 12px; color: #CBD5E1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-ctx-x { width: 26px; height: 26px; flex: none; border: 0; border-radius: 8px; display: grid; place-items: center; background: rgba(255, 255, 255, .08); color: #E2E8F0; cursor: pointer; }
+.mx-ctx-x:hover { background: rgba(255, 255, 255, .18); }
+@media (hover: none) { .mx-acts { opacity: 1; transform: none; pointer-events: auto; position: static; align-self: flex-end; margin: -2px -4px 2px; background: rgba(0, 0, 0, .2); box-shadow: none; } }
+
+/* =====================================================================
+   Call room · chat made bigger: Chat / Inbox takes the room, the video shrinks to a corner (Esc or the button: back)
+   ===================================================================== */
+.panel-head { position: relative; padding-right: 40px; }
+.panel-max-btn { position: absolute; top: 0; right: 0; width: 32px; height: 32px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .16); display: grid; place-items: center;
+    background: rgba(255, 255, 255, .08); color: #E2E8F0; cursor: pointer; transition: background .2s ease, transform .2s ease; }
+.panel-max-btn:hover { background: rgba(255, 255, 255, .18); transform: scale(1.06); }
+.panel-max-btn .pm-shrink, .panel-max .panel-max-btn .pm-grow { display: none; }
+.panel-max .panel-max-btn .pm-shrink { display: block; }
+.room-panel[data-pane="people"] .panel-max-btn { display: none; }
+.stage { transition: flex-basis .45s cubic-bezier(.22, 1, .36, 1), height .45s cubic-bezier(.22, 1, .36, 1), border-radius .3s ease; }
+.stage-restore { display: none; }
+@media (min-width: 901px) {
+    .panel-max .room-main { align-items: flex-start; }
+    .panel-max .stage { flex: 0 0 clamp(240px, 24vw, 360px); height: clamp(150px, 14vw, 210px); align-self: flex-start; border-radius: 22px; }
+    .panel-max .room-panel { flex: 1 1 auto !important; align-self: stretch; }
+    .panel-max .room-panel > * { min-width: 0; }
+    .panel-max .stage-chip, .panel-max .self-view, .panel-max .self-show, .panel-max .panel-peek, .panel-max .react-layer { display: none !important; }
+    .panel-max .stage-restore { display: inline-flex; position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 6; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+        border-radius: 999px; border: 1px solid rgba(255, 255, 255, .22); background: rgba(2, 6, 23, .72); color: #fff; font: 700 12px Inter, sans-serif; cursor: pointer;
+        backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); white-space: nowrap; }
+    .panel-max .stage-restore:hover { background: rgba(37, 99, 235, .85); }
+    .panel-max .mx-m { max-width: min(70%, 720px); }
+}
+@media (max-width: 900px) {
+    .panel-max .room-panel { left: 8px !important; width: auto !important; }
+}
+.is-sharing .toasts { bottom: 92px; transition: bottom .35s ease; }
+@media (min-width: 901px) { .panel-max .stage-wait { display: none !important; } }

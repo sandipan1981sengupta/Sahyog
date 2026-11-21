@@ -23,6 +23,9 @@
     string EvTip(CalendarEventVm e) => $"{e.Title} · {(e.IsAllDay ? "all day" : e.StartLocal.ToString("HH:mm", inv) + "–" + e.EndLocal.ToString("HH:mm", inv))} · set up by {By(e)}"
         + (e.Repeat is null ? "" : $" · {e.Repeat}")
         + (e.IsMoved ? " · moved (only this date)" : "")
+        + (e.IsCancelled || e.Accepted + e.Maybe + e.Declined + e.Waiting == 0 ? "" : $"\n✓ {e.Accepted} accepted · ? {e.Maybe} maybe · ✕ {e.Declined} declined · {e.Waiting} no response")
+        + string.Concat(e.Answers.Select(x => $"\n{(x.Response == MeetingResponse.Declined ? "✕" : "?")} {x.Name}{(string.IsNullOrWhiteSpace(x.Note) ? "" : ": " + x.Note)}"))
+        + (e.MyResponse == MeetingResponse.Declined ? "\nYou declined" : e.MyResponse == MeetingResponse.Maybe ? "\nYou said maybe" : "")
         + (CanMove(e) ? " · drag to move" : "")
         + (e.IsCancelled ? $" · CANCELLED{(e.CancelledBy is null ? "" : " by " + e.CancelledBy)}{(string.IsNullOrWhiteSpace(e.CancelNote) ? "" : ": " + e.CancelNote)}" : $" · {Status(e)}");
     const string TrashSvg = "<svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M4 7h16' /><path d='M10 11v6M14 11v6' /><path d='M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12' /><path d='M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7' /></svg>";
@@ -40,6 +43,12 @@
         return new Microsoft.AspNetCore.Html.HtmlString(edit + $"<span class='sn-ev-del act-{k}' role='button' tabindex='0' data-act='{k}' data-del='{e.MeetingId}' data-title='{t}' data-series='{(e.Repeat is null ? "" : "1")}' data-tip='{tip}' aria-label='{tip}: {t}'>{(k == "cancel" ? BanSvg : TrashSvg)}</span>");
     }
     // what a meeting on the calendar carries for edit / move / cancel-this-date (and drag and drop when it can move)
+    // ✕ 1  ? 2 on a meeting: people who declined / said maybe for that date (hover for their reasons)
+    Microsoft.AspNetCore.Html.IHtmlContent AnsBadges(CalendarEventVm e) => e.IsCancelled || (e.Declined + e.Maybe == 0)
+        ? Microsoft.AspNetCore.Html.HtmlString.Empty
+        : new Microsoft.AspNetCore.Html.HtmlString((e.Declined > 0 ? $"<span class='sn-ans no' aria-label='{e.Declined} declined'>✕{e.Declined}</span>" : "")
+            + (e.Maybe > 0 ? $"<span class='sn-ans maybe' aria-label='{e.Maybe} maybe'>?{e.Maybe}</span>" : ""));
+    string MineCls(CalendarEventVm e) => e.MyResponse == MeetingResponse.Declined ? "i-declined" : e.MyResponse == MeetingResponse.Maybe ? "i-maybe" : "";
     Microsoft.AspNetCore.Html.IHtmlContent EvData(CalendarEventVm e) => new Microsoft.AspNetCore.Html.HtmlString(
         $"data-occ='{e.OccurrenceDate.ToString("yyyy-MM-dd", inv)}' data-start='{e.StartLocal.ToString("yyyy-MM-dd'T'HH:mm", inv)}' data-min='{(int)(e.EndLocal - e.StartLocal).TotalMinutes}'"
         + $" data-series='{(e.Repeat is null ? "" : "1")}' data-allday='{(e.IsAllDay ? "1" : "")}'"
@@ -295,13 +304,13 @@
                                         var endHr = ev.EndLocal.Date > ev.StartLocal.Date ? 24 : HourOf(ev.EndLocal);
                                         var len = Math.Max(.4, endHr - HourOf(ev.StartLocal));
                                         var w = 100.0 / lanes;
-                                        <button type="button" class="sn-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(len < .75 ? "short" : "") @(len < .5 ? "tiny" : "") @(ActKind(ev).Length > 0 ? "can-del" : "") @(ev.IsCancelled ? "is-cancelled" : "")"
+                                        <button type="button" class="sn-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(len < .75 ? "short" : "") @(len < .5 ? "tiny" : "") @(ActKind(ev).Length > 0 ? "can-del" : "") @(ev.IsCancelled ? "is-cancelled" : "") @MineCls(ev)"
                                                 @EvData(ev) data-id="@ev.MeetingId"
                                                 style="top:calc(var(--hr) * @top.ToString("0.###", inv));height:calc(var(--hr) * @len.ToString("0.###", inv) - 3px);left:calc(@((lane * w).ToString("0.###", inv))% + 3px);width:calc(@w.ToString("0.###", inv)% - 6px)"
                                                 title="@EvTip(ev)">
                                             <b class="sn-ev-title">@if (st == "Live") { <em class="sn-ev-live">Live</em> }@if (ev.IsCancelled) { <em class="sn-ev-cancel">Cancelled</em> }@ev.Title</b>
                                             <span class="sn-ev-time">@ev.StartLocal.ToString("HH:mm", inv) – @ev.EndLocal.ToString("HH:mm", inv)@if (ev.Repeat is not null) { <i class="fa fa-repeat sn-ev-rep" aria-hidden="true" title="@ev.Repeat"></i> }@if (ev.IsMoved) { <i class="fa fa-share sn-ev-moved" aria-hidden="true" title="Moved (only this date)"></i> }</span>
-                                            <span class="sn-ev-meta"><i class="fa fa-user-o" aria-hidden="true"></i> By @By(ev) · @ev.People.Count @(ev.People.Count == 1 ? "person" : "people")</span>
+                                            <span class="sn-ev-meta"><i class="fa fa-user-o" aria-hidden="true"></i> By @By(ev) · @ev.People.Count @(ev.People.Count == 1 ? "person" : "people") @AnsBadges(ev)</span>
                                             @ActBtn(ev)
                                         </button>
                                     }
@@ -339,9 +348,9 @@
                                 @foreach (var ev in shown)
                                 {
                                     var st = Status(ev);
-                                    <button type="button" class="sn-mev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsAllDay ? (ev.ShowAsFree ? "allday free" : "allday busy") : "") @(ev.IsCancelled ? "is-cancelled" : "")" @EvData(ev) data-id="@ev.MeetingId"
+                                    <button type="button" class="sn-mev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsAllDay ? (ev.ShowAsFree ? "allday free" : "allday busy") : "") @(ev.IsCancelled ? "is-cancelled" : "") @MineCls(ev)" @EvData(ev) data-id="@ev.MeetingId"
                                             title="@EvTip(ev)">
-                                        <i></i><span class="t">@(ev.IsAllDay ? "All day" : ev.StartLocal.ToString("HH:mm", inv))</span> <span class="n">@ev.Title</span>@if (!ev.IsHost && !ev.IsCancelled) { <span class="by">· @ev.HostName</span> }@if (ev.IsCancelled) { <span class="x">Cancelled</span> }
+                                        <i></i><span class="t">@(ev.IsAllDay ? "All day" : ev.StartLocal.ToString("HH:mm", inv))</span> <span class="n">@ev.Title</span>@if (!ev.IsHost && !ev.IsCancelled) { <span class="by">· @ev.HostName</span> }@if (ev.IsCancelled) { <span class="x">Cancelled</span> }@AnsBadges(ev)
                                         @ActBtn(ev)
                                     </button>
                                 }
@@ -393,7 +402,7 @@
                                 {
                                     var st = Status(ev);
                                     var others = ev.People.Skip(1).ToList();
-                                    <article class="sn-ag-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsCancelled ? "is-cancelled" : "")" @EvData(ev) data-id="@ev.MeetingId" tabindex="0" title="@EvTip(ev)">
+                                    <article class="sn-ag-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsCancelled ? "is-cancelled" : "") @MineCls(ev)" @EvData(ev) data-id="@ev.MeetingId" tabindex="0" title="@EvTip(ev)">
                                         <div class="sn-ag-time">
                                             @if (ev.IsAllDay) { <b>All day</b> }
                                             else { <b>@ev.StartLocal.ToString("HH:mm", inv)</b><small>@ev.EndLocal.ToString("HH:mm", inv)</small> }
@@ -412,6 +421,25 @@
                                                 <span><i class="fa fa-users" aria-hidden="true"></i> @ev.People.Count @(ev.People.Count == 1 ? "person" : "people")</span>
                                                 @if (!ev.IsAllDay) { <span><i class="fa fa-clock-o" aria-hidden="true"></i> @DurText((int)(ev.EndLocal - ev.StartLocal).TotalMinutes)</span> }
                                             </div>
+                                            @if (!ev.IsCancelled && ev.Accepted + ev.Maybe + ev.Declined + ev.Waiting > 0)
+                                            {
+                                                <div class="sn-ag-answers">
+                                                    <span class="a-yes"><i></i>@ev.Accepted accepted</span>
+                                                    @if (ev.Maybe > 0) { <span class="a-maybe"><i></i>@ev.Maybe maybe</span> }
+                                                    @if (ev.Declined > 0) { <span class="a-no"><i></i>@ev.Declined declined</span> }
+                                                    @if (ev.Waiting > 0) { <span class="a-wait"><i></i>@ev.Waiting no response</span> }
+                                                    @if (ev.MyResponse != MeetingResponse.None) { <span class="a-mine">You: @(ev.MyResponse == MeetingResponse.Accepted ? "accepted" : ev.MyResponse == MeetingResponse.Maybe ? "maybe" : "declined")</span> }
+                                                </div>
+                                                @if (ev.Answers.Count > 0)
+                                                {
+                                                    <ul class="sn-ag-reasons">
+                                                        @foreach (var x in ev.Answers)
+                                                        {
+                                                            <li class="@(x.Response == MeetingResponse.Declined ? "no" : "maybe")"><b>@(x.Response == MeetingResponse.Declined ? "✕" : "?") @x.Name</b>@if (!string.IsNullOrWhiteSpace(x.Note)) { <span>“@x.Note”</span> } else { <span class="muted">no reason given</span> }</li>
+                                                        }
+                                                    </ul>
+                                                }
+                                            }
                                             @if (ev.IsCancelled)
                                             {
                                                 <div class="sn-ag-cancel"><i class="fa fa-calendar-times-o" aria-hidden="true"></i> <span>Cancelled</span>@(ev.CancelledBy is null ? "" : " by " + ev.CancelledBy)@if (!string.IsNullOrWhiteSpace(ev.CancelNote)) { <q>@ev.CancelNote</q> }</div>

@@ -4069,3 +4069,47 @@ html[data-theme="dark"] .sn-md-group span { background: rgba(255, 255, 255, .08)
 /* the Edit window's date / time / length use the scheduler's own controls */
 .sn-edit-when { align-items: end; }
 .sn-edit-when .modern-dropdown-with-label { width: 100%; }
+
+/* =====================================================================
+   Meeting answers: the reason box (Maybe / Decline), ✕ ? badges, Agenda reasons
+   ===================================================================== */
+.sn-md-mine { margin: 0; font-size: 13px; }
+.sn-md-mine.yes b { color: #16A34A; } .sn-md-mine.maybe b { color: #D97706; } .sn-md-mine.no b { color: #DC2626; }
+.sn-md-ans.asking.maybe { box-shadow: inset 0 0 0 2px #F59E0B; }
+.sn-md-ans.asking.no { box-shadow: inset 0 0 0 2px #DC2626; }
+.sn-md-reason { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; animation: snMdReason .22s ease-out; }
+.sn-md-reason[hidden], .sn-md-chips[hidden] { display: none !important; }
+@keyframes snMdReason { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.sn-md-reason-t { font-size: 13px; font-weight: 700; }
+.sn-md-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sn-md-chips button { height: 30px; padding: 0 12px; border-radius: 999px; border: 0; cursor: pointer; font: 600 12.5px Roboto, sans-serif;
+    background: rgba(15, 23, 42, .06); color: var(--sn-ink); box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .1); transition: background .15s ease, box-shadow .15s ease; }
+.sn-md-chips button:hover { background: rgba(124, 58, 237, .1); }
+.sn-md-chips button.on { background: rgba(124, 58, 237, .16); box-shadow: inset 0 0 0 1.5px #7C3AED; }
+.sn-md-reason-btns { display: flex; justify-content: flex-end; gap: 8px; }
+.sn-md-reason-btns .cee-btn { height: 38px !important; }
+html[data-theme="dark"] .sn-md-chips button { background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); }
+
+/* ✕ 1 / ? 2 on a meeting in the calendar */
+.sn-ans { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; margin-left: 3px; border-radius: 99px; font: 800 9.5px/15px Roboto, sans-serif; vertical-align: 1px; flex: none; }
+.sn-ans.no { background: #DC2626; color: #fff; }
+.sn-ans.maybe { background: #F59E0B; color: #fff; }
+/* a meeting I declined: faded and struck through on my calendar; maybe: dashed */
+.sn-ev.i-declined, .sn-mev.i-declined, .sn-ag-ev.i-declined { opacity: .55; }
+.sn-ev.i-declined .sn-ev-title, .sn-mev.i-declined .n, .sn-ag-ev.i-declined .sn-ag-title b { text-decoration: line-through; }
+.sn-ev.i-maybe, .sn-mev.i-maybe { outline: 1.5px dashed rgba(245, 158, 11, .8); outline-offset: -1.5px; }
+
+/* Agenda: answers and reasons */
+.sn-ag-answers { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--sn-text-2, #475569); }
+.sn-ag-answers i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+.sn-ag-answers .a-yes i { background: #16A34A; } .sn-ag-answers .a-maybe i { background: #F59E0B; }
+.sn-ag-answers .a-no i { background: #DC2626; } .sn-ag-answers .a-wait i { background: #94A3B8; }
+.sn-ag-answers .a-mine { font-weight: 700; color: #6D28D9; }
+.sn-ag-reasons { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.sn-ag-reasons li { display: flex; flex-wrap: wrap; gap: 6px; padding: 5px 10px; border-radius: 10px; font-size: 12.5px; }
+.sn-ag-reasons li.no { background: rgba(220, 38, 38, .08); } .sn-ag-reasons li.no b { color: #B91C1C; }
+.sn-ag-reasons li.maybe { background: rgba(245, 158, 11, .1); } .sn-ag-reasons li.maybe b { color: #B45309; }
+.sn-ag-reasons span { font-style: italic; }
+html[data-theme="dark"] .sn-ag-reasons li.no b { color: #FCA5A5; }
+html[data-theme="dark"] .sn-ag-reasons li.maybe b { color: #FDE68A; }
+html[data-theme="dark"] .sn-ag-answers .a-mine { color: #C4B5FD; }

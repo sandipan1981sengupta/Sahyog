@@ -136,7 +136,19 @@ public sealed record CalendarEventVm(
     /// <summary>The series' own first start (for "Edit the whole series").</summary>
     public DateTime SeriesStartLocal { get; init; }
     public int SeriesMinutes { get; init; }
+    // answers for this date (the organizer isn't counted): ✓ accepted · ? maybe · ✕ declined · no response yet
+    public int Accepted { get; init; }
+    public int Maybe { get; init; }
+    public int Declined { get; init; }
+    public int Waiting { get; init; }
+    /// <summary>Who said Maybe / Declined, and why.</summary>
+    public List<AnswerNoteVm> Answers { get; init; } = new();
+    /// <summary>My own answer (when I'm invited).</summary>
+    public ShankhNaad.DtoLibrary.MeetingResponse MyResponse { get; init; }
 }
+
+/// <summary>Someone's Maybe / Decline and the reason they gave.</summary>
+public sealed record AnswerNoteVm(string Name, ShankhNaad.DtoLibrary.MeetingResponse Response, string? Note);
 
 public sealed record CalendarDayVm(DateOnly Date, bool IsToday, List<CalendarEventVm> Events);
 
@@ -430,6 +442,8 @@ public sealed class MeetingDetailsVm
     public int InRoom { get; init; }
     /// <summary>My own answer (None for the host, who doesn't answer their own meeting).</summary>
     public ShankhNaad.DtoLibrary.MeetingResponse MyResponse { get; init; }
+    /// <summary>The reason I gave with Maybe / Decline.</summary>
+    public string? MyNote { get; init; }
     public bool CanRespond { get; init; }
     /// <summary>36_MeetingResponses.sql has been run (answers can be saved).</summary>
     public bool ResponsesReady { get; init; } = true;

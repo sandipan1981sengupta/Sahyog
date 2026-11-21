@@ -6,6 +6,11 @@
     const token = () => (S.antiforgery ? S.antiforgery() : document.querySelector('input[name="__RequestVerificationToken"]')?.value || "");
     const toast = (text, kind, title) => (S.toast ? S.toast(text, { kind: kind || "info", title }) : alert(text));
 
+    // The app swaps pages without reloading (sn-nav.js) and removes a page's listeners when you leave it; this script
+    // runs again when the page comes back. So nothing here is "once per load": a window left over from the last visit
+    // (its listeners are gone) is removed, and everything below is set up again for this visit.
+    document.getElementById("detailsDialog")?.remove();
+
     /** Opens the details of one date of a meeting in the calendar's window. el = the meeting on the calendar (data-id, data-occ). */
     window.snShowDetails = async function (id, occ) {
         let dlg = document.getElementById("detailsDialog");
@@ -35,20 +40,15 @@
         }
     };
 
-    if (window.__snMeetingDetails) return;     // the listeners below are added once per page load
-    window.__snMeetingDetails = true;
-
-    // my answer
-    document.addEventListener("click", async (e) => {
-        const b = e.target.closest(".sn-md [data-respond]");
-        if (!b) return;
-        const md = b.closest(".sn-md");
+    // my answer: Accept saves straight away; Maybe / Decline first ask why (optional), then save
+    async function sendAnswer(md, answer, note) {
         const fd = new FormData();
-        fd.append("response", b.dataset.respond);
+        fd.append("response", answer);
         fd.append("date", md.dataset.occ || "");
         fd.append("scope", md.querySelector('input[name="mdScope"]:checked')?.value || "all");
-        fd.append("note", md.querySelector(".sn-md-note")?.value.trim() || "");
-        md.querySelectorAll("[data-respond]").forEach((x) => { x.disabled = true; });
+        fd.append("note", (note || "").trim());
+        const busy = md.querySelectorAll("[data-respond], [data-reason-send]");
+        busy.forEach((x) => { x.disabled = true; });
         try {
             const r = await fetch(`/meetings/${md.dataset.id}/respond`, { method: "POST", body: fd, credentials: "same-origin", headers: { RequestVerificationToken: token() } });
             const d = await r.json().catch(() => ({}));
@@ -57,9 +57,56 @@
             const dlg = md.closest("#detailsDialog");
             if (dlg) window.snShowDetails(md.dataset.id, md.dataset.occ); else location.reload();
         } catch (err) {
-            md.querySelectorAll("[data-respond]").forEach((x) => { x.disabled = false; });
+            busy.forEach((x) => { x.disabled = false; });
             toast(err.message, "warn", "Not saved");
         }
+    }
+    function askWhy(md, answer) {
+        const box = md.querySelector(".sn-md-reason");
+        if (!box) { sendAnswer(md, answer, ""); return; }
+        md.dataset.answer = answer;
+        box.hidden = false;
+        box.dataset.answer = answer;
+        box.querySelectorAll(".sn-md-chips").forEach((c) => { c.hidden = c.dataset.for !== answer; });
+        box.querySelector("[data-reason-send] span").textContent = answer === "no" ? "Send decline" : "Send maybe";
+        md.querySelectorAll("[data-respond]").forEach((b) => b.classList.toggle("asking", b.dataset.respond === answer));
+        const input = box.querySelector("input");
+        setTimeout(() => input?.focus(), 30);
+    }
+    document.addEventListener("click", (e) => {
+        const b = e.target.closest(".sn-md [data-respond]");
+        if (b) {
+            const md = b.closest(".sn-md");
+            if (b.dataset.respond === "yes") sendAnswer(md, "yes", "");
+            else askWhy(md, b.dataset.respond);
+            return;
+        }
+        const chip = e.target.closest(".sn-md [data-reason-chip]");
+        if (chip) {
+            const box = chip.closest(".sn-md-reason");
+            box.querySelector("input").value = chip.textContent.trim();
+            box.querySelectorAll("[data-reason-chip]").forEach((c) => c.classList.toggle("on", c === chip));
+            return;
+        }
+        if (e.target.closest(".sn-md [data-reason-cancel]")) {
+            const md = e.target.closest(".sn-md");
+            md.querySelector(".sn-md-reason").hidden = true;
+            md.querySelectorAll("[data-respond]").forEach((x) => x.classList.remove("asking"));
+            return;
+        }
+        const send = e.target.closest(".sn-md [data-reason-send]");
+        if (send) {
+            const md = send.closest(".sn-md");
+            sendAnswer(md, md.dataset.answer || "no", md.querySelector(".sn-md-reason input")?.value || "");
+        }
+    });
+    document.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        const input = e.target.closest(".sn-md-reason input");
+        if (!input) return;
+        e.preventDefault();
+        const md = input.closest(".sn-md");
+        sendAnswer(md, md.dataset.answer || "no", input.value);
     });
 
     // Edit / Cancel (the host): the calendar page's own windows do the work
