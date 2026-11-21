@@ -77,6 +77,19 @@
                 <span class="island-pill people-pill" title="People in this call · plan limit"><span class="avatar-stack" id="avatarStack"></span><span><span id="peopleCount">1</span><small> / @Model.MaxParticipants</small></span></span>
             </div>
 
+            @* while you share: what you share, for how long, Change and Stop (the browser adds its own bar too) *@
+            <div class="share-pill" id="sharePill" role="status" hidden>
+                <span class="sp-info"><i class="sp-dot" aria-hidden="true"></i><b>Sharing</b><span id="sharePillWhat">a window</span><span class="sp-time" id="sharePillTime">00:00</span></span>
+                <button type="button" class="sp-change" id="shareChangeBtn" title="Share something else">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3l4 4-4 4M3 11V9a2 2 0 0 1 2-2h16M7 21l-4-4 4-4M21 13v2a2 2 0 0 1-2 2H3" /></svg>
+                    <span>Change</span>
+                </button>
+                <button type="button" class="sp-stop" id="shareStopBtn">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+                    <span>Stop sharing</span>
+                </button>
+            </div>
+
             <div class="row gap-8">
                 @if (Model.GuestUrl is string guestUrl && Model.IsModerator)
                 {
@@ -122,6 +135,14 @@
                     <span><b id="peekCount">1</b> in call</span>
                 </button>
                 @* chat made bigger: the video shrinks to this corner; this brings it back *@
+                <div class="share-tip" id="shareTip" role="note" hidden>
+                    <div class="st-head">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.2h5c0-.9.4-1.7 1.1-2.2A6 6 0 0 0 12 3z" /></svg>
+                        <b>Your browser added its own bar</b>
+                    </div>
+                    <p>Click <b>Hide</b> on it at the bottom of your screen. You can stop sharing from here at any time.</p>
+                    <button type="button" id="shareTipOk">Got it</button>
+                </div>
                 <button type="button" class="stage-restore" id="stageRestore" title="Back to the video">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
                     <span>Back to video</span>
@@ -312,6 +333,78 @@
             </button><span>End for me</span></div>
         </footer>
     </div>
+    @* Share: first our own step (what to share, sound, tips), then the browser's own window to confirm *@
+    <div class="share-sheet" id="shareSheet" hidden>
+        <section class="ss-card" role="dialog" aria-modal="true" aria-labelledby="ssTitle">
+            <div class="ss-head">
+                <span class="ss-ic" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M12 13V7M9 10l3-3 3 3M8 20h8" /></svg></span>
+                <div class="ss-titles">
+                    <h2 id="ssTitle">Share your screen</h2>
+                    <p>Pick what everyone in the call sees. Your browser then asks you to confirm.</p>
+                </div>
+                <button type="button" class="ss-x" data-ss-close aria-label="Close">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
+            </div>
+
+            <div class="ss-opts" role="radiogroup" aria-label="What to share">
+                <button type="button" class="ss-opt" role="radio" aria-checked="false" data-ss="browser">
+                    <span class="ss-art" aria-hidden="true">
+                        <span class="art-tab"><span class="art-tabs"><i class="on"></i><i></i></span><span class="art-page"></span></span>
+                        <span class="ss-tick"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7" /></svg></span>
+                    </span>
+                    <b>A browser tab</b>
+                    <small>A web page or online slides. Can share its sound.</small>
+                    <em class="tag t-blue">Best for videos</em>
+                </button>
+                <button type="button" class="ss-opt" role="radio" aria-checked="false" data-ss="window">
+                    <span class="ss-art" aria-hidden="true">
+                        <span class="art-win"><span class="art-back"></span><span class="art-front"><span class="art-dots"><i></i><i></i><i></i></span><span class="art-page"></span></span></span>
+                        <span class="ss-tick"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7" /></svg></span>
+                    </span>
+                    <b>A window</b>
+                    <small>One app, like a document or a spreadsheet.</small>
+                    <em class="tag t-green">Recommended</em>
+                </button>
+                <button type="button" class="ss-opt" role="radio" aria-checked="false" data-ss="monitor">
+                    <span class="ss-art" aria-hidden="true">
+                        <span class="art-mon"><span class="art-screen"><i></i><i></i></span><span class="art-neck"></span><span class="art-foot"></span></span>
+                        <span class="ss-tick"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7" /></svg></span>
+                    </span>
+                    <b>Your entire screen</b>
+                    <small>Everything you see, notifications too.</small>
+                    <em class="tag t-amber">Shows everything</em>
+                </button>
+            </div>
+
+            <div class="ss-switches">
+                <div class="ss-row">
+                    <span class="ss-row-ic" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4V5z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" /></svg></span>
+                    <span class="ss-row-t"><b id="ssSoundLbl">Share sound too</b><small id="ssSoundNote"></small></span>
+                    <button type="button" class="ss-switch" role="switch" aria-checked="true" aria-labelledby="ssSoundLbl" id="ssSound"><i></i></button>
+                </div>
+                <div class="ss-row">
+                    <span class="ss-row-ic" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18" /><path d="M10.6 5.1A10 10 0 0 1 22 12a17 17 0 0 1-3.2 4.2M6.6 6.6A17 17 0 0 0 2 12a10 10 0 0 0 13.4 5.4" /></svg></span>
+                    <span class="ss-row-t"><b id="ssHideLbl">Hide this call from the list</b><small>So nobody shares the call itself by mistake.</small></span>
+                    <button type="button" class="ss-switch" role="switch" aria-checked="true" aria-labelledby="ssHideLbl" id="ssHide"><i></i></button>
+                </div>
+            </div>
+
+            <div class="ss-tip">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.2h5c0-.9.4-1.7 1.1-2.2A6 6 0 0 0 12 3z" /></svg>
+                <span id="ssTip"></span>
+            </div>
+
+            <div class="ss-foot">
+                <span class="ss-next">Next, in your browser's window: pick <b id="ssNext">Window</b>.</span>
+                <button type="button" class="ss-cancel" data-ss-close>Cancel</button>
+                <button type="button" class="ss-go" id="ssGo"><span id="ssGoText">Choose a window</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                </button>
+            </div>
+        </section>
+    </div>
+
     <div class="toasts" id="toasts" aria-live="polite"></div>
 
     @* ---- Add people: ring team members into this call ---- *@
