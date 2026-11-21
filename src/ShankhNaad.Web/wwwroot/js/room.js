@@ -571,6 +571,9 @@
             }
         });
         doc.body.className = "room-body sn-popout";
+        // same theme as the call (Light, Kesari, Dark, CloudWheel)
+        ["data-theme", "data-skin"].forEach((a) => { const v = document.documentElement.getAttribute(a); if (v) doc.documentElement.setAttribute(a, v); });
+        doc.documentElement.classList.toggle("sn-carbon", document.documentElement.classList.contains("sn-carbon"));
         doc.body.innerHTML = "";
         // the panel moves into the new window; a marker keeps its place here
         popHome = document.createComment("side panel");

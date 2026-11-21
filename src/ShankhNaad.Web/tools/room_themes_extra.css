@@ -1,0 +1,111 @@
+/* the studio behind the call: light glass grounds for Light / Kesari, neutral black for Dark */
+html[data-theme="light"] body.room-body { background: #E6ECFB; color: #0F172A; }
+html[data-theme="light"] body.room-body .studio-bg { background: radial-gradient(120% 80% at 50% 0%, #EEF2FF 0%, #E6ECFB 55%, #F5F0FA 100%); }
+html[data-theme="light"] body.room-body .studio-bg .a1 { background: radial-gradient(circle, #93C5FD 0%, transparent 65%); }
+html[data-theme="light"] body.room-body .studio-bg .a2 { background: radial-gradient(circle, #C4B5FD 0%, transparent 65%); }
+html[data-theme="light"] body.room-body .studio-bg .a3 { background: radial-gradient(circle, #F9A8D4 0%, transparent 62%); opacity: .5; }
+html[data-theme="light"] body.room-body .studio-bg .grain { opacity: .035; }
+html[data-theme="light"] body.room-body .studio-bg .vignette { background: radial-gradient(130% 100% at 50% 40%, transparent 60%, rgba(30, 41, 99, .1) 100%); }
+html[data-theme="light"] body.room-body { --st-ink: #0F172A; --st-dim: #64748B; --st-glass: rgba(255, 255, 255, .62); --st-line: rgba(15, 23, 42, .09); }
+
+html[data-skin="kesari"] body.room-body { background: #FFF4E8; color: #1C1917; --st-ink: #1C1917; --st-dim: #57534E; --st-glass: rgba(255, 251, 245, .64); --st-line: rgba(28, 25, 23, .09);
+    --st-violet: #EA580C; --st-pink: #15803D; --st-blue: #F97316; }
+html[data-skin="kesari"] body.room-body .studio-bg { background: radial-gradient(120% 80% at 50% 0%, #FFF4E8 0%, #FFFBF5 55%, #F0FAF2 100%); }
+html[data-skin="kesari"] body.room-body .studio-bg .a1 { background: radial-gradient(circle, #FDBA74 0%, transparent 65%); }
+html[data-skin="kesari"] body.room-body .studio-bg .a2 { background: radial-gradient(circle, #FED7AA 0%, transparent 65%); }
+html[data-skin="kesari"] body.room-body .studio-bg .a3 { background: radial-gradient(circle, #86EFAC 0%, transparent 62%); opacity: .5; }
+html[data-skin="kesari"] body.room-body .studio-bg .vignette { background: radial-gradient(130% 100% at 50% 40%, transparent 60%, rgba(120, 60, 10, .08) 100%); }
+
+html[data-theme="dark"].sn-carbon body.room-body { background: #0B0B0C; --st-glass: rgba(30, 30, 34, .5); --st-line: rgba(255, 255, 255, .08); --st-dim: #A1A1AA;
+    --st-violet: #A1A1AA; --st-blue: #A1A1AA; }
+html[data-theme="dark"].sn-carbon body.room-body .studio-bg { background: radial-gradient(120% 80% at 50% 0%, #18181B 0%, #0B0B0C 60%); }
+html[data-theme="dark"].sn-carbon body.room-body .studio-bg .a1 { background: radial-gradient(circle, #3F3F46 0%, transparent 65%); }
+html[data-theme="dark"].sn-carbon body.room-body .studio-bg .a2 { background: radial-gradient(circle, #52525B 0%, transparent 65%); }
+html[data-theme="dark"].sn-carbon body.room-body .studio-bg .a3 { background: radial-gradient(circle, #27272A 0%, transparent 62%); }
+
+/* the video frame stays dark in every theme, with a soft edge on light grounds */
+html[data-theme="light"] body.room-body .stage { box-shadow: 0 30px 70px -30px rgba(30, 41, 99, .45), 0 0 0 1px rgba(255, 255, 255, .9); }
+html[data-theme="light"] body.room-body .stage .stage-wait,
+html[data-theme="light"] body.room-body .stage .stage-loading { color: #F8FAFC; }
+
+/* the emoji picker in the room: light glass on light themes */
+html[data-theme="light"] body.room-body .sne { --sne-bg: #FFFFFF; --sne-fg: #0F172A; --sne-sub: #64748B; --sne-line: rgba(15, 23, 42, .1); --sne-hover: rgba(37, 99, 235, .09);
+    --sne-on: rgba(37, 99, 235, .14); --sne-accent: #2563EB; --sne-field: rgba(255, 255, 255, .55); --sne-glass: rgba(255, 255, 255, .6); --sne-head: rgba(255, 255, 255, .5);
+    --sne-edge: rgba(255, 255, 255, .95); --sne-shine: rgba(255, 255, 255, .8); }
+html[data-skin="kesari"] body.room-body .sne { --sne-accent: #EA580C; --sne-hover: rgba(234, 88, 12, .09); --sne-on: rgba(234, 88, 12, .15); --sne-glass: rgba(255, 251, 245, .62); }
+html[data-theme="dark"].sn-carbon body.room-body .sne { --sne-glass: rgba(30, 30, 34, .55); --sne-head: rgba(30, 30, 34, .45); --sne-edge: rgba(255, 255, 255, .1); --sne-shine: rgba(255, 255, 255, .06); }
+
+/* Kesari: its own logo */
+html[data-skin="kesari"] body.room-body img[src*="images/logo.svg"] { content: url("/images/logo-kesari.svg"); }
+
+/* Kesari: the logo tile beside the call title is the small tab icon (favicon.svg) */
+html[data-skin="kesari"] body.room-body .room-mark img[src*="favicon.svg"] { content: url("/images/logo-kesari.svg"); box-shadow: 0 8px 20px -8px rgba(234, 88, 12, .75); }
+
+/* =====================================================================
+   Room chat (Inbox / Chat panel): the same bubbles and call cards as the Chat page
+   ===================================================================== */
+/* their messages: white glass, like the Chat page */
+html[data-theme="light"] body.room-body .mx-bub,
+html[data-theme="light"] body.room-body .mx-call:not(.mine) {
+    background: rgba(255, 255, 255, .62); border: 1px solid rgba(255, 255, 255, .85); color: #0F172A;
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 6px 16px -10px rgba(15, 23, 42, .3);
+}
+/* your messages: the theme's gradient with white words (Light: blue | purple | pink, Kesari: saffron | green) */
+html[data-theme="light"] body.room-body .mine .mx-bub,
+html[data-theme="light"] body.room-body .mx-call.mine {
+    background: linear-gradient(115deg, #2563EB 0%, #7C3AED 55%, #DB2777 100%); border-color: transparent; color: #FFFFFF;
+    backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 10px 22px -10px rgba(37, 99, 235, .6);
+}
+html[data-skin="kesari"] body.room-body .mine .mx-bub,
+html[data-skin="kesari"] body.room-body .mx-call.mine {
+    background: linear-gradient(115deg, #FF8A1F 0%, #F97316 46%, #15803D 54%, #138808 100%); box-shadow: 0 10px 22px -10px rgba(234, 88, 12, .6);
+}
+html[data-theme="dark"].sn-carbon body.room-body .mine .mx-bub,
+html[data-theme="dark"].sn-carbon body.room-body .mx-call.mine {
+    background: linear-gradient(115deg, #2A4A9A 0%, #5B3A8E 55%, #8A2F63 100%); border-color: transparent; color: #EEF2FF; box-shadow: 0 8px 18px -12px rgba(0, 0, 0, .6);
+}
+html[data-theme="light"] body.room-body .mine .mx-bub a { color: #FFFFFF; }
+
+/* call cards: words and the coloured phone tile, like the Chat page */
+html[data-theme="light"] body.room-body .mx-call .mx-call-t b { color: #0F172A; }
+html[data-theme="light"] body.room-body .mx-call .mx-call-t small { color: #64748B; }
+html[data-theme="light"] body.room-body .mx-call.mine .mx-call-t b { color: #FFFFFF; }
+html[data-theme="light"] body.room-body .mx-call.mine .mx-call-t small { color: rgba(255, 255, 255, .85); }
+html[data-theme="dark"].sn-carbon body.room-body .mx-call.mine .mx-call-t b { color: #FFFFFF; }
+html[data-theme="light"] body.room-body .mx-call .mx-call-ic { color: #FFFFFF; background: linear-gradient(135deg, #22C55E, #0EA5E9); box-shadow: 0 6px 14px -6px rgba(14, 165, 233, .7); }
+html[data-skin="kesari"] body.room-body .mx-call .mx-call-ic { background: linear-gradient(135deg, #22C55E, #F59E0B); box-shadow: 0 6px 14px -6px rgba(245, 158, 11, .7); }
+html[data-theme="light"] body.room-body .mx-call .mx-call-ic.ended { background: linear-gradient(135deg, #64748B, #475569); box-shadow: none; }
+html[data-theme="light"] body.room-body .mx-call .mx-call-ic.missed { background: linear-gradient(135deg, #EF4444, #B91C1C); box-shadow: 0 6px 14px -6px rgba(239, 68, 68, .8); }
+html[data-theme="light"] body.room-body .mx-call .mx-call-ic.live,
+html[data-theme="light"] body.room-body .mx-call .mx-call-ic.ringing { background: linear-gradient(135deg, #22C55E, #16A34A); }
+/* inside your own (coloured) card the tile is a soft white square */
+html[data-theme="light"] body.room-body .mx-call.mine .mx-call-ic:not(.missed) { background: rgba(255, 255, 255, .22); box-shadow: none; }
+
+/* send button: the theme's gradient */
+html[data-theme="light"] body.room-body .cc-send { color: #FFFFFF; background: linear-gradient(115deg, #2563EB 0%, #7C3AED 55%, #DB2777 100%); box-shadow: 0 8px 18px -8px rgba(124, 58, 237, .7); }
+html[data-skin="kesari"] body.room-body .cc-send { background: linear-gradient(115deg, #FF8A1F 0%, #F97316 46%, #15803D 54%, #138808 100%); box-shadow: 0 8px 18px -8px rgba(234, 88, 12, .7); }
+
+/* =====================================================================
+   "Leave the call?": frosted glass in every theme
+   ===================================================================== */
+body.room-body .leave-sheet {
+    background: rgba(15, 20, 40, .55); border-color: rgba(148, 163, 255, .18);
+    backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 30px 60px -20px rgba(0, 0, 0, .7);
+}
+html[data-theme="dark"].sn-carbon body.room-body .leave-sheet { background: rgba(30, 30, 34, .52); border-color: rgba(255, 255, 255, .12); }
+html[data-theme="light"] body.room-body .leave-sheet {
+    background: rgba(255, 255, 255, .56); border-color: rgba(255, 255, 255, .95); color: #0F172A;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .85), 0 30px 60px -24px rgba(30, 41, 99, .4);
+}
+html[data-skin="kesari"] body.room-body .leave-sheet { background: rgba(255, 251, 245, .56); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .85), 0 30px 60px -24px rgba(120, 60, 10, .35); }
+html[data-theme="light"] body.room-body .ls-chip { background: rgba(255, 255, 255, .55); border-color: rgba(255, 255, 255, .9); color: #0F172A; }
+html[data-theme="light"] body.room-body .ls-chip:hover { background: rgba(255, 255, 255, .85); }
+html[data-theme="light"] body.room-body .ls-own input { background: rgba(255, 255, 255, .7); border-color: rgba(255, 255, 255, .9); color: #0F172A; }
+html[data-theme="light"] body.room-body .ls-cancel { border-color: rgba(15, 23, 42, .12); color: #1E293B; background: rgba(255, 255, 255, .3); }
+html[data-theme="light"] body.room-body .ls-send { background: linear-gradient(135deg, #2563EB, #7C3AED); }
+html[data-skin="kesari"] body.room-body .ls-send { background: linear-gradient(135deg, #F97316, #EA580C); }
+html[data-theme="light"] body.room-body .ls-sub, html[data-theme="light"] body.room-body .ls-hint { color: #64748B; }
+html[data-skin="kesari"] body.room-body .ls-sub, html[data-skin="kesari"] body.room-body .ls-hint { color: #78716C; }
+html.sn-webkit body.room-body .leave-sheet { backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%); }
+html[data-theme="dark"].sn-carbon body.room-body .ls-send { background: linear-gradient(135deg, #52525B, #3F3F46); }
