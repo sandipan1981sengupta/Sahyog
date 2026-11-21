@@ -237,19 +237,32 @@
 @* ---------- details (modern-group-box) ---------- *@
 <aside class="chat-info" aria-label="Details">
     <modern-group-box title="Members | @Model.Members.Count" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="24px" content-layout="block">
-        <div class="people-grid">
-            @foreach (var m in Model.Members.Take(12))
+        @* everyone, online first: a 3-across grid; from 7 people it scrolls (two rows show), with a search from 10 *@
+        @{
+            var memberCount = Model.Members.Count;
+            var onlineCount = Model.Members.Count(x => x.Online);
+        }
+        @if (memberCount > 9)
+        {
+            <div class="sn-mem-tools">
+                <label class="sn-mem-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" id="memSearch" placeholder="Find a member" aria-label="Find a member" autocomplete="off" /></label>
+                <span class="sn-mem-online" title="Online now"><i></i>@onlineCount online</span>
+            </div>
+        }
+        <div class="people-grid sn-mem-grid @(memberCount > 6 ? "scrolls" : "")" id="memGrid" role="list" aria-label="Members">
+            @foreach (var m in Model.Members.OrderByDescending(x => x.Online).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
             {
-                <span class="person-chip">
+                <span class="person-chip" role="listitem" data-name="@m.Name" title="@(m.Name + (m.Online ? " · online" : ""))">
                     <span class="avatar av-44 tone-@(m.Tone) ring-white" data-presence="@m.Id">@m.Initials<i class="dot @(m.Online ? "on" : "")"></i></span>
                     <span class="tiny">@m.Name.Split(' ')[0]</span>
                 </span>
             }
+            <p class="sn-mem-none" id="memNone" hidden>Nobody by that name.</p>
         </div>
         @if (c is { IsDirect: false })
         {
             <div class="sn-mem-acts">
-                <button type="button" class="sn-link" onclick="SN.open('membersDialog')"><i class="fa fa-users" aria-hidden="true"></i> @(Model.Members.Count > 12 ? $"See all {Model.Members.Count}" : "See all")@(Model.CanManageMembers ? " · remove" : "")</button>
+                <button type="button" class="sn-link" onclick="SN.open('membersDialog')"><i class="fa fa-users" aria-hidden="true"></i> @(Model.CanManageMembers ? "Manage · remove" : "List view")</button>
                 @if (Model.CanManageMembers)
                 {
                     <button type="button" class="sn-link" onclick="SN.open('addMembersDialog')"><i class="fa fa-user-plus" aria-hidden="true"></i> Add people</button>

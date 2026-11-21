@@ -44,6 +44,8 @@ public sealed class ChatHub : Hub
 
     // when each scheduled meeting last rang its participants (a quick leave + rejoin doesn't ring them twice)
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> MeetingRungAt = new();
+    // "meeting started" emails: once per meeting per 3 hours (someone re-joining doesn't email everyone again)
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> MeetingMailedAt = new();
 
     private static string? CleanNote(string? note)
     {
@@ -462,11 +464,38 @@ public sealed class ChatHub : Hub
 
         var me = Context.UserIdentifier!;
         var online = _presence.OnlineUsers(tenantId);
-        var people = (await _meetings.GetInviteesAsync(tenantId, meeting.MeetingId))
+        var invitees = await _meetings.GetInviteesAsync(tenantId, meeting.MeetingId);
+
+        // people who declined today's meeting aren't rung or emailed
+        var skip = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { me.ToLowerInvariant() };
+        var answers = await _meetings.GetResponsesAsync(tenantId, new[] { meeting.MeetingId });
+        var today = DateOnly.FromDateTime(MeetingCalendar.ToLocal(now, MeetingCalendar.FindZone(null)));
+        foreach (var key in answers.Select(a => a.PersonKey).Distinct())
+            if (MeetingResponseDto.For(answers, key, today)?.Response == MeetingResponse.Declined) skip.Add(key);
+
+        // everyone invited (team and guests, also people who are offline) gets an email with the link to join
+        if (!MeetingMailedAt.TryGetValue(meeting.MeetingId, out var mailed) || now - mailed > TimeSpan.FromHours(3))
+        {
+            MeetingMailedAt[meeting.MeetingId] = now;
+            foreach (var old in MeetingMailedAt.Where(kv => now - kv.Value > TimeSpan.FromHours(6)).Select(kv => kv.Key).ToList())
+                MeetingMailedAt.TryRemove(old, out _);
+            try
+            {
+                var inIt = new HashSet<string>(skip, StringComparer.OrdinalIgnoreCase);
+                foreach (var i in invitees)
+                    if (i.UserId is Guid u && _rooms.Contains(meeting.MeetingId, u.ToString())) inIt.Add(MeetingResponseDto.KeyOf(u));
+                if (_rooms.Contains(meeting.MeetingId, meeting.HostId.ToString())) inIt.Add(MeetingResponseDto.KeyOf(meeting.HostId));
+                var host = await _users.GetByIdAsync(meeting.HostId);
+                await _meetings.SendStartedAsync(meeting, invitees, Context.User!.DisplayName(), host?.Email ?? "", MeetingCalendar.FindZone(null), inIt);
+            }
+            catch { /* the ringing below still happens */ }
+        }
+
+        var people = invitees
             .Where(i => i.UserId is not null).Select(i => i.UserId!.Value.ToString())
             .Append(meeting.HostId.ToString())
             .Distinct()
-            .Where(id => id != me && online.Contains(id) && !_rooms.Contains(meeting.MeetingId, id))
+            .Where(id => id != me && online.Contains(id) && !_rooms.Contains(meeting.MeetingId, id) && !skip.Contains(id.ToLowerInvariant()))
             .ToList();
         if (people.Count == 0) return;
         var ring = new IncomingCallDto(meeting.MeetingId, meeting.Title, Context.User!.DisplayName(), Context.User!.Initials(), Context.User!.AvatarTone(),

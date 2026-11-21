@@ -17,7 +17,15 @@ public interface IMeetingService
     Task<List<InviteeDto>> GetInviteesAsync(Guid tenantId, Guid meetingId);
     Task<DeleteMeetingResultDto> DeleteAsync(Guid tenantId, Guid meetingId, Guid userId, bool isAdmin);
     Task<GuestMeetingDto?> GetByGuestCodeAsync(string code);
-    Task SendInvitesAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string hostName, string hostEmail, TimeZoneInfo zone);
+    /// <param name="respondUrl">Optional: each person's own link to answer (the email then has Accept / Maybe / Decline buttons; "?r=yes|maybe|no" is added).</param>
+    Task SendInvitesAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string hostName, string hostEmail, TimeZoneInfo zone,
+        Func<InviteeDto, string?>? respondUrl = null);
+    /// <summary>Saves a person's answer (userId for a team member, guestEmail for a guest; date null = whole meeting / series).</summary>
+    Task<RespondStatus> SetResponseAsync(Guid tenantId, Guid meetingId, Guid? userId, string? guestEmail, DateOnly? date, MeetingResponse response, string? note);
+    /// <summary>The answers for these meetings (36_MeetingResponses.sql; without it: none).</summary>
+    Task<List<MeetingResponseDto>> GetResponsesAsync(Guid tenantId, IEnumerable<Guid> meetingIds);
+    /// <summary>"Sandy started Project planning · Join": to everyone invited except the people listed in skip (keys).</summary>
+    Task<int> SendStartedAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string startedBy, string hostEmail, TimeZoneInfo zone, ISet<string> skip);
     /// <summary>Cancels a meeting (a repeating meeting: the whole series). It stays on calendars, marked cancelled.</summary>
     Task<CancelMeetingStatus> CancelAsync(Guid tenantId, Guid meetingId, Guid userId, bool isAdmin, string? note);
     /// <summary>Removes a cancelled meeting from one person's calendar.</summary>
@@ -26,6 +34,15 @@ public interface IMeetingService
     Task<int> SendCancellationAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string cancelledBy, string hostEmail, TimeZoneInfo zone, string? note);
     string RoomUrl(Guid meetingId);
     string GuestUrl(string code);
+    /// <summary>The cancelled / moved single dates of these meetings, added to each (35_MeetingChanges.sql; without it: none).</summary>
+    Task<List<MeetingDto>> WithExceptionsAsync(Guid tenantId, IEnumerable<MeetingDto> meetings);
+    /// <summary>Cancels (newStartUtc null) or moves one date of a repeating meeting.</summary>
+    Task<MeetingChangeStatus> SetExceptionAsync(Guid tenantId, Guid meetingId, Guid userId, bool isAdmin, DateOnly occurrenceDate, bool cancel, DateTime? newStartUtc, int? newMinutes);
+    /// <summary>Edits a meeting (a repeating one: the whole series).</summary>
+    Task<MeetingChangeStatus> UpdateAsync(Guid tenantId, Guid meetingId, Guid userId, bool isAdmin, string title, string? agenda, DateTime startUtc, int minutes, bool keepCancelledDates);
+    /// <summary>Emails everyone invited (team and guests) what changed, with a calendar update (.ics).</summary>
+    Task<int> SendChangeAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string changedBy, string hostEmail, TimeZoneInfo zone,
+        MeetingChangeKind kind, DateTime oldStartLocal, int oldMinutes, DateTime newStartLocal, int newMinutes, DateOnly? occurrenceDate, string? note);
 }
 
 public sealed class MeetingService : IMeetingService
@@ -189,13 +206,130 @@ public sealed class MeetingService : IMeetingService
         return await _email.SendAsync(emails, subject, html, new EmailCalendarPart("cancel.ics", ics, "CANCEL")) ? emails.Count : 0;
     }
 
+    public async Task<List<MeetingDto>> WithExceptionsAsync(Guid tenantId, IEnumerable<MeetingDto> meetings)
+    {
+        var list = meetings.ToList();
+        var ids = list.Where(m => m.Recurrence != MeetingRecurrence.None).Select(m => m.MeetingId).Distinct().ToList();
+        if (ids.Count == 0) return list;
+        List<MeetingExceptionDto> rows;
+        try
+        {
+            rows = await _db.QueryAsync("dbo.sahyog_Meeting_ListExceptions",
+                p => p.With("@TenantId", tenantId).AddText("@MeetingIds", string.Join(",", ids), -1),
+                r => new MeetingExceptionDto(r.G("MeetingId"), DateOnly.FromDateTime(r.GetDateTime(r.GetOrdinal("OccurrenceDate"))), r.B("IsCancelled"),
+                    r.UtcN("NewStartUtc"), r.IN("NewDurationMinutes")));
+        }
+        catch (SqlException ex) when (ex.Number == MissingProcedure) { return list; }
+        if (rows.Count == 0) return list;
+        var byMeeting = rows.ToLookup(x => x.MeetingId);
+        return list.Select(m => byMeeting.Contains(m.MeetingId) ? m with { Exceptions = byMeeting[m.MeetingId].ToList() } : m).ToList();
+    }
+
+    public async Task<MeetingChangeStatus> SetExceptionAsync(Guid tenantId, Guid meetingId, Guid userId, bool isAdmin, DateOnly occurrenceDate, bool cancel, DateTime? newStartUtc, int? newMinutes)
+    {
+        SqlParameter? result = null;
+        try
+        {
+            await _db.ExecAsync("dbo.sahyog_Meeting_SetException", p =>
+            {
+                p.With("@TenantId", tenantId).With("@MeetingId", meetingId).With("@UserId", userId).With("@IsAdmin", isAdmin)
+                 .With("@OccurrenceDate", occurrenceDate.ToDateTime(TimeOnly.MinValue)).With("@IsCancelled", cancel)
+                 .AddDateTime2("@NewStartUtc", newStartUtc).With("@NewDurationMinutes", (object?)newMinutes ?? DBNull.Value);
+                result = p.AddOutput("@Result", SqlDbType.Int);
+            });
+        }
+        catch (SqlException ex) when (ex.Number == MissingProcedure) { return MeetingChangeStatus.NeedsDatabase; }
+        return (MeetingChangeStatus)result!.OutInt();
+    }
+
+    public async Task<MeetingChangeStatus> UpdateAsync(Guid tenantId, Guid meetingId, Guid userId, bool isAdmin, string title, string? agenda, DateTime startUtc, int minutes, bool keepCancelledDates)
+    {
+        SqlParameter? result = null;
+        try
+        {
+            await _db.ExecAsync("dbo.sahyog_Meeting_Update", p =>
+            {
+                p.With("@TenantId", tenantId).With("@MeetingId", meetingId).With("@UserId", userId).With("@IsAdmin", isAdmin)
+                 .AddText("@Title", title, 150).AddText("@Agenda", string.IsNullOrWhiteSpace(agenda) ? null : agenda.Trim(), 2000)
+                 .AddDateTime2("@StartUtc", startUtc).With("@DurationMinutes", minutes).With("@KeepCancelledDates", keepCancelledDates);
+                result = p.AddOutput("@Result", SqlDbType.Int);
+            });
+        }
+        catch (SqlException ex) when (ex.Number == MissingProcedure) { return MeetingChangeStatus.NeedsDatabase; }
+        return (MeetingChangeStatus)result!.OutInt();
+    }
+
+    public async Task<int> SendChangeAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string changedBy, string hostEmail, TimeZoneInfo zone,
+        MeetingChangeKind kind, DateTime oldStartLocal, int oldMinutes, DateTime newStartLocal, int newMinutes, DateOnly? occurrenceDate, string? note)
+    {
+        var memberEmails = invitees.Where(i => i.UserId is not null && !string.IsNullOrEmpty(i.Email)).Select(i => i.Email!)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var guestEmails = invitees.Where(i => i.UserId is null && !string.IsNullOrEmpty(i.GuestEmail)).Select(i => i.GuestEmail!)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (memberEmails.Count + guestEmails.Count == 0) return 0;
+
+        string When(DateTime start, int minutes) => meeting.IsAllDay
+            ? $"{start:dddd, d MMMM yyyy} · All day"
+            : $"{start:dddd, d MMMM yyyy} · {start:h:mm tt} – {start.AddMinutes(minutes):h:mm tt}";
+        var repeat = MeetingCalendar.DescribeRepeat(meeting, zone);
+        var who = WebUtility.HtmlEncode(changedBy);
+        var (headline, subject) = kind switch
+        {
+            MeetingChangeKind.DateCancelled => ($"{who} cancelled one meeting in this series", $"Cancelled: {meeting.Title} · {oldStartLocal:ddd d MMM}"),
+            MeetingChangeKind.DateMoved => ($"{who} moved one meeting in this series", $"Moved: {meeting.Title} · {oldStartLocal:ddd d MMM} → {newStartLocal:ddd d MMM, h:mm tt}"),
+            MeetingChangeKind.Moved => ($"{who} moved this meeting", $"Moved: {meeting.Title} → {newStartLocal:ddd d MMM, h:mm tt}"),
+            _ => ($"{who} changed this meeting{(repeat is null ? "" : " (every meeting in the series)")}", $"Updated: {meeting.Title}")
+        };
+        var timeChanged = oldStartLocal != newStartLocal || oldMinutes != newMinutes;
+        var was = kind == MeetingChangeKind.DateCancelled || timeChanged
+            ? $"""<p style="margin:0 0 4px;color:#94A3B8;text-decoration:line-through">{WebUtility.HtmlEncode(When(oldStartLocal, oldMinutes))}</p>""" : "";
+        var now = kind == MeetingChangeKind.DateCancelled
+            ? """<p style="margin:0 0 18px;color:#B91C1C;font-weight:600">This date is cancelled. The other meetings in the series stay as they are.</p>"""
+            : $"""<p style="margin:0 0 18px;color:#0F172A;font-weight:600">{WebUtility.HtmlEncode(When(newStartLocal, newMinutes))}{(kind == MeetingChangeKind.Edited && repeat is not null ? " · " + WebUtility.HtmlEncode(repeat) : "")}</p>""";
+        var noteHtml = string.IsNullOrWhiteSpace(note) ? "" :
+            $"""<p style="margin:0 0 18px;padding:12px 14px;border-radius:14px;background:#EEF2FF;color:#3730A3;font-style:italic">“{WebUtility.HtmlEncode(note.Trim())}”</p>""";
+
+        // the planned start of that date (the calendar file names the date it replaces)
+        DateTime? recurrenceIdUtc = kind is MeetingChangeKind.DateMoved or MeetingChangeKind.DateCancelled && occurrenceDate is DateOnly d
+            ? MeetingCalendar.ToUtc(d.ToDateTime(TimeOnly.FromTimeSpan(MeetingCalendar.ToLocal(meeting.StartUtc, zone).TimeOfDay)), zone)
+            : null;
+        var cancelDate = kind == MeetingChangeKind.DateCancelled;
+
+        var sent = 0;
+        async Task SendTo(List<string> emails, string joinUrl)
+        {
+            if (emails.Count == 0) return;
+            var button = cancelDate ? "" :
+                $"""<a href="{joinUrl}" style="display:inline-block;padding:14px 28px;border-radius:999px;background:linear-gradient(110deg,#2563EB,#DB2777);color:#fff;text-decoration:none;font-weight:600">Join meeting</a>""";
+            var html = $"""
+                <div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:auto;padding:28px;border-radius:24px;background:#F8FAFC">
+                  <p style="margin:0 0 6px;color:{(cancelDate ? "#B91C1C" : "#2563EB")};font-size:13px;font-weight:600">{headline}</p>
+                  <h2 style="margin:0 0 12px;color:#0F172A">{WebUtility.HtmlEncode(meeting.Title)}</h2>
+                  {was}{now}{noteHtml}{button}
+                  <p style="margin:20px 0 0;color:#64748B;font-size:12px">The calendar file below updates Outlook or Google Calendar. ShankhNaad by CloudWheel Ltd</p>
+                </div>
+                """;
+            var ics = IcsBuilder.Build(meeting, meeting.HostName, hostEmail, emails, joinUrl, cancel: cancelDate, isChange: true,
+                recurrenceIdUtc: recurrenceIdUtc,
+                overrideStartUtc: kind == MeetingChangeKind.DateMoved ? MeetingCalendar.ToUtc(newStartLocal, zone) : null,
+                overrideMinutes: kind == MeetingChangeKind.DateMoved ? newMinutes : null);
+            if (await _email.SendAsync(emails, subject, html, new EmailCalendarPart(cancelDate ? "cancel.ics" : "update.ics", ics, cancelDate ? "CANCEL" : "REQUEST")))
+                sent += emails.Count;
+        }
+
+        await SendTo(memberEmails, RoomUrl(meeting.MeetingId));
+        if (meeting.GuestLinkEnabled) await SendTo(guestEmails, GuestUrl(meeting.GuestCode));
+        return sent;
+    }
+
     public Task<GuestMeetingDto?> GetByGuestCodeAsync(string code) =>
         _db.QueryFirstAsync("dbo.sahyog_Meeting_GetByGuestCode", p => p.AddText("@GuestCode", code, 16), r => new GuestMeetingDto(
             r.G("MeetingId"), r.G("TenantId"), r.S("Title"), r.Utc("StartUtc"), r.I("DurationMinutes"), r.S("RoomName"),
             r.B("LobbyEnabled"), r.B("CaptionsOn"), r.S("HostName"), r.S("TenantName"), r.S("TimeZoneId"), r.B("TenantActive")));
 
     /// <summary>Emails team members the room link and guests the guest link, each with a calendar invite (.ics).</summary>
-    public async Task SendInvitesAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string hostName, string hostEmail, TimeZoneInfo zone)
+    public async Task SendInvitesAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string hostName, string hostEmail, TimeZoneInfo zone,
+        Func<InviteeDto, string?>? respondUrl = null)
     {
         var memberEmails = invitees.Where(i => i.UserId is not null && !string.IsNullOrEmpty(i.Email)).Select(i => i.Email!).ToList();
         var guestEmails = invitees.Where(i => i.GuestEmail is not null).Select(i => i.GuestEmail!).ToList();
@@ -208,15 +342,21 @@ public sealed class MeetingService : IMeetingService
         var title = WebUtility.HtmlEncode(meeting.Title);
         var host = WebUtility.HtmlEncode(hostName);
 
-        async Task SendTo(List<string> emails, string joinUrl)
+        async Task SendTo(List<string> emails, string joinUrl, string? answerUrl)
         {
             if (emails.Count == 0) return;
+            // the person's own Accept / Maybe / Decline buttons (one click, no sign-in)
+            string Btn(string r, string text, string bg, string fg) =>
+                $"""<a href="{answerUrl}{(answerUrl!.Contains('?') ? "&" : "?")}r={r}" style="display:inline-block;margin:0 6px 6px 0;padding:10px 18px;border-radius:999px;background:{bg};color:{fg};text-decoration:none;font-weight:600;font-size:14px">{text}</a>""";
+            var answers = answerUrl is null ? "" :
+                $"""<p style="margin:20px 0 8px;color:#334155;font-size:13px;font-weight:600">Will you come?</p><div>{Btn("yes", "✓ Accept", "#DCFCE7", "#166534")}{Btn("maybe", "? Maybe", "#FEF3C7", "#92400E")}{Btn("no", "✕ Decline", "#FEE2E2", "#991B1B")}</div>""";
             var html = $"""
                 <div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:auto;padding:28px;border-radius:24px;background:#F8FAFC">
                   <p style="margin:0 0 6px;color:#475569;font-size:13px">{host} invited you to a meeting on ShankhNaad</p>
                   <h2 style="margin:0 0 12px;color:#0F172A">{title}</h2>
                   <p style="margin:0 0 20px;color:#334155">{WebUtility.HtmlEncode(when)}</p>
                   <a href="{joinUrl}" style="display:inline-block;padding:14px 28px;border-radius:999px;background:linear-gradient(110deg,#2563EB,#DB2777);color:#fff;text-decoration:none;font-weight:600">Join meeting</a>
+                  {answers}
                   <p style="margin:20px 0 0;color:#64748B;font-size:12px">ShankhNaad by CloudWheel Ltd</p>
                 </div>
                 """;
@@ -224,9 +364,83 @@ public sealed class MeetingService : IMeetingService
             await _email.SendAsync(emails, $"Invitation: {meeting.Title} · {startLocal:d MMM, h:mm tt}", html, new EmailCalendarPart("invite.ics", ics));
         }
 
-        await SendTo(memberEmails, RoomUrl(meeting.MeetingId));
-        if (meeting.GuestLinkEnabled)
-            await SendTo(guestEmails, GuestUrl(meeting.GuestCode));
+        if (respondUrl is null)
+        {
+            await SendTo(memberEmails, RoomUrl(meeting.MeetingId), null);
+            if (meeting.GuestLinkEnabled)
+                await SendTo(guestEmails, GuestUrl(meeting.GuestCode), null);
+            return;
+        }
+        // one email each, so everyone gets their own answer buttons
+        foreach (var i in invitees)
+        {
+            var email = i.UserId is not null ? i.Email : i.GuestEmail;
+            if (string.IsNullOrWhiteSpace(email)) continue;
+            if (i.UserId is null && !meeting.GuestLinkEnabled) continue;
+            await SendTo(new List<string> { email }, i.UserId is not null ? RoomUrl(meeting.MeetingId) : GuestUrl(meeting.GuestCode), respondUrl(i));
+        }
+    }
+
+    public async Task<RespondStatus> SetResponseAsync(Guid tenantId, Guid meetingId, Guid? userId, string? guestEmail, DateOnly? date, MeetingResponse response, string? note)
+    {
+        SqlParameter? result = null;
+        try
+        {
+            await _db.ExecAsync("dbo.sahyog_Meeting_SetResponse", p =>
+            {
+                p.With("@TenantId", tenantId).With("@MeetingId", meetingId)
+                 .With("@UserId", (object?)userId ?? DBNull.Value).AddText("@GuestEmail", guestEmail, 256)
+                 .With("@OccurrenceDate", date is DateOnly d ? (object)d.ToDateTime(TimeOnly.MinValue) : DBNull.Value)
+                 .With("@Response", (byte)response).AddText("@Note", string.IsNullOrWhiteSpace(note) ? null : note.Trim(), 300);
+                result = p.AddOutput("@Result", SqlDbType.Int);
+            });
+        }
+        catch (SqlException ex) when (ex.Number == MissingProcedure) { return RespondStatus.NeedsDatabase; }
+        return (RespondStatus)result!.OutInt();
+    }
+
+    public async Task<List<MeetingResponseDto>> GetResponsesAsync(Guid tenantId, IEnumerable<Guid> meetingIds)
+    {
+        var ids = meetingIds.Distinct().ToList();
+        if (ids.Count == 0) return new List<MeetingResponseDto>();
+        try
+        {
+            return await _db.QueryAsync("dbo.sahyog_Meeting_ListResponses",
+                p => p.With("@TenantId", tenantId).AddText("@MeetingIds", string.Join(",", ids), -1),
+                r =>
+                {
+                    var day = DateOnly.FromDateTime(r.GetDateTime(r.GetOrdinal("OccurrenceDate")));
+                    return new MeetingResponseDto(r.G("MeetingId"), r.S("PersonKey"), day.Year <= 1900 ? null : day,
+                        (MeetingResponse)Convert.ToByte(r["Response"]), r.SN("Note"), r.Utc("RespondedUtc"));
+                });
+        }
+        catch (SqlException ex) when (ex.Number == MissingProcedure) { return new List<MeetingResponseDto>(); }
+    }
+
+    public async Task<int> SendStartedAsync(MeetingDto meeting, IReadOnlyList<InviteeDto> invitees, string startedBy, string hostEmail, TimeZoneInfo zone, ISet<string> skip)
+    {
+        var sent = 0;
+        var who = WebUtility.HtmlEncode(startedBy);
+        var title = WebUtility.HtmlEncode(meeting.Title);
+        var people = invitees.Select(i => (Key: i.UserId is Guid u ? MeetingResponseDto.KeyOf(u) : MeetingResponseDto.KeyOf(i.GuestEmail ?? ""),
+                                           Email: i.UserId is not null ? i.Email : i.GuestEmail, Guest: i.UserId is null)).ToList();
+        if (!string.IsNullOrWhiteSpace(hostEmail)) people.Add((MeetingResponseDto.KeyOf(meeting.HostId), hostEmail, false));
+        foreach (var group in people.Where(p => !string.IsNullOrWhiteSpace(p.Email) && !skip.Contains(p.Key) && (!p.Guest || meeting.GuestLinkEnabled))
+                                    .GroupBy(p => p.Guest))
+        {
+            var emails = group.Select(p => p.Email!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var joinUrl = group.Key ? GuestUrl(meeting.GuestCode) : RoomUrl(meeting.MeetingId);
+            var html = $"""
+                <div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:auto;padding:28px;border-radius:24px;background:#F8FAFC">
+                  <p style="margin:0 0 6px;color:#16A34A;font-size:13px;font-weight:700">● Live now · {who} started the meeting</p>
+                  <h2 style="margin:0 0 18px;color:#0F172A">{title}</h2>
+                  <a href="{joinUrl}" style="display:inline-block;padding:14px 32px;border-radius:999px;background:linear-gradient(110deg,#16A34A,#2563EB);color:#fff;text-decoration:none;font-weight:700">Join now</a>
+                  <p style="margin:20px 0 0;color:#64748B;font-size:12px">ShankhNaad by CloudWheel Ltd</p>
+                </div>
+                """;
+            if (await _email.SendAsync(emails, $"Started: {meeting.Title} · join now", html)) sent += emails.Count;
+        }
+        return sent;
     }
 }
 
@@ -309,9 +523,13 @@ public static class MeetingCalendar
             if (m.Recurrence == MeetingRecurrence.None)
             {
                 if (firstLocal < toLocal && firstLocal + duration > fromLocal)
-                    yield return new MeetingOccurrenceDto(m, firstLocal, firstLocal + duration);
+                    yield return new MeetingOccurrenceDto(m, firstLocal, firstLocal + duration, DateOnly.FromDateTime(firstLocal));
                 continue;
             }
+
+            // single dates that were cancelled or moved (35_MeetingChanges.sql)
+            Dictionary<DateOnly, MeetingExceptionDto>? changed = null;
+            foreach (var x in m.Exceptions) (changed ??= new())[x.OccurrenceDate] = x;
 
             var lastLocal = m.RepeatUntilUtc is DateTime until ? ToLocal(until, zone) : DateTime.MaxValue;
             for (var day = fromLocal.Date; day < toLocal; day = day.AddDays(1))
@@ -319,9 +537,32 @@ public static class MeetingCalendar
                 var start = day + firstLocal.TimeOfDay;
                 if (start < firstLocal) continue;
                 if (start > lastLocal) break;
-                if (Occurs(m.Recurrence, m.RepeatDays, firstLocal.DayOfWeek, day.DayOfWeek))
-                    yield return new MeetingOccurrenceDto(m, start, start + duration);
+                if (!Occurs(m.Recurrence, m.RepeatDays, firstLocal.DayOfWeek, day.DayOfWeek)) continue;
+                var date = DateOnly.FromDateTime(day);
+                if (changed is not null && changed.ContainsKey(date)) continue;     // cancelled, or shown below at its new time
+                yield return new MeetingOccurrenceDto(m, start, start + duration, date);
+            }
+
+            // moved dates whose new time is inside the period (they may come from a date outside it)
+            if (changed is null) continue;
+            foreach (var x in changed.Values)
+            {
+                if (x.IsCancelled || x.NewStartUtc is not DateTime newStart || !IsOccurrenceDate(m, x.OccurrenceDate, zone)) continue;
+                var s = ToLocal(newStart, zone);
+                var e = s.AddMinutes(x.NewDurationMinutes ?? m.DurationMinutes);
+                if (s < toLocal && e > fromLocal) yield return new MeetingOccurrenceDto(m, s, e, x.OccurrenceDate, true);
             }
         }
+    }
+
+    /// <summary>Is this date one of the meeting's dates (as planned, before any single-date change)?</summary>
+    public static bool IsOccurrenceDate(MeetingDto m, DateOnly date, TimeZoneInfo zone)
+    {
+        var firstLocal = ToLocal(m.StartUtc, zone);
+        if (m.Recurrence == MeetingRecurrence.None) return date == DateOnly.FromDateTime(firstLocal);
+        var start = date.ToDateTime(TimeOnly.FromTimeSpan(firstLocal.TimeOfDay));
+        if (start < firstLocal) return false;
+        if (m.RepeatUntilUtc is DateTime u && start > ToLocal(u, zone)) return false;
+        return Occurs(m.Recurrence, m.RepeatDays, firstLocal.DayOfWeek, date.DayOfWeek);
     }
 }

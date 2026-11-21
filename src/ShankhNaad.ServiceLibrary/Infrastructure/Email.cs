@@ -124,7 +124,11 @@ public static class IcsBuilder
 {
     /// <param name="cancel">True: a cancellation (METHOD:CANCEL, same UID), so Outlook / Google Calendar remove the meeting
     /// (the whole series for a repeating meeting) from the attendees' calendars.</param>
-    public static string Build(MeetingDto meeting, string organizerName, string organizerEmail, IEnumerable<string> attendeeEmails, string joinUrl, bool cancel = false)
+    /// <param name="isChange">An update to a meeting people already have (a higher SEQUENCE, so calendars replace it).</param>
+    /// <param name="recurrenceIdUtc">Only one date of a repeating meeting (its planned start): the update / cancellation is for that date alone.</param>
+    /// <param name="overrideStartUtc">With recurrenceIdUtc: that date's new start (and overrideMinutes its new length).</param>
+    public static string Build(MeetingDto meeting, string organizerName, string organizerEmail, IEnumerable<string> attendeeEmails, string joinUrl, bool cancel = false,
+        bool isChange = false, DateTime? recurrenceIdUtc = null, DateTime? overrideStartUtc = null, int? overrideMinutes = null)
     {
         static string Esc(string s) => s.Replace("\\", "\\\\").Replace(";", "\\;").Replace(",", "\\,").Replace("\r", "").Replace("\n", "\\n");
         static string Utc(DateTime d) => DateTime.SpecifyKind(d, DateTimeKind.Utc).ToString("yyyyMMdd'T'HHmmss'Z'");
@@ -137,7 +141,19 @@ public static class IcsBuilder
         sb.Append("BEGIN:VEVENT\r\n");
         sb.Append($"UID:{meeting.MeetingId}@sahyog\r\n");
         sb.Append($"DTSTAMP:{Utc(DateTime.UtcNow)}\r\n");
-        if (cancel) sb.Append("SEQUENCE:1\r\nSTATUS:CANCELLED\r\n");
+        // each change gets a higher number than the last, so calendars apply them in order (minutes since 2024)
+        if (cancel || isChange) sb.Append($"SEQUENCE:{(int)((DateTime.UtcNow - new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMinutes)}\r\n");
+        if (cancel) sb.Append("STATUS:CANCELLED\r\n");
+        if (recurrenceIdUtc is DateTime rid)
+        {
+            // one date of the series: no repeat rule, just that date (moved, or cancelled)
+            var start = overrideStartUtc ?? rid;
+            sb.Append($"RECURRENCE-ID:{Utc(rid)}\r\n");
+            sb.Append($"DTSTART:{Utc(start)}\r\n");
+            sb.Append($"DTEND:{Utc(start.AddMinutes(overrideMinutes ?? meeting.DurationMinutes))}\r\n");
+        }
+        else
+        {
         sb.Append($"DTSTART:{Utc(meeting.StartUtc)}\r\n");
         sb.Append($"DTEND:{Utc(meeting.EndUtc)}\r\n");
         var until = meeting.RepeatUntilUtc is DateTime u ? $";UNTIL={Utc(u)}" : "";
@@ -149,6 +165,7 @@ public static class IcsBuilder
             var codes = new[] { "SU", "MO", "TU", "WE", "TH", "FR", "SA" };
             var byDay = string.Join(",", Enumerable.Range(0, 7).Where(i => (meeting.RepeatDays & (1 << i)) != 0).Select(i => codes[i]));
             sb.Append($"RRULE:FREQ=WEEKLY;BYDAY={byDay}{until}\r\n");
+        }
         }
         sb.Append($"SUMMARY:{Esc(cancel ? "Cancelled: " + meeting.Title : meeting.Title)}\r\n");
         sb.Append($"DESCRIPTION:{Esc((meeting.Agenda ?? "") + "\n\nJoin: " + joinUrl)}\r\n");

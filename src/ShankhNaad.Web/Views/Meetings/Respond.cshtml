@@ -1,0 +1,69 @@
+@model MeetingRespondVm
+@{
+    // Accept / Maybe / Decline from an invite email (no sign-in). Opening the link shows the choice and saves it with a
+    // small form post, so mail scanners that only open links never answer for anyone.
+    Layout = "_AuthLayout";
+    ViewData["Title"] = Model.Title.Length > 0 ? Model.Title : "Your answer";
+    string Word(MeetingResponse r) => r switch { MeetingResponse.Accepted => "Accept", MeetingResponse.Maybe => "Maybe", MeetingResponse.Declined => "Decline", _ => "" };
+    string Done(MeetingResponse r) => r switch { MeetingResponse.Accepted => "You accepted", MeetingResponse.Maybe => "You said maybe", MeetingResponse.Declined => "You declined", _ => "" };
+    var autoSave = Model.Error is null && !Model.Saved && Model.Chosen != MeetingResponse.None;
+}
+<div class="auth-card glass-strong sn-rsvp">
+    @if (Model.Error is not null)
+    {
+        <h2>@(Model.Title.Length > 0 ? Model.Title : "Meeting")</h2>
+        <p class="muted">@Model.Error</p>
+    }
+    else
+    {
+        <p class="sn-rsvp-from">@Model.HostName invited @(Model.PersonName.Length > 0 ? Model.PersonName : "you")</p>
+        <h2>@Model.Title</h2>
+        <p class="sn-rsvp-when">@Model.When</p>
+
+        @if (Model.Saved)
+        {
+            <p class="sn-rsvp-done @("r" + (int)Model.Chosen)"><i class="fa @(Model.Chosen == MeetingResponse.Declined ? "fa-times-circle" : Model.Chosen == MeetingResponse.Maybe ? "fa-question-circle" : "fa-check-circle")" aria-hidden="true"></i> @Done(Model.Chosen)@(Model.IsSeries ? " (every date)" : "").</p>
+            <p class="muted small">@Model.HostName can see your answer. Changed your mind? Pick another one below.</p>
+        }
+        else if (Model.Current != MeetingResponse.None)
+        {
+            <p class="muted small">Your answer now: <b>@Word(Model.Current)</b></p>
+        }
+
+        <form method="post" id="rsvpForm" class="sn-rsvp-btns">
+            <button type="submit" name="r" value="yes" class="sn-rsvp-btn yes @(Model.Current == MeetingResponse.Accepted ? "on" : "")"><i class="fa fa-check" aria-hidden="true"></i> Accept</button>
+            <button type="submit" name="r" value="maybe" class="sn-rsvp-btn maybe @(Model.Current == MeetingResponse.Maybe ? "on" : "")"><i class="fa fa-question" aria-hidden="true"></i> Maybe</button>
+            <button type="submit" name="r" value="no" class="sn-rsvp-btn no @(Model.Current == MeetingResponse.Declined ? "on" : "")"><i class="fa fa-times" aria-hidden="true"></i> Decline</button>
+        </form>
+        @if (Model.JoinUrl is not null)
+        {
+            <a class="sn-rsvp-join" href="@Model.JoinUrl"><i class="fa fa-video-camera" aria-hidden="true"></i> Open the meeting link</a>
+        }
+        @if (autoSave)
+        {
+            <p class="muted small" id="rsvpSaving">Saving your answer: <b>@Word(Model.Chosen)</b>…</p>
+            <script>
+                // the answer picked in the email is saved straight away (a person opening the link, not a mail scanner)
+                (function () {
+                    var f = document.getElementById("rsvpForm");
+                    var b = f.querySelector('button[value="@(Model.Chosen == MeetingResponse.Accepted ? "yes" : Model.Chosen == MeetingResponse.Maybe ? "maybe" : "no")"]');
+                    setTimeout(function () { if (f.requestSubmit) f.requestSubmit(b); else b.click(); }, 350);
+                })();
+            </script>
+        }
+    }
+</div>
+<style>
+    .sn-rsvp { max-width: 460px; text-align: center; }
+    .sn-rsvp h2 { margin: 6px 0 6px; }
+    .sn-rsvp-from { margin: 0; font-size: 13px; font-weight: 600; color: #2563EB; }
+    .sn-rsvp-when { margin: 0 0 16px; color: #475569; }
+    .sn-rsvp-done { margin: 0 0 6px; font-size: 18px; font-weight: 800; }
+    .sn-rsvp-done.r1 { color: #16A34A; } .sn-rsvp-done.r2 { color: #B45309; } .sn-rsvp-done.r3 { color: #DC2626; }
+    .sn-rsvp-btns { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin: 14px 0 12px; }
+    .sn-rsvp-btn { height: 44px; padding: 0 20px; border-radius: 999px; border: 0; cursor: pointer; font: 700 14.5px Roboto, system-ui, sans-serif; display: inline-flex; align-items: center; gap: 8px; transition: transform .15s ease, box-shadow .15s ease; }
+    .sn-rsvp-btn:hover { transform: translateY(-2px); }
+    .sn-rsvp-btn.yes { background: #DCFCE7; color: #166534; } .sn-rsvp-btn.maybe { background: #FEF3C7; color: #92400E; } .sn-rsvp-btn.no { background: #FEE2E2; color: #991B1B; }
+    .sn-rsvp-btn.on { box-shadow: 0 0 0 3px currentColor inset; }
+    .sn-rsvp-join { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; font-weight: 700; color: #2563EB; text-decoration: none; }
+</style>

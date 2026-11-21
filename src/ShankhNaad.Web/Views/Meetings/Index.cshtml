@@ -22,17 +22,28 @@
     // hover text: when, who set it up, and whether it's cancelled
     string EvTip(CalendarEventVm e) => $"{e.Title} · {(e.IsAllDay ? "all day" : e.StartLocal.ToString("HH:mm", inv) + "–" + e.EndLocal.ToString("HH:mm", inv))} · set up by {By(e)}"
         + (e.Repeat is null ? "" : $" · {e.Repeat}")
+        + (e.IsMoved ? " · moved (only this date)" : "")
+        + (CanMove(e) ? " · drag to move" : "")
         + (e.IsCancelled ? $" · CANCELLED{(e.CancelledBy is null ? "" : " by " + e.CancelledBy)}{(string.IsNullOrWhiteSpace(e.CancelNote) ? "" : ": " + e.CancelNote)}" : $" · {Status(e)}");
     const string TrashSvg = "<svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M4 7h16' /><path d='M10 11v6M14 11v6' /><path d='M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12' /><path d='M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7' /></svg>";
     const string BanSvg = "<svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' aria-hidden='true'><circle cx='12' cy='12' r='8.5' /><path d='M6 6l12 12' /></svg>";
+    // the host / an admin can move (drag and drop) and edit a meeting that hasn't ended and isn't cancelled
+    bool CanMove(CalendarEventVm e) => CanDel(e) && !e.IsCancelled && e.EndLocal > now;
+    const string PenSvg = "<svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M4 20h4L19 9l-4-4L4 16z' /><path d='M14 6l4 4' /></svg>";
     Microsoft.AspNetCore.Html.IHtmlContent ActBtn(CalendarEventVm e)
     {
         var k = ActKind(e);
-        if (k.Length == 0) return Microsoft.AspNetCore.Html.HtmlString.Empty;
-        var tip = ActTip(k, e);
         var t = System.Net.WebUtility.HtmlEncode(e.Title);
-        return new Microsoft.AspNetCore.Html.HtmlString($"<span class='sn-ev-del act-{k}' role='button' tabindex='0' data-act='{k}' data-del='{e.MeetingId}' data-title='{t}' data-series='{(e.Repeat is null ? "" : "1")}' data-tip='{tip}' aria-label='{tip}: {t}'>{(k == "cancel" ? BanSvg : TrashSvg)}</span>");
+        var edit = CanMove(e) ? $"<span class='sn-ev-edit' role='button' tabindex='0' data-edit='{e.MeetingId}' data-tip='Edit' aria-label='Edit {t}'>{PenSvg}</span>" : "";
+        if (k.Length == 0) return new Microsoft.AspNetCore.Html.HtmlString(edit);
+        var tip = k == "cancel" && e.Repeat is not null ? "Cancel this date or the series" : ActTip(k, e);
+        return new Microsoft.AspNetCore.Html.HtmlString(edit + $"<span class='sn-ev-del act-{k}' role='button' tabindex='0' data-act='{k}' data-del='{e.MeetingId}' data-title='{t}' data-series='{(e.Repeat is null ? "" : "1")}' data-tip='{tip}' aria-label='{tip}: {t}'>{(k == "cancel" ? BanSvg : TrashSvg)}</span>");
     }
+    // what a meeting on the calendar carries for edit / move / cancel-this-date (and drag and drop when it can move)
+    Microsoft.AspNetCore.Html.IHtmlContent EvData(CalendarEventVm e) => new Microsoft.AspNetCore.Html.HtmlString(
+        $"data-occ='{e.OccurrenceDate.ToString("yyyy-MM-dd", inv)}' data-start='{e.StartLocal.ToString("yyyy-MM-dd'T'HH:mm", inv)}' data-min='{(int)(e.EndLocal - e.StartLocal).TotalMinutes}'"
+        + $" data-series='{(e.Repeat is null ? "" : "1")}' data-allday='{(e.IsAllDay ? "1" : "")}'"
+        + (CanMove(e) ? " draggable='true' data-movable='1'" : ""));
     bool Weekend(DayOfWeek d) => d == DayOfWeek.Saturday || d == DayOfWeek.Sunday;
     var periodWord = Model.View switch { "day" => "Today", "month" => "This month", "agenda" => "These 7 days", "list" => "This week", _ => "This week" };
     string DurText(int m) => m < 60 ? $"{m} min" : m % 60 == 0 ? $"{m / 60} hr" : $"{m / 60} hr {m % 60} min";
@@ -151,7 +162,7 @@
                        refresh-color="#1D4ED8" add-color="#1D4ED8" delete-color="#DC2626" export-color="#15803D" print-color="#334155"
                        show-refresh="true" refresh-on-click="SN.reload()"
                        show-add="true" add-text="Schedule" add-on-click="SN.open('scheduleDialog')"
-                       show-edit="false"
+                       show-edit="true" edit-text="Edit" edit-color="#7C3AED" edit-on-click="snEditMeeting()"
                        show-delete="true" delete-text="Delete" delete-on-click="snCancelMeeting()"
                        show-import="false"
                        show-export="true" export-on-click="SN.exportTable('MeetingsTable','meetings')"
@@ -252,7 +263,7 @@
                                 <div class="sn-allday-cell" data-date="@d.Date.ToString("dd-MM-yyyy", inv)">
                                     @foreach (var ev in d.Events.Where(x => x.IsAllDay))
                                     {
-                                        <button type="button" class="sn-ad tone-@ev.Tone @(ev.ShowAsFree ? "free" : "busy") st-@Status(ev).ToLowerInvariant() @(ev.IsCancelled ? "is-cancelled" : "")" data-id="@ev.MeetingId"
+                                        <button type="button" class="sn-ad tone-@ev.Tone @(ev.ShowAsFree ? "free" : "busy") st-@Status(ev).ToLowerInvariant() @(ev.IsCancelled ? "is-cancelled" : "")" @EvData(ev) data-id="@ev.MeetingId"
                                                 title="@EvTip(ev) · @(ev.ShowAsFree ? "free" : "busy")">
                                             <i class="fa @(ev.IsCancelled ? "fa-calendar-times-o" : ev.ShowAsFree ? "fa-sun-o" : "fa-ban")" aria-hidden="true"></i> <span>@(ev.IsCancelled ? "Cancelled: " : "")@ev.Title</span>
                                         </button>
@@ -285,11 +296,11 @@
                                         var len = Math.Max(.4, endHr - HourOf(ev.StartLocal));
                                         var w = 100.0 / lanes;
                                         <button type="button" class="sn-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(len < .75 ? "short" : "") @(len < .5 ? "tiny" : "") @(ActKind(ev).Length > 0 ? "can-del" : "") @(ev.IsCancelled ? "is-cancelled" : "")"
-                                                data-id="@ev.MeetingId"
+                                                @EvData(ev) data-id="@ev.MeetingId"
                                                 style="top:calc(var(--hr) * @top.ToString("0.###", inv));height:calc(var(--hr) * @len.ToString("0.###", inv) - 3px);left:calc(@((lane * w).ToString("0.###", inv))% + 3px);width:calc(@w.ToString("0.###", inv)% - 6px)"
                                                 title="@EvTip(ev)">
                                             <b class="sn-ev-title">@if (st == "Live") { <em class="sn-ev-live">Live</em> }@if (ev.IsCancelled) { <em class="sn-ev-cancel">Cancelled</em> }@ev.Title</b>
-                                            <span class="sn-ev-time">@ev.StartLocal.ToString("HH:mm", inv) – @ev.EndLocal.ToString("HH:mm", inv)@if (ev.Repeat is not null) { <i class="fa fa-repeat sn-ev-rep" aria-hidden="true" title="@ev.Repeat"></i> }</span>
+                                            <span class="sn-ev-time">@ev.StartLocal.ToString("HH:mm", inv) – @ev.EndLocal.ToString("HH:mm", inv)@if (ev.Repeat is not null) { <i class="fa fa-repeat sn-ev-rep" aria-hidden="true" title="@ev.Repeat"></i> }@if (ev.IsMoved) { <i class="fa fa-share sn-ev-moved" aria-hidden="true" title="Moved (only this date)"></i> }</span>
                                             <span class="sn-ev-meta"><i class="fa fa-user-o" aria-hidden="true"></i> By @By(ev) · @ev.People.Count @(ev.People.Count == 1 ? "person" : "people")</span>
                                             @ActBtn(ev)
                                         </button>
@@ -328,7 +339,7 @@
                                 @foreach (var ev in shown)
                                 {
                                     var st = Status(ev);
-                                    <button type="button" class="sn-mev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsAllDay ? (ev.ShowAsFree ? "allday free" : "allday busy") : "") @(ev.IsCancelled ? "is-cancelled" : "")" data-id="@ev.MeetingId"
+                                    <button type="button" class="sn-mev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsAllDay ? (ev.ShowAsFree ? "allday free" : "allday busy") : "") @(ev.IsCancelled ? "is-cancelled" : "")" @EvData(ev) data-id="@ev.MeetingId"
                                             title="@EvTip(ev)">
                                         <i></i><span class="t">@(ev.IsAllDay ? "All day" : ev.StartLocal.ToString("HH:mm", inv))</span> <span class="n">@ev.Title</span>@if (!ev.IsHost && !ev.IsCancelled) { <span class="by">· @ev.HostName</span> }@if (ev.IsCancelled) { <span class="x">Cancelled</span> }
                                         @ActBtn(ev)
@@ -382,7 +393,7 @@
                                 {
                                     var st = Status(ev);
                                     var others = ev.People.Skip(1).ToList();
-                                    <article class="sn-ag-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsCancelled ? "is-cancelled" : "")" data-id="@ev.MeetingId" tabindex="0" title="@EvTip(ev)">
+                                    <article class="sn-ag-ev tone-@ev.Tone st-@st.ToLowerInvariant() @(ev.IsCancelled ? "is-cancelled" : "")" @EvData(ev) data-id="@ev.MeetingId" tabindex="0" title="@EvTip(ev)">
                                         <div class="sn-ag-time">
                                             @if (ev.IsAllDay) { <b>All day</b> }
                                             else { <b>@ev.StartLocal.ToString("HH:mm", inv)</b><small>@ev.EndLocal.ToString("HH:mm", inv)</small> }
@@ -394,6 +405,7 @@
                                                 @if (ev.IsCancelled) { <span class="sn-ag-badge cancelled">Cancelled</span> }
                                                 @if (st == "Ended") { <span class="sn-ag-badge ended">Ended</span> }
                                                 @if (ev.Repeat is not null) { <span class="sn-ag-badge rep"><i class="fa fa-repeat" aria-hidden="true"></i> @ev.Repeat</span> }
+                                                @if (ev.IsMoved) { <span class="sn-ag-badge moved"><i class="fa fa-share" aria-hidden="true"></i> Moved</span> }
                                             </div>
                                             <div class="sn-ag-meta">
                                                 <span><i class="fa fa-user-o" aria-hidden="true"></i> Set up by <b>@By(ev)</b></span>
@@ -830,6 +842,11 @@
         </div>
         <div class="sn-dlg-body sn-cancel-body">
             <p class="sn-cancel-what" id="cancelWhat"></p>
+            <div class="sn-scope" id="cancelScope" hidden role="radiogroup" aria-label="What to cancel">
+                <label class="sn-scope-opt"><input type="radio" name="cancelScope" value="date" checked /> <span><b id="cancelDateLabel">Only this meeting</b><small>The rest of the series stays</small></span></label>
+                <label class="sn-scope-opt"><input type="radio" name="cancelScope" value="series" /> <span><b>The whole series</b><small>Every meeting in it, marked cancelled</small></span></label>
+            </div>
+            <input type="hidden" name="date" id="cancelDate" />
             <label class="sn-field-label" for="cancelNote">Reason <span class="muted">(optional, everyone sees it)</span></label>
             <textarea id="cancelNote" name="note" class="sn-textarea" rows="3" maxlength="500" placeholder="e.g. Moving this to next week"></textarea>
             <label class="sn-ooo-noend sn-cancel-mail"><input type="checkbox" id="cancelMail" name="sendEmail" value="true" checked /> <span>Email everyone invited, with a calendar cancellation for Outlook / Google Calendar</span></label>
@@ -844,6 +861,78 @@
             </span>
         </div>
     </form>
+</dialog>
+
+@* ---- edit a meeting: the whole meeting (series), or only one date of a repeating meeting ---- *@
+<dialog id="editDialog" class="sn-dialog glass-strong sn-edit-dlg" aria-labelledby="editT">
+    <form method="post" asp-antiforgery="true" action="/meetings" id="editForm">
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title">
+                <span class="sn-dlg-icon sn-edit-ic"><i class="fa fa-pencil" aria-hidden="true"></i></span>
+                <div><h2 id="editT">Edit meeting</h2><p>Everyone invited gets an email with the change.</p></div>
+            </div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body sn-edit-body">
+            <div class="sn-scope" id="editScope" hidden role="radiogroup" aria-label="What to change">
+                <label class="sn-scope-opt"><input type="radio" name="scope" value="date" checked /> <span><b id="editDateLabel">Only this meeting</b><small>Move this date; the rest stays</small></span></label>
+                <label class="sn-scope-opt"><input type="radio" name="scope" value="series" /> <span><b>The whole series</b><small>Title, agenda and time of every meeting</small></span></label>
+            </div>
+            <input type="hidden" name="date" id="editOcc" />
+            <div class="sn-edit-series">
+                <label class="sn-field-label" for="editTitle">Title</label>
+                <input type="text" id="editTitle" name="title" class="sn-input sn-edit-in" maxlength="150" autocomplete="off" />
+                <label class="sn-field-label" for="editAgenda">Agenda</label>
+                <textarea id="editAgenda" name="agenda" class="sn-textarea" rows="3" maxlength="2000"></textarea>
+            </div>
+            @* the same rounded date picker and dropdowns as "Schedule a meeting" *@
+            <div class="sn-edit-when">
+                <div class="sn-edit-daybox">
+                    <modern-datepicker-with-label id="editDay" name="day" label="Date" required="true" value="@today.ToString("dd-MM-yyyy", inv)" height="42px"></modern-datepicker-with-label>
+                </div>
+                <div class="sn-edit-timebox">
+                    <modern-dropdown-with-label id="editTime" name="time" label="Start time" required="true" value="10:00" items="timeItems" menu-height="220px"></modern-dropdown-with-label>
+                </div>
+                <div class="sn-edit-timebox">
+                    <modern-dropdown-with-label id="editMin" name="minutes" label="Duration" value="60" items="durationItems" menu-height="220px"></modern-dropdown-with-label>
+                </div>
+            </div>
+            <p class="sn-edit-warn" id="editWarn" hidden><i class="fa fa-info-circle" aria-hidden="true"></i> Changing the series time puts dates that were moved one by one back on the series time.</p>
+            <label class="sn-field-label" for="editNote">Note for everyone <span class="muted">(optional)</span></label>
+            <input type="text" id="editNote" name="note" class="sn-input sn-edit-in" maxlength="300" placeholder="e.g. Clash with the client call" autocomplete="off" />
+            <label class="sn-ooo-noend sn-cancel-mail"><input type="checkbox" id="editMail" name="sendEmail" value="true" checked /> <span>Email everyone invited, with a calendar update</span></label>
+            <input type="hidden" name="sendEmail" value="false" />
+            <input type="hidden" name="returnUrl" id="editReturn" />
+        </div>
+        <div class="sn-dlg-foot">
+            <span style="display:flex;gap:10px;margin-left:auto">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="submit" class="cee-btn cee-btn-gradient" id="editSubmit"><i class="fa fa-check" aria-hidden="true"></i> <span>Save changes</span></button>
+            </span>
+        </div>
+    </form>
+</dialog>
+
+@* ---- confirm a drag and drop move ---- *@
+<dialog id="moveDialog" class="sn-dialog glass-strong sn-move-dlg" aria-labelledby="moveT">
+    <div class="sn-dlg-head">
+        <div class="sn-dlg-title">
+            <span class="sn-dlg-icon sn-edit-ic"><i class="fa fa-arrows" aria-hidden="true"></i></span>
+            <div><h2 id="moveT">Move meeting</h2><p id="moveSub">Everyone invited gets an email with the new time.</p></div>
+        </div>
+        <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+    </div>
+    <div class="sn-dlg-body sn-cancel-body">
+        <p class="sn-cancel-what" id="moveWhat"></p>
+        <div class="sn-move-fromto"><s id="moveFrom"></s><i class="fa fa-long-arrow-right" aria-hidden="true"></i><b id="moveTo"></b></div>
+        <label class="sn-ooo-noend sn-cancel-mail"><input type="checkbox" id="moveMail" checked /> <span>Email everyone invited, with a calendar update</span></label>
+    </div>
+    <div class="sn-dlg-foot">
+        <span style="display:flex;gap:10px;margin-left:auto">
+            <button type="button" class="cee-btn sn-btn-light" data-close>Keep it where it was</button>
+            <button type="button" class="cee-btn cee-btn-gradient" id="moveGo"><i class="fa fa-check" aria-hidden="true"></i> <span>Move</span></button>
+        </span>
+    </div>
 </dialog>
 
 <script id="busyJson" type="application/json">@Html.Raw(JsonSerializer.Serialize(busy))</script>
@@ -871,7 +960,7 @@
         }
         var SN_HERE = location.pathname + location.search;
         // what the Delete button / 🗑 may do with each meeting on screen: cancel | delete | hide | "" (not yours)
-        var SN_ACTS = @Html.Raw(JsonSerializer.Serialize(events.GroupBy(e => e.MeetingId).ToDictionary(g => g.Key.ToString(), g => new { act = ActKind(g.First()), series = g.First().Repeat is not null, title = g.First().Title, by = g.First().HostName })));
+        var SN_ACTS = @Html.Raw(JsonSerializer.Serialize(events.GroupBy(e => e.MeetingId).ToDictionary(g => g.Key.ToString(), g => new { act = ActKind(g.First()), series = g.First().Repeat is not null, title = g.First().Title, by = g.First().HostName, agenda = g.First().Agenda ?? "", allDay = g.First().IsAllDay, manage = CanDel(g.First()) && !g.First().IsCancelled, sStart = g.First().SeriesStartLocal.ToString("yyyy-MM-dd'T'HH:mm", inv), sMin = g.First().SeriesMinutes })));
         function snDeleteOne(id, title) {
             SN.confirmPost("/meetings/" + id + "/delete", {
                 title: "Delete meeting",
@@ -890,23 +979,39 @@
             });
         }
         // cancel: a window with an optional reason and "email everyone"
-        function snCancelOne(id, title, series) {
+        var snDayName = function (iso) { var p = iso.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }); };
+        function snCancelOne(id, title, series, occ) {
             var dlg = document.getElementById("cancelDialog");
             var form = document.getElementById("cancelForm");
+            var withDate = !!(series && occ);
             form.action = "/meetings/" + id + "/cancel";
+            form.dataset.id = id;
             document.getElementById("cancelReturn").value = SN_HERE;
-            document.getElementById("cancelT").textContent = series ? "Cancel the whole series" : "Cancel meeting";
-            document.getElementById("cancelWhat").textContent = series
-                ? "Cancel every meeting in the series “" + title + "”? Past and future meetings in it are all marked cancelled."
-                : "Cancel “" + title + "”?";
-            document.getElementById("cancelSubmit").lastElementChild.textContent = series ? "Cancel series" : "Cancel meeting";
+            document.getElementById("cancelDate").value = occ || "";
+            document.getElementById("cancelScope").hidden = !withDate;
+            if (withDate) {
+                document.getElementById("cancelDateLabel").textContent = "Only " + snDayName(occ);
+                form.querySelector('input[name="cancelScope"][value="date"]').checked = true;
+            }
+            var paint = function () {
+                var dateOnly = withDate && form.querySelector('input[name="cancelScope"]:checked').value === "date";
+                form.action = "/meetings/" + id + (dateOnly ? "/occurrence/cancel" : "/cancel");
+                document.getElementById("cancelT").textContent = dateOnly ? "Cancel one meeting" : series ? "Cancel the whole series" : "Cancel meeting";
+                document.getElementById("cancelWhat").textContent = dateOnly
+                    ? "Cancel “" + title + "” on " + snDayName(occ) + "? It's removed from everyone's calendar; the other dates stay."
+                    : series ? "Cancel every meeting in the series “" + title + "”? Past and future meetings in it are all marked cancelled."
+                    : "Cancel “" + title + "”?";
+                document.getElementById("cancelSubmit").lastElementChild.textContent = dateOnly ? "Cancel this date" : series ? "Cancel series" : "Cancel meeting";
+            };
+            form.querySelectorAll('input[name="cancelScope"]').forEach(function (r) { r.onchange = paint; });
+            paint();
             document.getElementById("cancelNote").value = "";
             document.getElementById("cancelMail").checked = true;
             dlg.showModal();
             setTimeout(function () { document.getElementById("cancelNote").focus(); }, 60);
         }
-        function snMeetingAct(act, id, title, series) {
-            if (act === "cancel") snCancelOne(id, title, series);
+        function snMeetingAct(act, id, title, series, occ) {
+            if (act === "cancel") snCancelOne(id, title, series, occ);
             else if (act === "hide") snHideOne(id, title);
             else if (act === "delete") snDeleteOne(id, title);
         }
@@ -915,7 +1020,121 @@
             if (!row) return;
             var a = SN_ACTS[row.MeetingId] || {};
             if (!a.act) { Sahyog.toast("Only " + (a.by || "the person who set it up") + " (or a workspace admin) can cancel this meeting. Once it's cancelled you can remove it from your calendar.", { kind: "info", title: "Not your meeting" }); return; }
-            snMeetingAct(a.act, row.MeetingId, row.Title, a.series);
+            var sel = document.querySelector('#viewSchedule .selected[data-id="' + row.MeetingId + '"]');
+            snMeetingAct(a.act, row.MeetingId, row.Title, a.series, sel ? sel.dataset.occ : null);
+        }
+
+        // ---- edit: the whole meeting (series), or only the selected date of a repeating meeting ----
+        var snPad = function (n) { return String(n).padStart(2, "0"); };
+        var snDur = function (x) { return x < 60 ? x + " min" : Math.floor(x / 60) + " h" + (x % 60 ? " " + (x % 60) + " min" : ""); };
+        function snEditOne(el) {
+            var id = el.getAttribute("data-id");
+            var a = SN_ACTS[id] || {};
+            if (!a.manage) { Sahyog.toast("Only " + (a.by || "the person who set it up") + " (or a workspace admin) can change this meeting.", { kind: "info", title: "Not your meeting" }); return; }
+            if (!el.getAttribute("data-movable")) { Sahyog.toast("This meeting has ended, so it can't be changed.", { kind: "info", title: "Edit meeting" }); return; }
+            var form = document.getElementById("editForm");
+            form.action = "/meetings/" + id + "/edit";
+            document.getElementById("editReturn").value = SN_HERE;
+            document.getElementById("editOcc").value = el.dataset.occ || "";
+            document.getElementById("editTitle").value = a.title || "";
+            document.getElementById("editAgenda").value = a.agenda || "";
+            document.getElementById("editNote").value = "";
+            document.getElementById("editMail").checked = true;
+            // the scheduler's own controls: flatpickr date, and dropdowns (picking an option sets the hidden value)
+            var pick = function (ddId, value) {
+                var $o = $("#" + ddId + " .ddwl-option").filter(function () { return String($(this).data("value")) === String(value); });
+                if (!$o.length) {
+                    // a time / length that isn't in the list (e.g. 18:15 or 50 minutes): add it, then pick it
+                    $("#" + ddId + " .ddwl-options").append('<li data-value="' + value + '" class="ddwl-option">' + (ddId === "editMin" ? snDur(+value) : value) + "</li>");
+                    $o = $("#" + ddId + " .ddwl-option").filter(function () { return String($(this).data("value")) === String(value); });
+                }
+                $o.first().trigger("click");
+                $("#" + ddId).removeClass("open");
+            };
+            var setWhen = function (iso, min) {
+                var p = iso.split(/[-T:]/), day = new Date(+p[0], +p[1] - 1, +p[2]);
+                var di = document.getElementById("editDay");
+                if (di && di._flatpickr) di._flatpickr.setDate(day, true); else if (di) di.value = snPad(day.getDate()) + "-" + snPad(day.getMonth() + 1) + "-" + day.getFullYear();
+                pick("editTime", iso.slice(11, 16));
+                pick("editMin", String(min));
+            };
+            var series = !!a.series, allDay = !!a.allDay;
+            var scope = document.getElementById("editScope");
+            scope.hidden = !series;
+            if (series) {
+                document.getElementById("editDateLabel").textContent = "Only " + snDayName(el.dataset.occ);
+                form.querySelector('input[name="scope"][value="date"]').checked = true;
+            }
+            form.querySelectorAll(".sn-edit-timebox").forEach(function (b) { b.hidden = allDay; });
+            var paint = function () {
+                var dateOnly = series && form.querySelector('input[name="scope"]:checked').value === "date";
+                form.querySelector(".sn-edit-series").hidden = dateOnly;
+                document.getElementById("editTitle").required = !dateOnly;
+                document.getElementById("editT").textContent = dateOnly ? "Move one meeting" : series ? "Edit the whole series" : "Edit meeting";
+                var dl = document.querySelector('label[for="editDay"]');
+                if (dl) dl.firstChild.nodeValue = dateOnly || !series ? "Date" : "First date of the series";
+                document.getElementById("editWarn").hidden = dateOnly || !series;
+                if (dateOnly) setWhen(el.dataset.start, +el.dataset.min); else if (series) setWhen(a.sStart, a.sMin); else setWhen(el.dataset.start, +el.dataset.min);
+            };
+            form.querySelectorAll('input[name="scope"]').forEach(function (r) { r.onchange = paint; });
+            paint();
+            document.getElementById("editDialog").showModal();
+            setTimeout(function () { (series ? form.querySelector('input[name="scope"]:checked') : document.getElementById("editTitle")).focus(); }, 60);
+        }
+        // the Edit / Cancel buttons in a meeting's details window
+        window.snMeetingFromDetails = function (act, id, occ, series) {
+            var el = document.querySelector('#viewSchedule [data-id="' + id + '"][data-occ="' + occ + '"]') || document.querySelector('#viewSchedule [data-id="' + id + '"][data-occ]');
+            var a = SN_ACTS[id] || {};
+            if (act === "edit") {
+                if (el) snEditOne(el); else Sahyog.toast("Open the meeting's week or day to edit it.", { kind: "info", title: "Edit meeting" });
+            } else if (act === "cancel") {
+                snMeetingAct(a.act || "cancel", id, a.title || "this meeting", series, occ);
+            }
+        };
+        function snEditMeeting() {
+            var row = SN.need("MeetingsTable", "a meeting (click it in the calendar)");
+            if (!row) return;
+            var el = document.querySelector('#viewSchedule .selected[data-id="' + row.MeetingId + '"]') || document.querySelector('#viewSchedule [data-id="' + row.MeetingId + '"][data-occ]');
+            if (!el) { Sahyog.toast("Open the meeting in Day, Week, Month or Agenda view to edit it.", { kind: "info", title: "Edit meeting" }); return; }
+            snEditOne(el);
+        }
+
+        // ---- drag and drop: confirm, then move (a repeating meeting: only that date) ----
+        function snAskMove(el, newStartIso) {
+            var id = el.getAttribute("data-id"), a = SN_ACTS[id] || {};
+            var allDay = el.dataset.allday === "1";
+            if (newStartIso === el.dataset.start || (allDay && newStartIso.slice(0, 10) === el.dataset.start.slice(0, 10))) return;
+            var p = newStartIso.split(/[-T:]/), when = new Date(+p[0], +p[1] - 1, +p[2], +p[3] || 0, +p[4] || 0);
+            if ((allDay ? new Date(+p[0], +p[1] - 1, +p[2] + 1) : when) < new Date(Date.now() - 60000)) {
+                Sahyog.toast("That time has already passed. Drop it on a time from now on.", { kind: "warn", title: "Can't move there" }); return;
+            }
+            var fmt = function (iso) {
+                var q = iso.split(/[-T:]/), d = new Date(+q[0], +q[1] - 1, +q[2], +q[3] || 0, +q[4] || 0);
+                return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) + (allDay ? " · all day" : ", " + snPad(d.getHours()) + ":" + snPad(d.getMinutes()));
+            };
+            document.getElementById("moveWhat").textContent = "Move “" + (a.title || "this meeting") + "”" + (a.series ? " (only this date; the rest of the series stays)" : "") + "?";
+            document.getElementById("moveFrom").textContent = fmt(el.dataset.start);
+            document.getElementById("moveTo").textContent = fmt(newStartIso);
+            document.getElementById("moveMail").checked = true;
+            var dlg = document.getElementById("moveDialog"), go = document.getElementById("moveGo");
+            go.disabled = false; go.lastElementChild.textContent = "Move";
+            go.onclick = async function () {
+                go.disabled = true; go.lastElementChild.textContent = "Moving…";
+                var fd = new FormData();
+                fd.append("date", el.dataset.occ || ""); fd.append("start", newStartIso); fd.append("minutes", el.dataset.min || "");
+                fd.append("sendEmail", document.getElementById("moveMail").checked ? "true" : "false");
+                try {
+                    var r = await fetch("/meetings/" + id + "/move", { method: "POST", body: fd, headers: { "RequestVerificationToken": Sahyog.antiforgery ? Sahyog.antiforgery() : "" }, credentials: "same-origin" });
+                    var d = await r.json().catch(function () { return {}; });
+                    if (!r.ok) throw new Error(d.error || "The meeting wasn't moved. Try again.");
+                    dlg.close();
+                    if (window.SN && SN.nav) SN.nav.refresh(); else location.reload();
+                } catch (err) {
+                    go.disabled = false; go.lastElementChild.textContent = "Move";
+                    Sahyog.toast(err.message, { kind: "warn", title: "Not moved" });
+                }
+            };
+            dlg.showModal();
         }
         // every ended meeting in this period that you may delete
         var SN_ENDED = @Html.Raw(JsonSerializer.Serialize(events.Where(e => Status(e) == "Ended" && CanDel(e)).Select(e => e.MeetingId).Distinct()));
@@ -933,15 +1152,23 @@
         // (caught first, so the click doesn't also select the meeting or open "Schedule")
         ["click", "keydown"].forEach(function (type) {
             document.addEventListener(type, function (e) {
+                var pen = e.target.closest && e.target.closest(".sn-ev-edit");
+                if (pen) {
+                    if (type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault(); e.stopPropagation();
+                    snEditOne(pen.closest("[data-id]"));
+                    return;
+                }
                 var b = e.target.closest && e.target.closest(".sn-ev-del");
                 if (!b) return;
                 if (type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
                 e.preventDefault(); e.stopPropagation();
-                snMeetingAct(b.getAttribute("data-act") || "delete", b.getAttribute("data-del"), b.getAttribute("data-title"), b.getAttribute("data-series") === "1");
+                var host = b.closest("[data-occ]");
+                snMeetingAct(b.getAttribute("data-act") || "delete", b.getAttribute("data-del"), b.getAttribute("data-title"), b.getAttribute("data-series") === "1", host ? host.dataset.occ : null);
             }, true);
         });
-        document.addEventListener("pointerdown", function (e) { if (e.target.closest && e.target.closest(".sn-ev-del")) e.stopPropagation(); }, true);
-        document.addEventListener("dblclick", function (e) { if (e.target.closest && e.target.closest(".sn-ev-del")) { e.preventDefault(); e.stopPropagation(); } }, true);
+        document.addEventListener("pointerdown", function (e) { if (e.target.closest && e.target.closest(".sn-ev-del, .sn-ev-edit")) e.stopPropagation(); }, true);
+        document.addEventListener("dblclick", function (e) { if (e.target.closest && e.target.closest(".sn-ev-del, .sn-ev-edit")) { e.preventDefault(); e.stopPropagation(); } }, true);
         // ---- moving between periods and views: the content leaves, the page slides, the calendar rises in ----
         function snNav(url, dir, evt) {
             if (evt) evt.preventDefault();
@@ -1029,8 +1256,10 @@
                 var id = $(this).data("id");
                 $("#MeetingsTable tr[data-row-id='" + id + "']").trigger("click");
                 mark(id);
+                // a click opens the meeting's details (who's coming, answers, Join / Start); joining is only by its Join button
+                if (window.snShowDetails) snShowDetails(String(id), this.dataset.occ || "");
             });
-            $cal.on("dblclick", ".sn-ev, .sn-mev, .sn-ad, .sn-ag-ev", function (e) { e.stopPropagation(); if (!$(this).hasClass("is-cancelled")) SN.go("/meetings/room/" + $(this).data("id")); });
+            $cal.on("dblclick", ".sn-ev, .sn-mev, .sn-ad, .sn-ag-ev", function (e) { e.stopPropagation(); });
             // agenda: "Schedule one" on an empty day
             $cal.on("click", "[data-ag-add]", function (e) { e.stopPropagation(); openDay(this.closest(".sn-ag-day")); });
             $("#MeetingsTable").on("table:select", function (e, row) { mark(row.MeetingId); });
@@ -1097,6 +1326,38 @@
                     snOpenSchedule(this.dataset.date, slotAt(this, e.clientY).time, false, true);
                 });
 
+                // drag a meeting to another time (or day column); a ghost shows where it will land
+                var ghost = null, dragEl = null;
+                var hideGhost = function () { if (ghost) { ghost.remove(); ghost = null; } };
+                $cal.on("dragstart", ".sn-ev[data-movable]", function (e) {
+                    dragEl = this;
+                    var dt = e.originalEvent.dataTransfer;
+                    dt.effectAllowed = "move";
+                    try { dt.setData("text/plain", this.dataset.id); } catch (x) { }
+                    this.classList.add("sn-dragging");
+                });
+                $cal.on("dragend", ".sn-ev[data-movable]", function () { this.classList.remove("sn-dragging"); hideGhost(); dragEl = null; });
+                $cal.on("dragover", ".sn-sched-col", function (e) {
+                    if (!dragEl || !dragEl.classList.contains("sn-ev")) return;
+                    e.preventDefault();
+                    e.originalEvent.dataTransfer.dropEffect = "move";
+                    var s = slotAt(this, e.originalEvent.clientY);
+                    if (!ghost) { ghost = document.createElement("div"); ghost.className = "sn-drop-ghost"; }
+                    if (ghost.parentNode !== this) this.appendChild(ghost);
+                    ghost.style.top = s.top + "px";
+                    ghost.style.height = Math.max(18, (+dragEl.dataset.min / 60) * hr() - 2) + "px";
+                    ghost.textContent = s.time + " · " + (SN_ACTS[dragEl.dataset.id] || {}).title;
+                });
+                $cal.on("dragleave", ".sn-sched-col", function (e) { if (!this.contains(e.originalEvent.relatedTarget)) hideGhost(); });
+                $cal.on("drop", ".sn-sched-col", function (e) {
+                    if (!dragEl || !dragEl.classList.contains("sn-ev")) return;
+                    e.preventDefault();
+                    var s = slotAt(this, e.originalEvent.clientY), p = this.dataset.date.split("-");
+                    var el = dragEl;
+                    hideGhost();
+                    snAskMove(el, p[2] + "-" + p[1] + "-" + p[0] + "T" + s.time);
+                });
+
                 // open at the current time, the first meeting, or 08:00
                 var first = $cal.find(".sn-now")[0] || $cal.find(".sn-ev")[0];
                 scroller.style.scrollBehavior = "auto";
@@ -1123,9 +1384,37 @@
             $cal.on("keydown", ".sn-mcell", function (e) {
                 if (e.target === this && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openDay(this); }
             });
+
+            // drag a meeting to another day (month view, and the all-day row of week / day): it keeps its time
+            var dayDrag = null;
+            $cal.on("dragstart", ".sn-mev[data-movable], .sn-ad[data-movable]", function (e) {
+                dayDrag = this;
+                e.originalEvent.dataTransfer.effectAllowed = "move";
+                try { e.originalEvent.dataTransfer.setData("text/plain", this.dataset.id); } catch (x) { }
+                this.classList.add("sn-dragging");
+            });
+            $cal.on("dragend", ".sn-mev[data-movable], .sn-ad[data-movable]", function () {
+                this.classList.remove("sn-dragging"); dayDrag = null;
+                $cal.find(".sn-drop-day").removeClass("sn-drop-day");
+            });
+            $cal.on("dragover", ".sn-mcell, .sn-allday-cell", function (e) {
+                if (!dayDrag) return;
+                e.preventDefault();
+                e.originalEvent.dataTransfer.dropEffect = "move";
+                if (!this.classList.contains("sn-drop-day")) { $cal.find(".sn-drop-day").removeClass("sn-drop-day"); this.classList.add("sn-drop-day"); }
+            });
+            $cal.on("dragleave", ".sn-mcell, .sn-allday-cell", function (e) { if (!this.contains(e.originalEvent.relatedTarget)) this.classList.remove("sn-drop-day"); });
+            $cal.on("drop", ".sn-mcell, .sn-allday-cell", function (e) {
+                if (!dayDrag) return;
+                e.preventDefault();
+                this.classList.remove("sn-drop-day");
+                var p = this.dataset.date.split("-"), el = dayDrag;
+                snAskMove(el, p[2] + "-" + p[1] + "-" + p[0] + "T" + el.dataset.start.slice(11, 16));
+            });
         })();
     </script>
     <script src="~/js/meetings.js" asp-append-version="true"></script>
+    <script src="~/js/meeting-details.js" asp-append-version="true"></script>
     <script>
         // ---- the red "now" line moves by itself; the page refreshes quietly so Live / Upcoming / Ended stay right ----
         (function () {

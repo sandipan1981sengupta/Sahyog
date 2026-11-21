@@ -452,6 +452,11 @@
         }
     };
     hub.on("IncomingCall", showIncoming);
+    // someone answered one of my meetings (Accept / Maybe / Decline): a short note, on any page
+    hub.on("MeetingResponse", (meetingId, who, answer) => {
+        const word = answer === 1 ? "accepted" : answer === 2 ? "said maybe to" : "declined";
+        Sahyog.toast?.(`${who} ${word} your meeting.`, { kind: answer === 3 ? "warn" : "info", title: "Meeting answer" });
+    });
     /** Shows the ringing card for a meeting reminder (js/meeting-alerts.js). */
     Sahyog.ringMeeting = (call) => {
         const id = String(call.meetingId).toLowerCase();
@@ -540,7 +545,8 @@
         if (quiet) return;
         ding();
 
-        const preview = /^\[\[gif:/.test(m.body || "") ? "🎞️ Sent a GIF" : m.body ? (m.body.length > 90 ? m.body.slice(0, 90) + "…" : m.body) : "Sent a file";
+        const plain = (m.body || "").replace(/^\[\[fwd:[^\]\r\n]*\]\]\n?/, "↪ ");   // forwarded: "↪ text"
+        const preview = /^\[\[gif:/.test(plain.replace(/^↪ /, "")) ? "🎞️ Sent a GIF" : plain ? (plain.length > 90 ? plain.slice(0, 90) + "…" : plain) : "Sent a file";
         const av = document.createElement("span");
         av.className = `avatar av-38 tone-${m.senderTone}`;
         av.dataset.user = m.senderId;

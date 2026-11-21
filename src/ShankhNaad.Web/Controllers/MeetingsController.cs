@@ -1,5 +1,8 @@
+using System.Globalization;
 using System.Net.Mail;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using ShankhNaad.DtoLibrary;
@@ -173,7 +176,8 @@ public sealed class MeetingsController : Controller
             var invitees = await _meetings.GetInviteesAsync(tenantId, meeting.MeetingId);
             var host = await _users.GetByIdAsync(Me);
             if (saved is not null && host is not null)
-                await _meetings.SendInvitesAsync(saved, invitees, host.DisplayName, host.Email, zone);
+                await _meetings.SendInvitesAsync(saved, invitees, host.DisplayName, host.Email, zone,
+                    i => RespondUrl(tenantId, saved.MeetingId, i));   // each person gets their own Accept / Maybe / Decline buttons
         }
 
         TempData["ScheduledId"] = meeting.MeetingId.ToString();
@@ -275,6 +279,7 @@ public sealed class MeetingsController : Controller
         var nowUtc = DateTime.UtcNow;
         var nowLocal = MeetingCalendar.ToLocal(nowUtc, zone);
         var (meetings, _) = await _meetings.ListForUserAsync(tenantId, Me, nowUtc.AddHours(-1), nowUtc.AddHours(26));
+        meetings = await _meetings.WithExceptionsAsync(tenantId, meetings);     // moved / cancelled single dates
         var me = Me.ToString();
         var list = MeetingCalendar.Expand(meetings.Where(m => !m.IsInstant && !m.IsAllDay && !m.IsCancelled), nowLocal.AddMinutes(-10), nowLocal.AddHours(26), zone)
             .Where(o => o.EndLocal > nowLocal)
@@ -439,6 +444,427 @@ public sealed class MeetingsController : Controller
         return Redirect(SafeReturn(returnUrl));
     }
 
+    // ---------- changing a meeting after it's scheduled: cancel one date · move (drag and drop) · edit ----------
+
+    // "2026-11-23" (links, the calendar) or "23-11-2026" (the date picker)
+    private static readonly string[] DayFormats = { "yyyy-MM-dd", "dd-MM-yyyy" };
+    private static DateOnly? ParseIsoDay(string? s) =>
+        DateOnly.TryParseExact((s ?? "").Trim(), DayFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
+    private static TimeOnly? ParseTime(string? s) =>
+        TimeOnly.TryParseExact((s ?? "").Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var t) ? t : null;
+
+    /// <summary>Where one date of a meeting is now: its planned start, or where it was moved to.</summary>
+    private static (DateTime StartLocal, int Minutes) CurrentDate(MeetingDto m, DateOnly date, TimeZoneInfo zone)
+    {
+        var x = m.Exceptions.FirstOrDefault(e => e.OccurrenceDate == date);
+        if (x?.NewStartUtc is DateTime moved) return (MeetingCalendar.ToLocal(moved, zone), x.NewDurationMinutes ?? m.DurationMinutes);
+        var first = MeetingCalendar.ToLocal(m.StartUtc, zone);
+        return (date.ToDateTime(TimeOnly.FromTimeSpan(first.TimeOfDay)), m.DurationMinutes);
+    }
+
+    private string? ChangeError(MeetingChangeStatus status) => status switch
+    {
+        MeetingChangeStatus.Ok => null,
+        MeetingChangeStatus.NotFound => "That meeting was deleted.",
+        MeetingChangeStatus.NotAllowed => "Only the person who set up the meeting (or a workspace admin) can change it.",
+        MeetingChangeStatus.Cancelled => "That meeting is cancelled, so it can't be changed.",
+        MeetingChangeStatus.NotRepeating => "That isn't a repeating meeting.",
+        _ => "Changing meetings needs a database update (35_MeetingChanges.sql). Ask your administrator."
+    };
+
+    /// <summary>The changed meeting, its people and the emails. Everyone's open calendar refreshes.</summary>
+    private async Task<int> AfterChangeAsync(Guid tenantId, Guid id, TimeZoneInfo zone, bool sendEmail, MeetingChangeKind kind,
+        DateTime oldStart, int oldMinutes, DateTime newStart, int newMinutes, DateOnly? date, string? note)
+    {
+        var mailed = 0;
+        var meeting = await _meetings.GetAsync(tenantId, id);
+        if (meeting is not null && sendEmail)
+        {
+            var invitees = await _meetings.GetInviteesAsync(tenantId, id);
+            var me = await _users.GetByIdAsync(Me);
+            var host = meeting.HostId == Me ? me : await _users.GetByIdAsync(meeting.HostId);
+            mailed = await _meetings.SendChangeAsync(meeting, invitees, me?.DisplayName ?? User.DisplayName(), host?.Email ?? "", zone,
+                kind, oldStart, oldMinutes, newStart, newMinutes, date, string.IsNullOrWhiteSpace(note) ? null : note.Trim());
+        }
+        await _hub.Clients.Group(ChatHub.TenantGroup(tenantId)).SendAsync("MeetingsChanged", id.ToString());
+        return mailed;
+    }
+
+    private static string Mailed(int n) => n > 0 ? $" {n} {(n == 1 ? "person was" : "people were")} emailed." : "";
+
+    /// <summary>Cancels one date of a repeating meeting (it disappears from everyone's calendar; everyone invited is emailed).</summary>
+    [HttpPost("{id:guid}/occurrence/cancel")]
+    public async Task<IActionResult> CancelDate(Guid id, string? date, string? note, bool? sendEmail, string? returnUrl)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var meeting = await _meetings.GetAsync(tenantId, id);
+        if (meeting is null) { TempData["MeetingMsg"] = "That meeting was already deleted."; return Redirect(SafeReturn(returnUrl)); }
+        if (meeting.Recurrence == MeetingRecurrence.None) return await Cancel(id, note, sendEmail, returnUrl);   // a one-off meeting: cancel it
+
+        var limits = (await _tenants.GetLimitsAsync(tenantId))!;
+        var zone = MeetingCalendar.FindZone(limits.TimeZoneId);
+        meeting = (await _meetings.WithExceptionsAsync(tenantId, new[] { meeting }))[0];
+        if (ParseIsoDay(date) is not DateOnly day || !MeetingCalendar.IsOccurrenceDate(meeting, day, zone))
+        {
+            TempData["MeetingError"] = "That date isn't one of this meeting's dates.";
+            return Redirect(SafeReturn(returnUrl));
+        }
+        var (start, minutes) = CurrentDate(meeting, day, zone);
+        var status = await _meetings.SetExceptionAsync(tenantId, id, Me, User.IsInRole(AppRoles.TenantAdmin), day, true, null, null);
+        if (ChangeError(status) is string err) { TempData["MeetingError"] = err; return Redirect(SafeReturn(returnUrl)); }
+
+        var mailed = await AfterChangeAsync(tenantId, id, zone, sendEmail != false, MeetingChangeKind.DateCancelled, start, minutes, start, minutes, day, note);
+        TempData["MeetingMsg"] = $"“{meeting.Title}” on {start:ddd d MMM} is cancelled. The rest of the series stays." + Mailed(mailed);
+        return Redirect(SafeReturn(returnUrl));
+    }
+
+    /// <summary>
+    /// Moves a meeting (drag and drop on the calendar). A repeating meeting: only that date moves.
+    /// start = the new local start "yyyy-MM-ddTHH:mm"; date = the date it was planned for (repeating meetings).
+    /// </summary>
+    [HttpPost("{id:guid}/move")]
+    public async Task<IActionResult> Move(Guid id, string? date, string? start, int? minutes, bool? sendEmail, string? note,
+        [FromServices] IOutOfOfficeService ooo)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var meeting = await _meetings.GetAsync(tenantId, id);
+        if (meeting is null) return NotFound(new { error = "That meeting was deleted." });
+        if (meeting.IsCancelled) return BadRequest(new { error = "That meeting is cancelled, so it can't be moved." });
+        if (meeting.HostId != Me && !User.IsInRole(AppRoles.TenantAdmin)) return BadRequest(new { error = "Only the person who set up the meeting (or a workspace admin) can move it." });
+
+        var limits = (await _tenants.GetLimitsAsync(tenantId))!;
+        var zone = MeetingCalendar.FindZone(limits.TimeZoneId);
+        meeting = (await _meetings.WithExceptionsAsync(tenantId, new[] { meeting }))[0];
+        if (!DateTime.TryParseExact((start ?? "").Trim(), "yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var newStart))
+            return BadRequest(new { error = "Pick where to move it." });
+
+        var series = meeting.Recurrence != MeetingRecurrence.None;
+        var day = series ? ParseIsoDay(date) : DateOnly.FromDateTime(MeetingCalendar.ToLocal(meeting.StartUtc, zone));
+        if (day is not DateOnly occ || !MeetingCalendar.IsOccurrenceDate(meeting, occ, zone)) return BadRequest(new { error = "That date isn't one of this meeting's dates." });
+        var (oldStart, oldMinutes) = CurrentDate(meeting, occ, zone);
+        var newMinutes = Math.Clamp(minutes ?? oldMinutes, 15, meeting.IsAllDay ? 1440 : limits.MaxMeetingMinutes);
+        if (meeting.IsAllDay) { newStart = newStart.Date; newMinutes = 1440; }        // an all-day meeting moves to another day
+
+        var nowLocal = MeetingCalendar.ToLocal(DateTime.UtcNow, zone);
+        if (newStart == oldStart && newMinutes == oldMinutes) return Json(new { ok = true, message = "Nothing changed." });
+        if ((meeting.IsAllDay ? newStart.AddDays(1) : newStart) < nowLocal.AddMinutes(-1)) return BadRequest(new { error = "That time has already passed. Drop it on a time from now on." });
+
+        var newStartUtc = MeetingCalendar.ToUtc(newStart, zone);
+        if ((await ooo.ListAsync(tenantId)).TryGetValue(Me.ToString(), out var away))
+        {
+            var awayFrom = away.StartUtc ?? away.SinceUtc;
+            if (awayFrom < newStartUtc.AddMinutes(newMinutes) && (away.UntilUtc is null || away.UntilUtc > newStartUtc))
+                return BadRequest(new { error = "You're out of office then. Pick another time, or change your out of office first." });
+        }
+
+        var isAdmin = User.IsInRole(AppRoles.TenantAdmin);
+        var status = series
+            ? await _meetings.SetExceptionAsync(tenantId, id, Me, isAdmin, occ, false, newStartUtc, newMinutes == meeting.DurationMinutes ? null : newMinutes)
+            : await _meetings.UpdateAsync(tenantId, id, Me, isAdmin, meeting.Title, meeting.Agenda, newStartUtc, newMinutes, true);
+        if (ChangeError(status) is string err) return BadRequest(new { error = err });
+
+        var mailed = await AfterChangeAsync(tenantId, id, zone, sendEmail != false, series ? MeetingChangeKind.DateMoved : MeetingChangeKind.Moved,
+            oldStart, oldMinutes, newStart, newMinutes, occ, note);
+        var msg = $"“{meeting.Title}” moved to {newStart:ddd d MMM}{(meeting.IsAllDay ? "" : $", {newStart:HH:mm}")}{(series ? " (only this date)" : "")}." + Mailed(mailed);
+        TempData["MeetingMsg"] = msg;
+        return Json(new { ok = true, message = msg });
+    }
+
+    /// <summary>
+    /// Edits a meeting. scope "series": title, agenda, first date, start time, length of the meeting (every date of a repeating one).
+    /// scope "date": only one date of a repeating meeting moves (date = the date it was planned for).
+    /// </summary>
+    [HttpPost("{id:guid}/edit")]
+    public async Task<IActionResult> Edit(Guid id, string? scope, string? date, string? title, string? agenda, string? day, string? time, int? minutes,
+        bool? sendEmail, string? note, string? returnUrl, [FromServices] IOutOfOfficeService ooo)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        IActionResult Fail(string error) { TempData["MeetingError"] = error; return Redirect(SafeReturn(returnUrl)); }
+
+        var meeting = await _meetings.GetAsync(tenantId, id);
+        if (meeting is null) return Fail("That meeting was deleted.");
+        if (meeting.IsCancelled) return Fail("That meeting is cancelled, so it can't be changed.");
+        var series = meeting.Recurrence != MeetingRecurrence.None;
+        var onlyDate = series && scope == "date";
+        var limits = (await _tenants.GetLimitsAsync(tenantId))!;
+        var zone = MeetingCalendar.FindZone(limits.TimeZoneId);
+        meeting = (await _meetings.WithExceptionsAsync(tenantId, new[] { meeting }))[0];
+
+        if (ParseIsoDay(day) is not DateOnly newDay) return Fail("Pick a date.");
+        var newTime = meeting.IsAllDay ? TimeOnly.MinValue : ParseTime(time);
+        if (newTime is null) return Fail("Pick a start time.");
+        var newMinutes = meeting.IsAllDay ? 1440 : minutes ?? meeting.DurationMinutes;
+        if (newMinutes < 15) return Fail("A meeting is at least 15 minutes.");
+        if (newMinutes > limits.MaxMeetingMinutes && !meeting.IsAllDay)
+            return Fail($"Your {limits.PlanName} plan allows meetings up to {limits.MaxMeetingMinutes} minutes.");
+        var newStart = newDay.ToDateTime(newTime.Value);
+        var nowLocal = MeetingCalendar.ToLocal(DateTime.UtcNow, zone);
+        var newStartUtc = MeetingCalendar.ToUtc(newStart, zone);
+
+        DateTime oldStart; int oldMinutes; DateOnly? occ = null;
+        if (onlyDate)
+        {
+            if (ParseIsoDay(date) is not DateOnly d || !MeetingCalendar.IsOccurrenceDate(meeting, d, zone)) return Fail("That date isn't one of this meeting's dates.");
+            occ = d;
+            (oldStart, oldMinutes) = CurrentDate(meeting, d, zone);
+        }
+        else
+        {
+            oldStart = MeetingCalendar.ToLocal(meeting.StartUtc, zone);
+            oldMinutes = meeting.DurationMinutes;
+        }
+        var timeChanged = newStart != oldStart || newMinutes != oldMinutes;
+        // a single meeting (or one date) can't move into the past; a series may keep a first date that has passed
+        if (timeChanged && (!series || onlyDate) && newStart < nowLocal.AddMinutes(-1)) return Fail("That time has already passed. Pick a time from now on.");
+        if (timeChanged && (await ooo.ListAsync(tenantId)).TryGetValue(Me.ToString(), out var away) && (!series || onlyDate))
+        {
+            var awayFrom = away.StartUtc ?? away.SinceUtc;
+            if (awayFrom < newStartUtc.AddMinutes(newMinutes) && (away.UntilUtc is null || away.UntilUtc > newStartUtc))
+                return Fail("You're out of office then. Pick another time, or change your out of office first.");
+        }
+
+        var isAdmin = User.IsInRole(AppRoles.TenantAdmin);
+        MeetingChangeStatus status;
+        if (onlyDate)
+            status = await _meetings.SetExceptionAsync(tenantId, id, Me, isAdmin, occ!.Value, false, newStartUtc, newMinutes == meeting.DurationMinutes ? null : newMinutes);
+        else
+        {
+            var cleanTitle = (title ?? "").Trim();
+            if (cleanTitle.Length == 0) return Fail("Give the meeting a title.");
+            if (cleanTitle.Length > 150) cleanTitle = cleanTitle[..150];
+            var cleanAgenda = (agenda ?? "").Trim();
+            if (cleanAgenda.Length > 2000) cleanAgenda = cleanAgenda[..2000];
+            // moved to another weekday: the single-date changes no longer line up, so they're all cleared
+            status = await _meetings.UpdateAsync(tenantId, id, Me, isAdmin, cleanTitle, cleanAgenda, newStartUtc, newMinutes, newStart.DayOfWeek == oldStart.DayOfWeek);
+        }
+        if (ChangeError(status) is string err) return Fail(err);
+
+        var kind = onlyDate ? MeetingChangeKind.DateMoved : MeetingChangeKind.Edited;
+        var mailed = await AfterChangeAsync(tenantId, id, zone, sendEmail != false, kind, oldStart, oldMinutes, newStart, newMinutes, occ, note);
+        TempData["MeetingMsg"] = (onlyDate ? $"“{meeting.Title}” on {oldStart:ddd d MMM} moved to {newStart:ddd d MMM, HH:mm} (only this date)."
+            : series ? "The whole series is updated." + (timeChanged ? " Dates that had been moved one by one are back on the series time." : "")
+            : "Meeting updated.") + Mailed(mailed);
+        return Redirect(SafeReturn(returnUrl));
+    }
+
+    // ---------- who's coming: the details window, and Accept / Maybe / Decline ----------
+
+    private IDataProtector RsvpProtector =>
+        HttpContext.RequestServices.GetRequiredService<IDataProtectionProvider>().CreateProtector("ShankhNaad.MeetingResponse.v1");
+
+    /// <summary>A person's own answer link for emails (works without signing in): /meetings/respond/{token}.</summary>
+    private string? RespondUrl(Guid tenantId, Guid meetingId, InviteeDto i)
+    {
+        var key = i.UserId is Guid u ? MeetingResponseDto.KeyOf(u) : string.IsNullOrWhiteSpace(i.GuestEmail) ? null : MeetingResponseDto.KeyOf(i.GuestEmail);
+        if (key is null) return null;
+        var token = RsvpProtector.Protect($"{tenantId:N}|{meetingId:N}|{key}");
+        var root = (HttpContext.RequestServices.GetRequiredService<IOptions<AppOptions>>().Value.PublicBaseUrl ?? "").TrimEnd('/');
+        if (root.Length == 0) root = $"{Request.Scheme}://{Request.Host}";
+        return $"{root}/meetings/respond/{token}";
+    }
+
+    private static MeetingResponse ParseAnswer(string? r) => (r ?? "").Trim().ToLowerInvariant() switch
+    {
+        "yes" or "accept" or "accepted" or "1" => MeetingResponse.Accepted,
+        "maybe" or "tentative" or "2" => MeetingResponse.Maybe,
+        "no" or "decline" or "declined" or "3" => MeetingResponse.Declined,
+        _ => MeetingResponse.None
+    };
+
+    /// <summary>Everything the details window shows for one date of a meeting (date null: a one-off meeting, or the next date of a series).</summary>
+    private async Task<MeetingDetailsVm?> BuildDetailsAsync(Guid tenantId, Guid id, string? date, bool fullPage)
+    {
+        var meeting = await _meetings.GetAsync(tenantId, id);
+        if (meeting is null) return null;
+        var limits = (await _tenants.GetLimitsAsync(tenantId))!;
+        var zone = MeetingCalendar.FindZone(limits.TimeZoneId);
+        meeting = (await _meetings.WithExceptionsAsync(tenantId, new[] { meeting }))[0];
+        var nowLocal = MeetingCalendar.ToLocal(DateTime.UtcNow, zone);
+        var series = meeting.Recurrence != MeetingRecurrence.None;
+
+        DateOnly occ;
+        if (ParseIsoDay(date) is DateOnly asked && MeetingCalendar.IsOccurrenceDate(meeting, asked, zone)) occ = asked;
+        else if (!series) occ = DateOnly.FromDateTime(MeetingCalendar.ToLocal(meeting.StartUtc, zone));
+        else
+        {
+            // a series: the next date that isn't over yet (or its first date)
+            var next = MeetingCalendar.Expand(new[] { meeting }, nowLocal.Date, nowLocal.Date.AddDays(400), zone)
+                .Where(o => o.EndLocal > nowLocal).OrderBy(o => o.StartLocal).FirstOrDefault();
+            occ = next?.OccurrenceDate ?? DateOnly.FromDateTime(MeetingCalendar.ToLocal(meeting.StartUtc, zone));
+        }
+        var (start, minutes) = CurrentDate(meeting, occ, zone);
+        var end = start.AddMinutes(minutes);
+        var dateCancelled = meeting.Exceptions.Any(x => x.OccurrenceDate == occ && x.IsCancelled);
+
+        var invitees = await _meetings.GetInviteesAsync(tenantId, id);
+        var answers = await _meetings.GetResponsesAsync(tenantId, new[] { id });
+        var online = _presence.OnlineUsers(tenantId);
+        var people = new List<MeetingPersonVm>
+        {
+            new(MeetingResponseDto.KeyOf(meeting.HostId), meeting.HostName, Names.Initials(meeting.HostName), meeting.HostTone, false, true,
+                online.Contains(meeting.HostId.ToString()), MeetingResponse.Accepted, null, null)
+        };
+        foreach (var i in invitees)
+        {
+            if (i.UserId is Guid u)
+            {
+                if (u == meeting.HostId) continue;
+                var key = MeetingResponseDto.KeyOf(u);
+                var a = MeetingResponseDto.For(answers, key, occ);
+                var name = i.DisplayName ?? "Team member";
+                people.Add(new(key, name, Names.Initials(name), i.AvatarTone ?? 0, false, false, online.Contains(u.ToString()),
+                    a?.Response ?? MeetingResponse.None, a?.Note, a?.RespondedUtc));
+            }
+            else if (!string.IsNullOrWhiteSpace(i.GuestEmail))
+            {
+                var key = MeetingResponseDto.KeyOf(i.GuestEmail);
+                var a = MeetingResponseDto.For(answers, key, occ);
+                people.Add(new(key, i.GuestEmail, Names.Initials(i.GuestEmail), 7, true, false, false, a?.Response ?? MeetingResponse.None, a?.Note, a?.RespondedUtc));
+            }
+        }
+        var me = MeetingResponseDto.KeyOf(Me);
+        var isHost = meeting.HostId == Me;
+        var invited = people.Any(p => p.Key == me && !p.IsHost);
+        var status = meeting.IsCancelled || dateCancelled ? "Cancelled" : end <= nowLocal ? "Ended" : start <= nowLocal || _rooms.Count(id) > 0 ? "Live" : "Upcoming";
+        return new MeetingDetailsVm
+        {
+            MeetingId = id,
+            Title = meeting.Title,
+            Agenda = meeting.Agenda,
+            OccurrenceDate = occ,
+            StartLocal = start,
+            EndLocal = end,
+            IsAllDay = meeting.IsAllDay,
+            Repeat = MeetingCalendar.DescribeRepeat(meeting, zone),
+            IsMoved = meeting.Exceptions.Any(x => x.OccurrenceDate == occ && x.NewStartUtc is not null),
+            DateCancelled = dateCancelled,
+            IsCancelled = meeting.IsCancelled,
+            CancelledBy = meeting.CancelledByName,
+            CancelNote = meeting.CancelNote,
+            HostName = meeting.HostName,
+            IsHost = isHost,
+            CanManage = (isHost || User.IsInRole(AppRoles.TenantAdmin)) && !meeting.IsCancelled && end > nowLocal,
+            Status = status,
+            InRoom = _rooms.Count(id),
+            MyResponse = people.FirstOrDefault(p => p.Key == me && !p.IsHost)?.Response ?? MeetingResponse.None,
+            CanRespond = invited && !meeting.IsCancelled && !dateCancelled && end > nowLocal,
+            People = people,
+            FullPage = fullPage
+        };
+    }
+
+    /// <summary>The details window (the calendar loads it when you click a meeting).</summary>
+    [HttpGet("{id:guid}/details")]
+    public async Task<IActionResult> Details(Guid id, string? date)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var vm = await BuildDetailsAsync(tenantId, id, date, false);
+        if (vm is null) return Content("<p class=\"muted\" style=\"padding:24px\">That meeting was deleted.</p>", "text/html");
+        Response.Headers.CacheControl = "no-store";
+        return PartialView("_MeetingDetails", vm);
+    }
+
+    /// <summary>The same details as a page of its own (e.g. a link from an email).</summary>
+    [HttpGet("{id:guid}/view")]
+    public async Task<IActionResult> ViewPage(Guid id, string? date)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var vm = await BuildDetailsAsync(tenantId, id, date, true);
+        if (vm is null) { TempData["MeetingError"] = "That meeting was deleted."; return RedirectToAction(nameof(Index)); }
+        ViewData["Section"] = "meetings";
+        ViewData["Title"] = vm.Title;
+        return View("Details", vm);
+    }
+
+    /// <summary>My answer from the app. scope "date" (only that date of a series) or "all".</summary>
+    [HttpPost("{id:guid}/respond")]
+    public async Task<IActionResult> Respond(Guid id, string? response, string? date, string? scope, string? note)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var answer = ParseAnswer(response);
+        if (answer == MeetingResponse.None) return BadRequest(new { error = "Pick Accept, Maybe or Decline." });
+        var meeting = await _meetings.GetAsync(tenantId, id);
+        if (meeting is null) return BadRequest(new { error = "That meeting was deleted." });
+        DateOnly? day = meeting.Recurrence != MeetingRecurrence.None && scope == "date" ? ParseIsoDay(date) : null;
+        var status = await _meetings.SetResponseAsync(tenantId, id, Me, null, day, answer, note);
+        if (status != RespondStatus.Ok)
+            return BadRequest(new { error = status switch
+            {
+                RespondStatus.NotInvited => "You're not invited to this meeting.",
+                RespondStatus.NeedsDatabase => "Answers need a database update (36_MeetingResponses.sql). Ask your administrator.",
+                _ => "That meeting was deleted."
+            } });
+        // the host sees it straight away (their calendar / details refresh)
+        await _hub.Clients.User(meeting.HostId.ToString()).SendAsync("MeetingResponse", id.ToString(), User.DisplayName(), (int)answer);
+        await _hub.Clients.Group(ChatHub.TenantGroup(tenantId)).SendAsync("MeetingsChanged", id.ToString());
+        var word = answer switch { MeetingResponse.Accepted => "accepted", MeetingResponse.Maybe => "said maybe to", _ => "declined" };
+        return Json(new { ok = true, message = $"You {word} “{meeting.Title}”{(day is DateOnly d ? $" on {d:ddd d MMM}" : meeting.Recurrence != MeetingRecurrence.None ? " (every date)" : "")}." });
+    }
+
+    /// <summary>
+    /// Accept / Maybe / Decline from an invite email (no sign-in: the link carries a signed token).
+    /// The page saves the answer with a small form post (so link checkers that only open links don't answer for you).
+    /// </summary>
+    [AllowAnonymous, HttpGet("respond/{token}")]
+    public async Task<IActionResult> RespondLink(string token, string? r) => View("Respond", await RespondVmAsync(token, ParseAnswer(r), false));
+
+    [AllowAnonymous, HttpPost("respond/{token}"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> RespondLinkSave(string token, string? r) => View("Respond", await RespondVmAsync(token, ParseAnswer(r), true));
+
+    private async Task<MeetingRespondVm> RespondVmAsync(string token, MeetingResponse chosen, bool save)
+    {
+        string[] parts;
+        try { parts = RsvpProtector.Unprotect(token).Split('|', 3); }
+        catch { return new MeetingRespondVm { Token = token, Error = "This answer link isn't valid. Ask the person who invited you for a new invitation." }; }
+        if (parts.Length != 3 || !Guid.TryParse(parts[0], out var tenantId) || !Guid.TryParse(parts[1], out var meetingId))
+            return new MeetingRespondVm { Token = token, Error = "This answer link isn't valid." };
+        var key = parts[2];
+        var meeting = await _meetings.GetAsync(tenantId, meetingId);
+        if (meeting is null) return new MeetingRespondVm { Token = token, Error = "This meeting was deleted." };
+        if (meeting.IsCancelled) return new MeetingRespondVm { Token = token, Title = meeting.Title, HostName = meeting.HostName, Error = "This meeting was cancelled." };
+
+        var limits = (await _tenants.GetLimitsAsync(tenantId))!;
+        var zone = MeetingCalendar.FindZone(limits.TimeZoneId);
+        var startLocal = MeetingCalendar.ToLocal(meeting.StartUtc, zone);
+        var repeat = MeetingCalendar.DescribeRepeat(meeting, zone);
+        var when = (meeting.IsAllDay ? $"{startLocal:dddd, d MMMM yyyy} · All day" : $"{startLocal:dddd, d MMMM yyyy} · {startLocal:h:mm tt} – {startLocal.AddMinutes(meeting.DurationMinutes):h:mm tt}")
+                   + (repeat is null ? "" : " · " + repeat);
+        Guid? userId = key.StartsWith("g:", StringComparison.Ordinal) ? null : Guid.TryParse(key, out var u) ? u : null;
+        var guest = userId is null && key.StartsWith("g:", StringComparison.Ordinal) ? key[2..] : null;
+        var invitees = await _meetings.GetInviteesAsync(tenantId, meetingId);
+        var person = userId is Guid uid ? invitees.FirstOrDefault(i => i.UserId == uid)?.DisplayName : guest;
+
+        var saved = false;
+        string? error = null;
+        if (save && chosen != MeetingResponse.None)
+        {
+            var status = await _meetings.SetResponseAsync(tenantId, meetingId, userId, guest, null, chosen, null);
+            saved = status == RespondStatus.Ok;
+            if (!saved) error = status == RespondStatus.NotInvited ? "You're no longer invited to this meeting." : "Your answer couldn't be saved. Try again later.";
+            if (saved)
+            {
+                await _hub.Clients.User(meeting.HostId.ToString()).SendAsync("MeetingResponse", meetingId.ToString(), person ?? "Someone", (int)chosen);
+                await _hub.Clients.Group(ChatHub.TenantGroup(tenantId)).SendAsync("MeetingsChanged", meetingId.ToString());
+            }
+        }
+        var current = MeetingResponseDto.For(await _meetings.GetResponsesAsync(tenantId, new[] { meetingId }), key, null)?.Response ?? MeetingResponse.None;
+        return new MeetingRespondVm
+        {
+            Token = token,
+            Title = meeting.Title,
+            When = when,
+            HostName = meeting.HostName,
+            PersonName = person ?? "",
+            IsSeries = repeat is not null,
+            Current = current,
+            Chosen = chosen,
+            Saved = saved,
+            Error = error,
+            JoinUrl = userId is not null ? _meetings.RoomUrl(meetingId) : meeting.GuestLinkEnabled ? _meetings.GuestUrl(meeting.GuestCode) : null
+        };
+    }
+
     // ---------- files shared in a call's chat ----------
 
     /// <summary>Shares a file in the call's chat (everyone in the call sees it; it counts toward storage).</summary>
@@ -551,6 +977,7 @@ public sealed class MeetingsController : Controller
         var rangeFromUtc = MeetingCalendar.ToUtc(fromLocal < nowLocal.AddHours(-2) ? fromLocal : nowLocal.AddHours(-2), zone);
         var rangeToUtc = MeetingCalendar.ToUtc(toLocal > nowLocal.AddDays(1) ? toLocal : nowLocal.AddDays(1), zone);
         var (meetings, invitees) = await _meetings.ListForUserAsync(tenantId, me, rangeFromUtc, rangeToUtc);
+        meetings = await _meetings.WithExceptionsAsync(tenantId, meetings);     // moved / cancelled single dates
         var inviteesByMeeting = invitees.ToLookup(i => i.MeetingId);   // (replaced below if the "next meeting" hint needs a later period)
         // calls and "Meet now" meetings are on the Calls page; the calendar shows them only while someone is in them
         meetings = meetings.Where(m => !m.IsInstant || _rooms.Count(m.MeetingId) > 0).ToList();
@@ -578,7 +1005,11 @@ public sealed class MeetingsController : Controller
                 Repeat = MeetingCalendar.DescribeRepeat(m, zone),
                 IsCancelled = m.IsCancelled,
                 CancelledBy = m.CancelledByName,
-                CancelNote = m.CancelNote
+                CancelNote = m.CancelNote,
+                OccurrenceDate = o.OccurrenceDate ?? DateOnly.FromDateTime(o.StartLocal),
+                IsMoved = o.IsMoved,
+                SeriesStartLocal = MeetingCalendar.ToLocal(m.StartUtc, zone),
+                SeriesMinutes = m.DurationMinutes
             };
         }
 
@@ -595,6 +1026,7 @@ public sealed class MeetingsController : Controller
         {
             var afterFrom = toLocal > nowLocal ? toLocal : nowLocal;
             var (later, laterInvitees) = await _meetings.ListForUserAsync(tenantId, me, MeetingCalendar.ToUtc(afterFrom, zone), MeetingCalendar.ToUtc(afterFrom.AddDays(183), zone));
+            later = await _meetings.WithExceptionsAsync(tenantId, later);
             var laterOcc = MeetingCalendar.Expand(later.Where(m => !m.IsCancelled && (!m.IsInstant || _rooms.Count(m.MeetingId) > 0)), afterFrom, afterFrom.AddDays(183), zone)
                 .Where(o => o.StartLocal >= afterFrom).OrderBy(o => o.StartLocal).FirstOrDefault();
             if (laterOcc is not null)

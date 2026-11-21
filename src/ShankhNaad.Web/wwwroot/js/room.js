@@ -59,7 +59,14 @@
             disableInviteFunctions: true,
             disableProfile: true,
             resolution: cfg.maxHeight,
-            constraints: { video: { height: { ideal: cfg.maxHeight, max: cfg.maxHeight, min: 180 } } },
+            // the plan's height (e.g. 720p) at up to 30 frames a second; never below 180p
+            constraints: { video: { height: { ideal: cfg.maxHeight, max: cfg.maxHeight, min: 180 }, frameRate: { ideal: 30, max: 30 } } },
+            // sharper picture for the same bandwidth: VP9 first on computers (VP8 / H.264 when a browser can't),
+            // and on phones the codecs their chips handle best. Jitsi's own bitrates and adaptive quality stay as they are.
+            videoQuality: {
+                codecPreferenceOrder: ["VP9", "VP8", "H264"],
+                mobileCodecPreferenceOrder: ["VP8", "H264", "VP9"]
+            },
             disableShortcuts: false,
             enableNoisyMicDetection: true,
             // Jitsi's own pop-ups ("Sandy would like to participate", "… joined", lobby requests …) are off.
@@ -1007,6 +1014,7 @@
         const shown = new Set();            // message ids on screen (my reply also comes back over the live connection)
         const isCallCard = (b) => /^\[\[call:/.test(b || "");
         const isGifCard = (b) => /^\[\[gif:/.test(b || "");
+        const unFwd = (b) => (b || "").replace(/^\[\[fwd:([^\]\r\n]*)\]\]\n?/, "↪ ");   // forwarded: "↪ text"
         const when = (iso) => {
             const d = new Date(iso);
             if (isNaN(d)) return "";
@@ -1040,7 +1048,7 @@
         }
         const msgHtml = (m) => {
             const mine = String(m.senderId).toLowerCase() === me;
-            const body = isCallCard(m.body) ? "&#128222; Call" : isGifCard(m.body) ? "&#127902;&#65039; GIF" : esc(m.body || "").replace(/\n/g, "<br>");
+            const body = isCallCard(m.body) ? "&#128222; Call" : isGifCard(unFwd(m.body).replace(/^↪ /, "")) ? "&#127902;&#65039; GIF" : esc(unFwd(m.body)).replace(/\n/g, "<br>");
             const file = m.attachment ? `<a class="mx-file" href="${esc(m.attachment.url)}" target="_blank" rel="noopener">&#128206; ${esc(m.attachment.fileName)}</a>` : "";
             const who = !mine && open && !open.isDirect ? `<small class="mx-who">${esc(m.senderName)}</small>` : "";
             const where = m.fromGroup && open && open.isDirect ? `<small class="mx-who">in ${esc(m.fromGroup)}</small>` : "";
@@ -1112,7 +1120,8 @@
             if (c) { c.lastUtc = m.sentUtc; toTop(c); paintList(); }
             else if (loaded) loadChats();                                       // a chat that's new to the list
             if (!mine && !(open && sameId(open.id, m.channelId) && visible())) {
-                const preview = isGifCard(m.body) ? "🎞️ Sent a GIF" : m.body ? (m.body.length > 80 ? m.body.slice(0, 80) + "…" : m.body) : "Sent a file";
+                const plain = unFwd(m.body);
+                const preview = isGifCard(plain.replace(/^↪ /, "")) ? "🎞️ Sent a GIF" : plain ? (plain.length > 80 ? plain.slice(0, 80) + "…" : plain) : "Sent a file";
                 notice(m.fromGroup ? `${m.senderName} · ${m.fromGroup}` : m.senderName, preview, "msg",
                     { text: "Open", onClick: () => openMessages(m.channelId) });
             }

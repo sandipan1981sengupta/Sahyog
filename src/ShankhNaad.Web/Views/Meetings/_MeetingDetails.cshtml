@@ -1,0 +1,130 @@
+@model MeetingDetailsVm
+@{
+    // The details of one date of a meeting: when, who set it up, Join / Start, my answer, and everyone's answers.
+    // Shown in the calendar's window (click a meeting) and as a page of its own (/meetings/{id}/view).
+    var m = Model;
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+    var when = m.IsAllDay
+        ? $"{m.StartLocal:dddd, d MMMM yyyy} · All day"
+        : $"{m.StartLocal:dddd, d MMMM yyyy} · {m.StartLocal.ToString("HH:mm", inv)} – {m.EndLocal.ToString("HH:mm", inv)}";
+    var accepted = m.People.Where(p => p.Response == MeetingResponse.Accepted).ToList();
+    var maybe = m.People.Where(p => p.Response == MeetingResponse.Maybe).ToList();
+    var declined = m.People.Where(p => p.Response == MeetingResponse.Declined).ToList();
+    var waiting = m.People.Where(p => p.Response == MeetingResponse.None).ToList();
+    var canJoin = !m.IsCancelled && !m.DateCancelled && m.Status != "Ended";
+    var joinText = m.InRoom > 0 ? $"Join · {m.InRoom} in it" : m.IsHost ? "Start meeting" : "Join";
+    string Answer(MeetingResponse r) => r switch { MeetingResponse.Accepted => "Accepted", MeetingResponse.Maybe => "Maybe", MeetingResponse.Declined => "Declined", _ => "No response" };
+}
+<div class="sn-md" data-id="@m.MeetingId" data-occ="@m.OccurrenceDate.ToString("yyyy-MM-dd", inv)" data-series="@(m.Repeat is null ? "" : "1")">
+    <header class="sn-md-head">
+        <span class="sn-md-ic st-@m.Status.ToLowerInvariant()"><i class="fa @(m.Status == "Cancelled" ? "fa-calendar-times-o" : "fa-calendar-check-o")" aria-hidden="true"></i></span>
+        <div class="sn-md-title">
+            <h2>@m.Title</h2>
+            <p>
+                <span class="sn-md-badge st-@m.Status.ToLowerInvariant()">@(m.Status == "Live" ? "● Live" : m.Status)</span>
+                @when
+                @if (m.Repeat is not null) { <span class="sn-md-rep"><i class="fa fa-repeat" aria-hidden="true"></i> @m.Repeat</span> }
+                @if (m.IsMoved) { <span class="sn-md-rep moved"><i class="fa fa-share" aria-hidden="true"></i> moved (this date only)</span> }
+            </p>
+        </div>
+        @if (!m.FullPage)
+        {
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        }
+    </header>
+
+    @if (m.IsCancelled || m.DateCancelled)
+    {
+        <p class="sn-md-cancel"><i class="fa fa-calendar-times-o" aria-hidden="true"></i>
+            <span>@(m.DateCancelled ? "This date is cancelled. The rest of the series stays." : "Cancelled" + (m.CancelledBy is null ? "" : " by " + m.CancelledBy))</span>
+            @if (!m.DateCancelled && !string.IsNullOrWhiteSpace(m.CancelNote)) { <q>@m.CancelNote</q> }
+        </p>
+    }
+
+    <div class="sn-md-acts">
+        @if (canJoin)
+        {
+            <a class="cee-btn cee-btn-gradient sn-md-join" href="/meetings/room/@m.MeetingId"><i class="fa fa-video-camera" aria-hidden="true"></i> <span>@joinText</span></a>
+        }
+        @if (m.CanManage && !m.FullPage)
+        {
+            <button type="button" class="cee-btn sn-btn-light" data-dact="edit"><i class="fa fa-pencil" aria-hidden="true"></i> Edit</button>
+            <button type="button" class="cee-btn sn-btn-light sn-md-danger" data-dact="cancel"><i class="fa fa-ban" aria-hidden="true"></i> Cancel</button>
+        }
+        @if (m.FullPage)
+        {
+            <a class="cee-btn sn-btn-light" href="/meetings?view=week&date=@m.OccurrenceDate.ToString("yyyy-MM-dd", inv)"><i class="fa fa-calendar" aria-hidden="true"></i> Open in calendar</a>
+        }
+        <span class="sn-md-by"><i class="fa fa-user-o" aria-hidden="true"></i> Set up by <b>@(m.IsHost ? "you" : m.HostName)</b></span>
+    </div>
+
+    @if (m.CanRespond)
+    {
+        <section class="sn-md-me" aria-label="Your answer">
+            <b>Will you come?</b>
+            <div class="sn-md-answers" role="group" aria-label="Your answer">
+                <button type="button" class="sn-md-ans yes @(m.MyResponse == MeetingResponse.Accepted ? "on" : "")" data-respond="yes" aria-pressed="@(m.MyResponse == MeetingResponse.Accepted ? "true" : "false")"><i class="fa fa-check" aria-hidden="true"></i> Accept</button>
+                <button type="button" class="sn-md-ans maybe @(m.MyResponse == MeetingResponse.Maybe ? "on" : "")" data-respond="maybe" aria-pressed="@(m.MyResponse == MeetingResponse.Maybe ? "true" : "false")"><i class="fa fa-question" aria-hidden="true"></i> Maybe</button>
+                <button type="button" class="sn-md-ans no @(m.MyResponse == MeetingResponse.Declined ? "on" : "")" data-respond="no" aria-pressed="@(m.MyResponse == MeetingResponse.Declined ? "true" : "false")"><i class="fa fa-times" aria-hidden="true"></i> Decline</button>
+            </div>
+            @if (m.Repeat is not null)
+            {
+                <div class="sn-md-scope">
+                    <label><input type="radio" name="mdScope" value="all" checked /> Every date</label>
+                    <label><input type="radio" name="mdScope" value="date" /> Only @m.StartLocal.ToString("ddd d MMM", inv)</label>
+                </div>
+            }
+            <input type="text" class="sn-md-note" maxlength="300" placeholder="Add a note for the host (optional), e.g. I'll join 10 minutes late" aria-label="Note for the host" />
+        </section>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(m.Agenda))
+    {
+        <section class="sn-md-agenda"><b>Agenda</b><p>@m.Agenda</p></section>
+    }
+
+    <section class="sn-md-people" aria-label="Who's coming">
+        <div class="sn-md-counts">
+            <span class="c-all"><b>@m.People.Count</b> invited</span>
+            <span class="c-yes"><i></i><b>@accepted.Count</b> accepted</span>
+            <span class="c-maybe"><i></i><b>@maybe.Count</b> maybe</span>
+            <span class="c-no"><i></i><b>@declined.Count</b> declined</span>
+            <span class="c-wait"><i></i><b>@waiting.Count</b> no response</span>
+        </div>
+        <div class="sn-md-bar" aria-hidden="true">
+            @foreach (var (n, cls) in new[] { (accepted.Count, "yes"), (maybe.Count, "maybe"), (declined.Count, "no"), (waiting.Count, "wait") })
+            {
+                if (n > 0) { <i class="@cls" style="flex:@n"></i> }
+            }
+        </div>
+        @if (m.People.Count > 8)
+        {
+            <label class="sn-md-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" placeholder="Find a person" aria-label="Find a person" autocomplete="off" /></label>
+        }
+        <div class="sn-md-list">
+            @foreach (var (title, list, cls) in new[] { ("Accepted", accepted, "yes"), ("Maybe", maybe, "maybe"), ("Declined", declined, "no"), ("No response yet", waiting, "wait") })
+            {
+                if (list.Count == 0) { continue; }
+                <h3 class="sn-md-group @cls">@title <span>@list.Count</span></h3>
+                @foreach (var p in list.OrderByDescending(p => p.IsHost).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    <div class="sn-md-person @cls" data-name="@p.Name">
+                        @if (p.IsGuest)
+                        {
+                            <span class="avatar av-34 tone-@p.Tone"><i class="fa fa-envelope-o" aria-hidden="true"></i></span>
+                        }
+                        else
+                        {
+                            <span class="avatar av-34 tone-@p.Tone" data-presence="@p.Key">@p.Initials<i class="dot @(p.Online ? "on" : "")"></i></span>
+                        }
+                        <span class="sn-md-who">
+                            <b>@p.Name</b>
+                            <small>@(p.IsHost ? "Organizer" : p.IsGuest ? "Guest" : "Team")@if (!string.IsNullOrWhiteSpace(p.Note)) { <text> · “@p.Note”</text> }</small>
+                        </span>
+                        <span class="sn-md-ans-tag @cls">@(p.IsHost ? "Organizer" : Answer(p.Response))</span>
+                    </div>
+                }
+            }
+        </div>
+    </section>
+</div>

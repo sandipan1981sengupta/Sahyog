@@ -1,0 +1,10 @@
+@model MeetingDetailsVm
+@{
+    // A meeting's details as a page of its own (links from emails, or opened in a new tab).
+    Layout = "_Layout";
+}
+<section class="sn-md-page glass-strong" id="mdPage">
+    <partial name="_MeetingDetails" model="Model" />
+</section>
+@Html.AntiForgeryToken()
+<script src="~/js/meeting-details.js" asp-append-version="true"></script>

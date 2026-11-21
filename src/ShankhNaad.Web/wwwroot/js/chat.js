@@ -101,14 +101,19 @@
         return `<div class="bubble bubble-gif"><a href="https://giphy.com/gifs/${id}" target="_blank" rel="noopener" title="Open on GIPHY">`
             + `<img src="${base}200.webp" data-gif-fallback="${base}200.gif" width="${w}" height="${h}" alt="GIF" loading="lazy" decoding="async"></a><span class="gif-badge">GIF</span></div>`;
     }
-    /** The message's text part: a GIF, big emoji, or a normal bubble. */
+    // ---------- forwarded messages: "[[fwd:NAME]]" then the original text ----------
+    const FWD_RE = /^\[\[fwd:([^\]\r\n]{1,80})\]\]\n?/;
+    const fwdOf = (body) => { const f = FWD_RE.exec(body || ""); return f ? { from: f[1], rest: (body || "").slice(f[0].length) } : null; };
+    /** The message's text part: a GIF, big emoji, or a normal bubble (forwarded: with "Forwarded from" above). */
     function bodyHtml(body) {
         if (!body) return "";
+        const f = fwdOf(body);
+        if (f) return `<span class="msg-fwd"><i class="fa fa-share" aria-hidden="true"></i> Forwarded from ${S.escape(f.from)}</span>` + bodyHtml(f.rest);
         if (isGif(body)) return gifHtml(body);
         const e = emojiOnly(body);
         return e ? emojiHtml(e) : `<p class="bubble">${linkify(S.escape(body))}</p>`;
     }
-    const shortText = (body) => isGif(body) ? "🎞️ GIF" : /^\[\[call:/i.test(body || "") ? "📞 Call" : (body || "").replace(/\s+/g, " ").trim();
+    const shortText = (body) => fwdOf(body) ? "↪ " + (fwdOf(body).rest ? shortText(fwdOf(body).rest) : "Forwarded") : isGif(body) ? "🎞️ GIF" : /^\[\[call:/i.test(body || "") ? "📞 Call" : (body || "").replace(/\s+/g, " ").trim();
 
     function attachmentHtml(a) {
         const name = S.escape(a.fileName);
@@ -387,6 +392,8 @@
     list?.addEventListener("click", (e) => {
         const rep = e.target.closest("[data-reply]");
         if (rep) { e.preventDefault(); startReply(rep.dataset.reply); return; }
+        const fw = e.target.closest("[data-fwd]");
+        if (fw) { e.preventDefault(); openForward(Number(fw.dataset.fwd)); return; }
         // the quote in a reply: jump to the original and make it glow for a moment
         const q = e.target.closest(".msg-quote[data-jump]");
         if (!q) return;
@@ -395,8 +402,87 @@
         target.scrollIntoView({ behavior: "smooth", block: "center" });
         target.classList.remove("msg-flash"); void target.offsetWidth; target.classList.add("msg-flash");
     });
+    // ---------- forward a message to other chats ----------
+    let fwdDlg = null;
+    function openForward(id) {
+        const el = list.querySelector(`.msg[data-id="${id}"]`);
+        if (!el) return;
+        const b = bodies.get(id);
+        const text = b ? shortText(b) : "📎 " + ((el.querySelector(".msg-line a")?.textContent || "").trim() || "a file");
+        if (!fwdDlg) {
+            fwdDlg = document.createElement("dialog");
+            fwdDlg.className = "sn-dialog glass-strong sn-fwd-dlg";
+            fwdDlg.setAttribute("aria-labelledby", "fwdT");
+            fwdDlg.innerHTML = `<div class="sn-dlg-head"><div class="sn-dlg-title"><span class="sn-dlg-icon sn-fwd-ic"><i class="fa fa-share" aria-hidden="true"></i></span>`
+                + `<div><h2 id="fwdT">Forward message</h2><p>Pick up to 10 chats (people or groups)</p></div></div>`
+                + `<button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button></div>`
+                + `<div class="sn-dlg-body sn-fwd-body"><blockquote class="sn-fwd-preview"></blockquote>`
+                + `<label class="gif-search sn-fwd-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" placeholder="Search people or groups" aria-label="Search chats" autocomplete="off"></label>`
+                + `<div class="sn-fwd-list" role="listbox" aria-multiselectable="true"></div>`
+                + `<input type="text" class="sn-fwd-note" maxlength="1000" placeholder="Add a message (optional)" aria-label="Add a message"></div>`
+                + `<div class="sn-dlg-foot"><span class="sn-fwd-count muted small">Nobody picked yet</span><span style="display:flex;gap:10px;margin-left:auto">`
+                + `<button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>`
+                + `<button type="button" class="cee-btn cee-btn-gradient sn-fwd-go" disabled><i class="fa fa-share" aria-hidden="true"></i> <span>Forward</span></button></span></div>`;
+            document.body.appendChild(fwdDlg);
+            fwdDlg.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) fwdDlg.close(); });
+            const listEl = fwdDlg.querySelector(".sn-fwd-list");
+            const count = () => {
+                const n = listEl.querySelectorAll("input:checked").length;
+                fwdDlg.querySelector(".sn-fwd-count").textContent = n ? `${n} picked` : "Nobody picked yet";
+                fwdDlg.querySelector(".sn-fwd-go").disabled = n === 0;
+                listEl.querySelectorAll("input:not(:checked)").forEach((i) => { i.disabled = n >= 10; });
+            };
+            listEl.addEventListener("change", count);
+            fwdDlg.querySelector(".sn-fwd-search input").addEventListener("input", (e) => {
+                const q = e.target.value.trim().toLowerCase();
+                listEl.querySelectorAll(".sn-fwd-row").forEach((r) => { r.hidden = !!q && !r.dataset.name.toLowerCase().includes(q); });
+            });
+            fwdDlg._count = count;
+        }
+        // the chats you're in, from the list on the left (not this one)
+        const listEl = fwdDlg.querySelector(".sn-fwd-list");
+        const seen = new Set();
+        listEl.innerHTML = [...document.querySelectorAll(".sn-person-row[data-channel]")].filter((r) => {
+            const ch = r.dataset.channel;
+            if (!ch || ch === channelId || seen.has(ch)) return false;
+            seen.add(ch); return true;
+        }).map((r) => {
+            const av = r.querySelector(".avatar")?.outerHTML || "";
+            const name = r.dataset.filter || r.querySelector(".grow")?.textContent || "Chat";
+            return `<label class="sn-fwd-row" data-name="${S.escape(name)}"><input type="checkbox" value="${S.escape(r.dataset.channel)}">${av}<span class="grow ellipsis">${S.escape(name)}</span><i class="fa fa-check sn-fwd-tick" aria-hidden="true"></i></label>`;
+        }).join("") || `<p class="muted small" style="margin:12px">No other chats yet. Start one from the list on the left.</p>`;
+        fwdDlg.querySelector(".sn-fwd-preview").textContent = text.length > 160 ? text.slice(0, 160) + "…" : text;
+        fwdDlg.querySelector(".sn-fwd-search input").value = "";
+        fwdDlg.querySelector(".sn-fwd-note").value = "";
+        fwdDlg._count();
+        const go = fwdDlg.querySelector(".sn-fwd-go");
+        go.lastElementChild.textContent = "Forward";
+        go.onclick = async () => {
+            const picked = [...listEl.querySelectorAll("input:checked")].map((i) => i.value);
+            if (!picked.length) return;
+            go.disabled = true; go.lastElementChild.textContent = "Forwarding…";
+            const fd = new FormData();
+            fd.append("from", channelId);
+            picked.forEach((c) => fd.append("to", c));
+            fd.append("note", fwdDlg.querySelector(".sn-fwd-note").value.trim());
+            try {
+                const r = await fetch(`/chat/messages/${id}/forward`, { method: "POST", body: fd, headers: { RequestVerificationToken: S.antiforgery() }, credentials: "same-origin" });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(d.error || "Not forwarded. Try again.");
+                fwdDlg.close();
+                S.toast(d.message || "Forwarded.", { kind: "success", title: "Forwarded" });
+            } catch (err) {
+                go.disabled = false; go.lastElementChild.textContent = "Forward";
+                S.toast(err.message, { kind: "warn", title: "Not forwarded" });
+            }
+        };
+        fwdDlg.showModal();
+        setTimeout(() => fwdDlg.querySelector(".sn-fwd-search input").focus(), 60);
+    }
+
     const snippet = (m) => {
         if (/^\[\[call:/i.test(m.body || "")) return "📞 Call";
+        if (fwdOf(m.body)) return shortText(m.body);
         if (isGif(m.body)) return "🎞️ GIF";
         if (m.attachment) return `📎 ${m.attachment.fileName}`;
         const t = (m.body || "").replace(/\s+/g, " ").trim();
@@ -433,7 +519,7 @@
         // a group message shown in a person's chat
         const fromGroup = m.channelId !== channelId ? (m.fromGroup || "a group") : null;
         // your own text messages can be edited (not calls, not a file without text)
-        const canEdit = mine && !call && !!m.body && !isGif(m.body);
+        const canEdit = mine && !call && !!m.body && !isGif(m.body) && !fwdOf(m.body);
         if (!call && isGif(m.body)) el.classList.add("msg-is-gif");
         if (!call && emojiOnly(m.body)) el.classList.add("msg-is-emoji");
         if (!call) bodies.set(Number(m.id), m.body || "");
@@ -443,7 +529,7 @@
             <div class="msg-body">
                 <span class="msg-meta">${mine ? "You" : `<strong>${S.escape(m.senderName)}</strong>`} · ${time(m.sentUtc)}${edited}${fromGroup ? ` <span class="msg-from" title="Written in the group ${S.escape(fromGroup)}"><i class="fa fa-users" aria-hidden="true"></i> in ${S.escape(fromGroup)}</span>` : ""}</span>
                 <div class="msg-line">${quoteHtml(m)}${body}${file}${mine && !fromGroup ? ticksHtml(m.sentUtc) : ""}${canEdit ? `<button type="button" class="msg-edit" data-edit="${m.id}" title="Edit message (↑ in an empty box edits your last one)" aria-label="Edit message"><i class="fa fa-pencil" aria-hidden="true"></i></button>` : ""}${canDelete ? `<button type="button" class="msg-del" data-del="${m.id}" title="Delete message" aria-label="Delete message"><i class="fa fa-trash-o" aria-hidden="true"></i></button>` : ""}
-                    <span class="msg-quick" role="toolbar" aria-label="React or reply">${REACTS.map((e) => `<button type="button" data-react="${e}" data-mid="${m.id}" aria-label="React ${e}">${e}</button>`).join("")}<button type="button" class="mq-more" data-more="${m.id}" title="More reactions" aria-label="More reactions"><i class="fa fa-plus" aria-hidden="true"></i></button>${call ? "" : `<span class="mq-sep" aria-hidden="true"></span><button type="button" class="mq-reply" data-reply="${m.id}" title="Reply" aria-label="Reply to this message"><i class="fa fa-reply" aria-hidden="true"></i></button>`}</span>
+                    <span class="msg-quick" role="toolbar" aria-label="React or reply">${REACTS.map((e) => `<button type="button" data-react="${e}" data-mid="${m.id}" aria-label="React ${e}">${e}</button>`).join("")}<button type="button" class="mq-more" data-more="${m.id}" title="More reactions" aria-label="More reactions"><i class="fa fa-plus" aria-hidden="true"></i></button>${call ? "" : `<span class="mq-sep" aria-hidden="true"></span><button type="button" class="mq-reply" data-reply="${m.id}" title="Reply" aria-label="Reply to this message"><i class="fa fa-reply" aria-hidden="true"></i></button><button type="button" class="mq-fwd" data-fwd="${m.id}" title="Forward" aria-label="Forward this message"><i class="fa fa-share" aria-hidden="true"></i></button>`}</span>
                 </div>
                 <div class="msg-reacts" data-mid="${m.id}"></div>
             </div>`;
@@ -991,5 +1077,25 @@
         };
         xhr.onerror = () => { progress.hidden = true; S.toast("Upload failed. Check your connection."); };
         xhr.send(data);
+    });
+})();
+
+// ShankhNaad · chat details: find a member in a long member list (the grid on the right)
+(function () {
+    "use strict";
+    const input = document.getElementById("memSearch");
+    const grid = document.getElementById("memGrid");
+    if (!input || !grid) return;
+    input.addEventListener("input", () => {
+        const q = input.value.trim().toLowerCase();
+        let shown = 0;
+        grid.querySelectorAll(".person-chip").forEach((c) => {
+            const hit = !q || (c.dataset.name || "").toLowerCase().includes(q);
+            c.hidden = !hit;
+            if (hit) shown++;
+        });
+        const none = document.getElementById("memNone");
+        if (none) none.hidden = shown > 0;
+        grid.scrollTop = 0;
     });
 })();

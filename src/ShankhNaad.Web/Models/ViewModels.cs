@@ -129,6 +129,13 @@ public sealed record CalendarEventVm(
     public bool IsCancelled { get; init; }
     public string? CancelledBy { get; init; }
     public string? CancelNote { get; init; }
+    /// <summary>The date this meeting was planned for: identifies one date of a repeating meeting (for move / cancel this date).</summary>
+    public DateOnly OccurrenceDate { get; init; }
+    /// <summary>This date of a repeating meeting was moved to another time.</summary>
+    public bool IsMoved { get; init; }
+    /// <summary>The series' own first start (for "Edit the whole series").</summary>
+    public DateTime SeriesStartLocal { get; init; }
+    public int SeriesMinutes { get; init; }
 }
 
 public sealed record CalendarDayVm(DateOnly Date, bool IsToday, List<CalendarEventVm> Events);
@@ -392,4 +399,58 @@ public sealed class FilesViewModel
     /// <summary>23_CallsAndFiles.sql hasn't been run yet.</summary>
     public bool NeedsSql { get; init; }
     public required HashSet<string> Online { get; init; }
+}
+
+/// <summary>One person on a meeting's details: the host, a team member or a guest, with their answer.</summary>
+public sealed record MeetingPersonVm(string Key, string Name, string Initials, int Tone, bool IsGuest, bool IsHost, bool Online,
+    ShankhNaad.DtoLibrary.MeetingResponse Response, string? Note, DateTime? RespondedUtc);
+
+/// <summary>A meeting's details (the window that opens when you click a meeting, and /meetings/{id}/view).</summary>
+public sealed class MeetingDetailsVm
+{
+    public Guid MeetingId { get; init; }
+    public string Title { get; init; } = "";
+    public string? Agenda { get; init; }
+    public DateOnly OccurrenceDate { get; init; }
+    public DateTime StartLocal { get; init; }
+    public DateTime EndLocal { get; init; }
+    public bool IsAllDay { get; init; }
+    public string? Repeat { get; init; }
+    public bool IsMoved { get; init; }
+    /// <summary>This one date of a repeating meeting was cancelled.</summary>
+    public bool DateCancelled { get; init; }
+    public bool IsCancelled { get; init; }
+    public string? CancelledBy { get; init; }
+    public string? CancelNote { get; init; }
+    public string HostName { get; init; } = "";
+    public bool IsHost { get; init; }
+    public bool CanManage { get; init; }
+    /// <summary>Live · Upcoming · Ended · Cancelled</summary>
+    public string Status { get; init; } = "";
+    public int InRoom { get; init; }
+    /// <summary>My own answer (None for the host, who doesn't answer their own meeting).</summary>
+    public ShankhNaad.DtoLibrary.MeetingResponse MyResponse { get; init; }
+    public bool CanRespond { get; init; }
+    /// <summary>36_MeetingResponses.sql has been run (answers can be saved).</summary>
+    public bool ResponsesReady { get; init; } = true;
+    public List<MeetingPersonVm> People { get; init; } = new();
+    /// <summary>Shown as a full page (from an email link) rather than in the calendar's window.</summary>
+    public bool FullPage { get; init; }
+}
+
+/// <summary>The page a person sees after pressing Accept / Maybe / Decline in an invite email (no sign-in).</summary>
+public sealed class MeetingRespondVm
+{
+    public string Token { get; init; } = "";
+    public string Title { get; init; } = "";
+    public string When { get; init; } = "";
+    public string HostName { get; init; } = "";
+    public string PersonName { get; init; } = "";
+    public bool IsSeries { get; init; }
+    public ShankhNaad.DtoLibrary.MeetingResponse Current { get; init; }
+    /// <summary>The answer chosen in the email, saved when the page opens (unless it's already the current one).</summary>
+    public ShankhNaad.DtoLibrary.MeetingResponse Chosen { get; init; }
+    public bool Saved { get; init; }
+    public string? Error { get; init; }
+    public string? JoinUrl { get; init; }
 }

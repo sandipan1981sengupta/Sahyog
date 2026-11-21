@@ -23,6 +23,8 @@ public sealed record MeetingDto(
     /// <summary>The reason given when cancelling (optional).</summary>
     public string? CancelNote { get; init; }
     public bool IsCancelled => CancelledUtc is not null;
+    /// <summary>Single dates of a repeating meeting that were cancelled or moved (35_MeetingChanges.sql).</summary>
+    public IReadOnlyList<MeetingExceptionDto> Exceptions { get; init; } = Array.Empty<MeetingExceptionDto>();
     public DateTime EndUtc => StartUtc.AddMinutes(DurationMinutes);
 }
 
@@ -63,7 +65,39 @@ public sealed class CreateMeetingRequest
 }
 
 /// <summary>One appearance of a meeting on the calendar (recurring meetings appear many times).</summary>
-public sealed record MeetingOccurrenceDto(MeetingDto Meeting, DateTime StartLocal, DateTime EndLocal);
+/// <param name="OccurrenceDate">The date this meeting was planned for (a repeating meeting: identifies the date, even when it was moved).</param>
+/// <param name="IsMoved">This date of a repeating meeting was moved to another time.</param>
+public sealed record MeetingOccurrenceDto(MeetingDto Meeting, DateTime StartLocal, DateTime EndLocal, DateOnly? OccurrenceDate = null, bool IsMoved = false);
+
+/// <summary>One date of a repeating meeting: cancelled, or moved to NewStartUtc (NewDurationMinutes: null = as the series).</summary>
+public sealed record MeetingExceptionDto(Guid MeetingId, DateOnly OccurrenceDate, bool IsCancelled, DateTime? NewStartUtc, int? NewDurationMinutes);
+
+/// <summary>Editing / moving a meeting. NeedsDatabase = 35_MeetingChanges.sql not run yet.</summary>
+public enum MeetingChangeStatus { Ok = 0, NotFound = 1, NotAllowed = 2, Cancelled = 3, NotRepeating = 4, NeedsDatabase = 9 }
+
+/// <summary>An answer to an invite: 1 accepted, 2 maybe, 3 declined.</summary>
+public enum MeetingResponse : byte { None = 0, Accepted = 1, Maybe = 2, Declined = 3 }
+
+/// <summary>
+/// One person's answer (36_MeetingResponses.sql). PersonKey: a team member's UserId (lower case) or "g:" + a guest's email.
+/// OccurrenceDate null = for the whole meeting / series; a date = only that date of a repeating meeting.
+/// </summary>
+public sealed record MeetingResponseDto(Guid MeetingId, string PersonKey, DateOnly? OccurrenceDate, MeetingResponse Response, string? Note, DateTime RespondedUtc)
+{
+    public static string KeyOf(Guid userId) => userId.ToString().ToLowerInvariant();
+    public static string KeyOf(string guestEmail) => "g:" + guestEmail.Trim().ToLowerInvariant();
+
+    /// <summary>A person's answer for one date: that date's own answer, else the series answer.</summary>
+    public static MeetingResponseDto? For(IEnumerable<MeetingResponseDto> answers, string personKey, DateOnly? date) =>
+        answers.Where(a => a.PersonKey == personKey && (a.OccurrenceDate is null || a.OccurrenceDate == date))
+               .OrderByDescending(a => a.OccurrenceDate is not null).FirstOrDefault();
+}
+
+/// <summary>Saving an answer. NeedsDatabase = 36_MeetingResponses.sql not run yet.</summary>
+public enum RespondStatus { Ok = 0, NotFound = 1, NotInvited = 2, NeedsDatabase = 9 }
+
+/// <summary>What changed, for the email to everyone invited.</summary>
+public enum MeetingChangeKind { Edited, Moved, DateMoved, DateCancelled }
 
 public sealed record MeetingListDto(List<MeetingDto> Meetings, List<InviteeDto> Invitees);
 
