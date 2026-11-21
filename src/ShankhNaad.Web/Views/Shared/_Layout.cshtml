@@ -15,7 +15,7 @@
     @* The colour of the desktop app's title bar (the strip with − □ ×) and the mobile browser bar: set for the theme below *@
     <meta name="theme-color" content="#E6ECFB" />
     <title>@(ViewData["Title"] is string t ? $"{t} · ShankhNaad" : "ShankhNaad")</title>
-    @* Theme (Light / Dark / CloudWheel) is applied before anything paints, so there is no flash.
+    @* Theme (Kesari / Light / Dark / CloudWheel) is applied before anything paints, so there is no flash.
        Both dark themes use data-theme="dark"; the very dark grey "Dark" adds the class sn-carbon (css/theme-dark.css). *@
     <script>
         (function () {
@@ -26,13 +26,13 @@
                 // before there were three themes, "dark" meant the blue one that is now called CloudWheel
                 if (!t) { var old = localStorage.getItem("sn-theme"); if (old === "dark") t = "cloudwheel"; else if (old === "light") t = "light"; }
             } catch (e) { }
-            if (t !== "dark" && t !== "light" && t !== "cloudwheel") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "cloudwheel" : "light";
-            root.setAttribute("data-theme", t === "light" ? "light" : "dark");
+            if (t !== "dark" && t !== "light" && t !== "cloudwheel" && t !== "kesari") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "cloudwheel" : "light";
+            root.setAttribute("data-theme", t === "light" || t === "kesari" ? "light" : "dark");
             root.setAttribute("data-skin", t);
             if (t === "dark") root.classList.add("sn-carbon");
             // title bar of the desktop app follows the theme from the very first paint (switching themes updates it too)
             var bar = document.querySelector('meta[name="theme-color"]');
-            if (bar) bar.setAttribute("content", t === "dark" ? "#0B0B0C" : t === "cloudwheel" ? "#0B1020" : "#E6ECFB");
+            if (bar) bar.setAttribute("content", t === "dark" ? "#0B0B0C" : t === "cloudwheel" ? "#0B1020" : t === "kesari" ? "#FFF4E8" : "#E6ECFB");
 
             // Safari (Mac) and every browser on iPhone / iPad use WebKit: it redraws frosted glass far more slowly,
             // so css/safari.css gives it a lighter, still-glassy setup (see that file).
@@ -108,6 +108,7 @@
        and table are already in place when the page change starts. Other browsers ignore this. *@
     <link rel="expect" href="#sn-ready" blocking="render" />
     <link rel="icon" href="~/favicon.svg" type="image/svg+xml" />
+    <script>try { if (document.documentElement.getAttribute("data-skin") === "kesari") document.querySelector('link[rel="icon"]').setAttribute("href", "/images/logo-kesari.svg"); } catch (e) { }</script>
     @* Desktop app (installable web app) *@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="~/icons/apple-touch-icon.png" />

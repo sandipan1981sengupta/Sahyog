@@ -1,0 +1,143 @@
+/* =====================================================================
+   ShankhNaad · popups-glass.css: every popup in frosted glass, in all four themes
+   (Kesari, Light, Dark, CloudWheel). Loaded last in the layout bundle, so it wins over the older popup styles.
+
+   One look for: dialog windows (.sn-dialog: Schedule, Edit, Members, Details, Forward, Out of office …),
+   message boxes (.mb-dialog), the user menu, the theme menu, dropdown lists, date pickers, table menus,
+   the ⋯ menus (.sn-sheet.pop), "jump to" and GIF panels.
+   Glass: 26 px blur, about 60 % solid (the sign-in card is 36 px and more see-through), a thin light edge on top.
+   The incoming-call card and the coloured pop-up messages keep their own colours, now with the same blur.
+   ===================================================================== */
+
+/* ---- the glass, per theme ---- */
+:root {
+    --pop-bg: rgba(255, 255, 255, .54);
+    --pop-edge: rgba(255, 255, 255, .95);
+    --pop-shine: rgba(255, 255, 255, .8);
+    --pop-shadow: 0 24px 60px -22px rgba(30, 41, 90, .42), 0 2px 8px rgba(30, 41, 90, .06);
+    --pop-blur: blur(30px) saturate(180%);
+    --pop-foot: rgba(255, 255, 255, .35);
+    --pop-line: rgba(15, 23, 42, .08);
+    /* lists you read item by item (calendar, dropdowns): much more solid, so dates and options stay crisp */
+    --pop-list-bg: rgba(255, 255, 255, .9);
+}
+html[data-skin="kesari"] {
+    --pop-shadow: 0 24px 60px -22px rgba(120, 60, 10, .32), 0 2px 8px rgba(60, 40, 10, .06);
+    --pop-line: rgba(28, 25, 23, .08);
+    --pop-list-bg: rgba(255, 252, 247, .95);
+}
+html[data-theme="dark"] {
+    --pop-bg: rgba(18, 26, 52, .46);
+    --pop-edge: rgba(148, 163, 255, .18);
+    --pop-shine: rgba(199, 210, 254, .08);
+    --pop-shadow: 0 28px 70px -24px rgba(2, 6, 23, .9);
+    --pop-foot: rgba(0, 0, 0, .14);
+    --pop-line: rgba(148, 163, 255, .12);
+    --pop-list-bg: rgba(16, 23, 46, .92);
+}
+html[data-theme="dark"].sn-carbon {
+    --pop-bg: rgba(30, 30, 34, .48);
+    --pop-edge: rgba(255, 255, 255, .09);
+    --pop-shine: rgba(255, 255, 255, .06);
+    --pop-shadow: 0 28px 70px -24px rgba(0, 0, 0, .85);
+    --pop-foot: rgba(0, 0, 0, .16);
+    --pop-line: rgba(255, 255, 255, .08);
+    --pop-list-bg: rgba(28, 28, 31, .93);
+}
+
+/* ---- dialog windows and message boxes ---- */
+html body.sn-body.sn-body .sn-dialog.sn-dialog.sn-dialog,
+html body.sn-body.sn-body .sn-dialog.glass-strong.glass-strong,
+html body.sn-body.sn-body .mb-dialog.mb-dialog.mb-dialog {
+    background: var(--pop-bg) !important;
+    backdrop-filter: var(--pop-blur) !important;
+    -webkit-backdrop-filter: var(--pop-blur) !important;
+    border: 1px solid var(--pop-edge) !important;
+    box-shadow: inset 0 1px 0 var(--pop-shine), var(--pop-shadow) !important;
+}
+/* a dialog's parts let its glass through; the button row is a touch deeper */
+html body.sn-body.sn-body .sn-dialog.sn-dialog .sn-dlg-head,
+html body.sn-body.sn-body .sn-dialog.sn-dialog .sn-dlg-body,
+html body.sn-body.sn-body .sn-dialog.sn-dialog .sn-about-head { background: transparent !important; }
+html body.sn-body.sn-body .sn-dialog.sn-dialog .sn-dlg-head { border-bottom-color: var(--pop-line) !important; }
+html body.sn-body.sn-body .sn-dialog.sn-dialog .sn-dlg-foot { background: var(--pop-foot) !important; border-top-color: var(--pop-line) !important; }
+/* the page behind a dialog dims a little less, so the glass has colour to show */
+html body.sn-body .sn-dialog::backdrop { background: rgba(15, 23, 42, .22); }
+html[data-theme="dark"] body.sn-body .sn-dialog::backdrop { background: rgba(0, 0, 0, .38); }
+
+/* ---- menus, lists and panels ---- */
+html body.sn-body .strip-user-dropdown[data-strip-user-dropdown][data-strip-user-dropdown],
+html body.sn-body .sn-theme-pop.sn-theme-pop,
+html body.sn-body.sn-body .ddwl-menu.ddwl-menu,
+html body.sn-body.sn-body .flatpickr-calendar.flatpickr-calendar,
+html body.sn-body.sn-body .mt-col-panel.mt-col-panel,
+html body.sn-body.sn-body .mt-toolbar-dd .dd-menu.dd-menu,
+html body.sn-body.sn-body .sn-sheet.sn-sheet,
+html body.sn-body.sn-body .sn-jump-pop.sn-jump-pop,
+html body.sn-body.sn-body .gif-panel.gif-panel {
+    background: var(--pop-bg) !important;
+    backdrop-filter: var(--pop-blur) !important;
+    -webkit-backdrop-filter: var(--pop-blur) !important;
+    border: 1px solid var(--pop-edge) !important;
+    box-shadow: inset 0 1px 0 var(--pop-shine), var(--pop-shadow) !important;
+}
+
+/* calendar and dropdown lists: the same glass, but much more solid (they sit over a dialog's text) */
+html body.sn-body.sn-body .ddwl-menu.ddwl-menu.ddwl-menu,
+html body.sn-body.sn-body .flatpickr-calendar.flatpickr-calendar.flatpickr-calendar,
+html body.sn-body.sn-body .mt-col-panel.mt-col-panel.mt-col-panel,
+html body.sn-body.sn-body .mt-toolbar-dd .dd-menu.dd-menu.dd-menu {
+    background: var(--pop-list-bg) !important;
+    backdrop-filter: blur(20px) saturate(150%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
+}
+
+/* ---- the incoming-call card and pop-up messages keep their colours, now frosted too ---- */
+html body.sn-body .sn-call { backdrop-filter: var(--pop-blur); -webkit-backdrop-filter: var(--pop-blur); }
+
+/* WebKit (Safari, iPhone, iPad) redraws blur slowly: a little less blur there, the same look */
+html.sn-webkit { --pop-blur: blur(18px) saturate(160%); }
+
+/* ---- the theme menu: Kesari's swatch (a tiny tricolour) ---- */
+.sn-sw-kesari { background: linear-gradient(180deg, #FF9933 0 33%, #FFFFFF 33% 67%, #138808 67% 100%); box-shadow: inset 0 0 0 1px rgba(28, 25, 23, .12); }
+.sn-sw-kesari i { background: rgba(255, 255, 255, .7); }
+.sn-sw-kesari i:first-child { background: radial-gradient(circle, #1E3A8A 0 30%, rgba(255, 255, 255, .8) 34%); }
+
+/* ---- GIF panel: the inside is see-through too (the search pill, the footer) ---- */
+html body.sn-body.sn-body .gif-panel.gif-panel { border: 1px solid var(--pop-edge) !important; box-shadow: inset 0 1px 0 var(--pop-shine), var(--pop-shadow) !important; }
+html body.sn-body .gif-panel .gif-search { background: rgba(255, 255, 255, .45); box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .07); }
+html[data-theme="dark"] body.sn-body .gif-panel .gif-search { background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+html body.sn-body .gif-panel .gif-scroll { background: transparent; }
+
+/* ---- Meetings: the schedule, month and agenda panels use the same glass as the Team page ---- */
+html body.sn-body.sn-body .sn-sched.sn-sched,
+html body.sn-body.sn-body .sn-month.sn-month,
+html body.sn-body.sn-body .sn-agenda.sn-agenda,
+html body.sn-body.sn-body .sn-inspector.sn-inspector {
+    background: var(--sn-glass) !important;
+    backdrop-filter: blur(40px) saturate(200%) !important;
+    -webkit-backdrop-filter: blur(40px) saturate(200%) !important;
+    border: 1px solid var(--sn-glass-edge) !important;
+    box-shadow: var(--sn-glass-shadow) !important;
+}
+html body.sn-body .sn-sched .sn-sched-head,
+html body.sn-body .sn-month .sn-month-head { background: rgba(255, 255, 255, .28); }
+html[data-theme="dark"] body.sn-body .sn-sched .sn-sched-head,
+html[data-theme="dark"] body.sn-body .sn-month .sn-month-head { background: rgba(255, 255, 255, .03); }
+
+/* ---- the profile menu (status, theme, log out) and the theme picker: a bit more see-through than other menus ---- */
+:root { --pop-menu-bg: rgba(255, 255, 255, .4); }
+html[data-skin="kesari"] { --pop-menu-bg: rgba(255, 251, 245, .42); }
+html[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .36); }
+html[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .38); }
+html.sn-webkit { --pop-menu-bg: rgba(255, 255, 255, .5); }
+html.sn-webkit[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .46); }
+html.sn-webkit[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .48); }
+html body.sn-body .strip-user-dropdown[data-strip-user-dropdown][data-strip-user-dropdown][data-strip-user-dropdown],
+html body.sn-body .sn-theme-pop.sn-theme-pop.sn-theme-pop {
+    background: var(--pop-menu-bg) !important;
+    backdrop-filter: blur(32px) saturate(190%) !important;
+    -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+}
+html.sn-webkit body.sn-body .strip-user-dropdown[data-strip-user-dropdown][data-strip-user-dropdown][data-strip-user-dropdown],
+html.sn-webkit body.sn-body .sn-theme-pop.sn-theme-pop.sn-theme-pop { backdrop-filter: blur(20px) saturate(170%) !important; -webkit-backdrop-filter: blur(20px) saturate(170%) !important; }

@@ -20,14 +20,18 @@
 
     // ---------- styles (one copy, works on both the light/dark app and the dark call room) ----------
     const css = `
-.sne { --sne-bg: #FFFFFF; --sne-fg: #0F172A; --sne-sub: #64748B; --sne-line: rgba(15, 23, 42, .1); --sne-hover: rgba(37, 99, 235, .09); --sne-on: rgba(37, 99, 235, .14); --sne-accent: #2563EB; --sne-field: #F1F5F9;
+.sne { --sne-bg: #FFFFFF; --sne-fg: #0F172A; --sne-sub: #64748B; --sne-line: rgba(15, 23, 42, .1); --sne-hover: rgba(37, 99, 235, .09); --sne-on: rgba(37, 99, 235, .14); --sne-accent: #2563EB; --sne-field: rgba(255, 255, 255, .55); --sne-glass: rgba(255, 255, 255, .58); --sne-head: rgba(255, 255, 255, .5);
   position: fixed; z-index: 3000; width: 352px; max-width: calc(100vw - 16px); height: 400px; max-height: calc(100vh - 16px); display: flex; flex-direction: column; gap: 8px; padding: 10px;
-  border-radius: 18px; background: var(--sne-bg); color: var(--sne-fg); border: 1px solid var(--sne-line); box-shadow: 0 24px 60px rgba(2, 6, 23, .28), 0 4px 12px rgba(2, 6, 23, .12);
+  border-radius: 18px; background: var(--sne-glass); -webkit-backdrop-filter: blur(26px) saturate(170%); backdrop-filter: blur(26px) saturate(170%); color: var(--sne-fg); border: 1px solid var(--sne-edge, rgba(255, 255, 255, .9)); box-shadow: inset 0 1px 0 var(--sne-shine, rgba(255, 255, 255, .8)), 0 24px 60px -18px rgba(2, 6, 23, .38), 0 4px 12px rgba(2, 6, 23, .08);
   font: 13px Inter, system-ui, sans-serif; opacity: 0; transform: translateY(8px) scale(.97); transform-origin: var(--sne-origin, 50% 100%);
   transition: opacity .18s ease, transform .22s cubic-bezier(.22, 1, .36, 1); }
 .sne.show { opacity: 1; transform: none; }
 .sne.out { opacity: 0; transform: translateY(6px) scale(.98); transition-duration: .12s; pointer-events: none; }
-html[data-theme="dark"] .sne, .room-body .sne { --sne-bg: #141A33; --sne-fg: #F1F5F9; --sne-sub: #94A3B8; --sne-line: rgba(255, 255, 255, .14); --sne-hover: rgba(255, 255, 255, .1); --sne-on: rgba(167, 139, 250, .25); --sne-accent: #A78BFA; --sne-field: rgba(2, 6, 23, .55); }
+html[data-theme="dark"] .sne, .room-body .sne { --sne-bg: #141A33; --sne-fg: #F1F5F9; --sne-sub: #94A3B8; --sne-line: rgba(255, 255, 255, .14); --sne-hover: rgba(255, 255, 255, .1); --sne-on: rgba(167, 139, 250, .25); --sne-accent: #A78BFA; --sne-field: rgba(2, 6, 23, .35); --sne-glass: rgba(18, 26, 52, .5); --sne-head: rgba(18, 26, 52, .45); --sne-edge: rgba(148, 163, 255, .2); --sne-shine: rgba(199, 210, 254, .08); }
+html[data-theme="dark"].sn-carbon .sne { --sne-glass: rgba(30, 30, 34, .52); --sne-head: rgba(30, 30, 34, .45); --sne-edge: rgba(255, 255, 255, .1); --sne-shine: rgba(255, 255, 255, .06); }
+html[data-skin="kesari"] .sne { --sne-accent: #EA580C; --sne-hover: rgba(234, 88, 12, .09); --sne-on: rgba(234, 88, 12, .15); --sne-glass: rgba(255, 251, 245, .6); }
+.room-body .sne { --sne-glass: rgba(20, 26, 51, .55); }
+html.sn-webkit .sne { -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%); }
 .sne-title { font-weight: 700; font-size: 12px; padding: 0 2px; }
 .sne-q { flex: none; height: 36px; padding: 0 12px 0 34px; border-radius: 11px; border: 1px solid var(--sne-line); background: var(--sne-field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E") no-repeat 11px center;
   color: var(--sne-fg); font: 13px Inter, system-ui, sans-serif; outline: none; transition: border-color .15s ease, box-shadow .15s ease; }
@@ -43,7 +47,7 @@ html[data-theme="dark"] .sne, .room-body .sne { --sne-bg: #141A33; --sne-fg: #F1
 .sne-page.left { animation-name: sneInL; }
 @keyframes sneIn { from { opacity: 0; transform: translateX(14px); } }
 @keyframes sneInL { from { opacity: 0; transform: translateX(-14px); } }
-.sne-h { position: sticky; top: 0; z-index: 1; margin: 0; padding: 4px 4px 6px; background: var(--sne-bg); color: var(--sne-sub); font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.sne-h { position: sticky; top: 0; z-index: 1; margin: 0; padding: 4px 4px 6px; border-radius: 8px; background: var(--sne-head); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); color: var(--sne-sub); font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .sne-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 2px; padding: 0 2px 4px; }
 .sne-grid button { height: 38px; padding: 0; border: 0; border-radius: 10px; background: transparent; cursor: pointer; font-size: 24px; line-height: 1;
   font-family: "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif; transition: transform .12s ease, background .12s ease; }

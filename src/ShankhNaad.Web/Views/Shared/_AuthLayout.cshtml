@@ -11,16 +11,30 @@
     <link rel="apple-touch-icon" href="~/icons/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" />
-    @* the sign-in pages' styles in one file (Infrastructure/AssetBundles.cs) *@
-    @Bundles.Tags("auth.css")
-    @* Safari / iPhone / iPad: a lighter glass setup (css/safari.css) *@
+    @* The sign-in pages open in the theme chosen last in the app (kept on this device until it is changed),
+       set before the styles load so there is no flash. Safari / iPhone / iPad get a lighter glass setup (css/safari.css). *@
     <script>
         (function () {
+            var root = document.documentElement, t = null;
+            try {
+                t = localStorage.getItem("sn-theme3");
+                if (!t) { var old = localStorage.getItem("sn-theme"); if (old === "dark") t = "cloudwheel"; else if (old === "light") t = "light"; }
+            } catch (e) { }
+            if (t !== "dark" && t !== "light" && t !== "cloudwheel" && t !== "kesari") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "cloudwheel" : "light";
+            root.setAttribute("data-theme", t === "light" || t === "kesari" ? "light" : "dark");
+            root.setAttribute("data-skin", t);
+            if (t === "dark") root.classList.add("sn-carbon");
+            var bar = document.querySelector('meta[name="theme-color"]');
+            if (bar) bar.setAttribute("content", t === "dark" ? "#0B0B0C" : t === "cloudwheel" ? "#0B1020" : t === "kesari" ? "#FFF4E8" : "#E6ECFB");
+            if (t === "kesari") { var ic = document.querySelector('link[rel="icon"]'); if (ic) ic.setAttribute("href", "/images/logo-kesari.svg"); }
+
             var ua = navigator.userAgent || "", touchMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
             if ((/AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg|OPR|Android/.test(ua)) || /iPhone|iPad|iPod/.test(ua) || touchMac)
-                document.documentElement.classList.add("sn-webkit");
+                root.classList.add("sn-webkit");
         })();
     </script>
+    @* the sign-in pages' styles in one file (Infrastructure/AssetBundles.cs) *@
+    @Bundles.Tags("auth.css")
 </head>
 <body class="auth-body sn-body">
     <div class="sn-backdrop" aria-hidden="true">

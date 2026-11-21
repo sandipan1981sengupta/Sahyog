@@ -237,7 +237,7 @@
     if (window.SN.onPage) SN.onPage(escToClose); else escToClose();
 })();
 
-// ---------- themes: Light, Dark (very dark grey glass), CloudWheel (the blue dark) ----------
+// ---------- themes: Kesari (saffron, white, green), Light, Dark (very dark grey glass), CloudWheel (the blue dark) ----------
 (function () {
     "use strict";
     window.SN = window.SN || {};
@@ -245,8 +245,11 @@
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     // Both dark themes keep data-theme="dark" (all the dark styles); "Dark" adds sn-carbon (css/theme-dark.css).
+    // Kesari is a light theme too: data-theme="light" + data-skin="kesari" (css/theme-kesari.css recolours it).
+    const LIGHTS = ["light", "kesari"];
     const THEMES = [
         // color = the desktop app's title bar (− □ ×) and the phone browser bar, matching the page behind it
+        { id: "kesari", name: "Kesari", note: "Saffron, white and green", color: "#FFF4E8" },
         { id: "light", name: "Light", note: "Bright glass", color: "#E6ECFB" },
         { id: "dark", name: "Dark", note: "Very dark grey glass", color: "#0B0B0C" },
         { id: "cloudwheel", name: "CloudWheel", note: "Deep blue night", color: "#0B1020" }
@@ -256,12 +259,16 @@
     SN.theme = current;
 
     function apply(theme) {
-        root.setAttribute("data-theme", theme === "light" ? "light" : "dark");
+        const light = LIGHTS.includes(theme);
+        root.setAttribute("data-theme", light ? "light" : "dark");
         root.setAttribute("data-skin", theme);
         root.classList.toggle("sn-carbon", theme === "dark");
-        try { localStorage.setItem("sn-theme3", theme); localStorage.setItem("sn-theme", theme === "light" ? "light" : "dark"); } catch (e) { }
+        try { localStorage.setItem("sn-theme3", theme); localStorage.setItem("sn-theme", light ? "light" : "dark"); } catch (e) { }
         const meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.setAttribute("content", (THEMES.find((t) => t.id === theme) || THEMES[0]).color);
+        // the tab / window icon: the saffron | green logo in Kesari
+        const icon = document.querySelector('link[rel="icon"]');
+        if (icon) icon.setAttribute("href", theme === "kesari" ? "/images/logo-kesari.svg" : "/favicon.svg");
         const label = document.querySelector("[data-sn-theme] .sn-theme-now");
         if (label) label.textContent = nameOf(theme);
         document.querySelectorAll(".sn-theme-pop [data-theme-id]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.themeId === theme)));
@@ -284,13 +291,13 @@
         vt.finished.finally(() => root.classList.remove("sn-theme-switching"));
     };
 
-    /** Cycles Light → Dark → CloudWheel (the user-menu item). */
+    /** Cycles Kesari → Light → Dark → CloudWheel (the user-menu item). */
     SN.toggleTheme = (evt) => {
         const i = THEMES.findIndex((t) => t.id === current());
         SN.setTheme(THEMES[(i + 1) % THEMES.length].id, evt);
     };
 
-    /** The top-bar button: a small menu with the three themes. */
+    /** The top-bar button: a small menu with the four themes. */
     let pop = null;
     const closePop = () => { if (!pop) return; const p = pop; pop = null; p.classList.remove("in"); setTimeout(() => p.remove(), 180); document.removeEventListener("pointerdown", outside, true); };
     const outside = (e) => { if (pop && !pop.contains(e.target) && !e.target.closest(".sn-theme-btn, [data-sn-theme]")) closePop(); };

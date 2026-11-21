@@ -1,0 +1,24 @@
+/* the brand gradient: saffron | green, a clean split (a smooth blend would turn brown in the middle) */
+html[data-skin="kesari"] { --sn-grad: linear-gradient(115deg, #FF8A1F 0%, #F97316 46%, #15803D 54%, #138808 100%); --grad: var(--sn-grad); }
+/* the page: warm white, saffron top-left, green bottom-right, a soft navy glow (the chakra) in the middle */
+html[data-skin="kesari"] body.sn-body { background: linear-gradient(150deg, #FFF4E8 0%, #FFFDF9 50%, #EEF8EE 100%); }
+html[data-skin="kesari"] .sn-backdrop .b1 { background: #FF9933; opacity: .30; }
+html[data-skin="kesari"] .sn-backdrop .b2 { background: #138808; opacity: .22; }
+html[data-skin="kesari"] .sn-backdrop .b3 { background: #1E3A8A; opacity: .10; }
+html[data-skin="kesari"] .sn-backdrop .o1 { background: radial-gradient(circle at 35% 30%, #FFF7ED 0%, #FDBA74 50%, #FF9933 100%); opacity: .42; }
+html[data-skin="kesari"] .sn-backdrop .o2 { background: radial-gradient(circle at 35% 30%, #FFFFFF 0%, #E2E8F6 55%, #6B83C9 100%); opacity: .26; }
+html[data-skin="kesari"] .sn-backdrop .o3 { background: radial-gradient(circle at 35% 30%, #F0FDF4 0%, #86EFAC 50%, #138808 100%); opacity: .34; }
+html[data-skin="kesari"] .sn-backdrop .o4 { background: radial-gradient(circle at 35% 30%, #FFFBEB 0%, #FCD34D 60%, #F59E0B 100%); opacity: .26; }
+/* messages that pop up: saffron (each kind keeps its own colour: green = done, red = problem …) */
+html[data-skin="kesari"] .sn-toast { --sn-g1: #F97316; --sn-g2: #C2410C; --sn-glow: rgba(234, 88, 12, .5); }
+/* the left rail: saffron icon, saffron→green bar (its colours come from the page's attributes, so set here) */
+html[data-skin="kesari"] .sn-rail .report-rail { --rr-active-icon-color: #C2410C !important; --rr-active-bar: linear-gradient(180deg, #FF9933, #138808) !important; --rr-active-start: #FF9933 !important; --rr-active-end: #138808 !important; }
+html[data-skin="kesari"] .sn-topbar .strip-user-chevron { background: #EA580C !important; }
+html[data-skin="kesari"] .sn-topbar .strip-subheading { background-image: linear-gradient(90deg, #EA580C 0%, #C2410C 45%, #15803D 100%) !important; color: #C2410C !important; }
+/* the logo: saffron | green tile (the rail, the top bar, About, the empty chat, the room mark) */
+html[data-skin="kesari"] img[src*="images/logo.svg"], html[data-skin="kesari"] img[src*="favicon.svg"] { content: url("/images/logo-kesari.svg"); }
+html[data-skin="kesari"] .sn-rail .rr-logo { background: linear-gradient(135deg, #FFA94D 0%, #F97316 47%, #16A34A 53%, #138808 100%) !important; }
+/* the ⋯ button on a chat row: saffron with white dots when open or pointed at; saffron dots otherwise */
+html[data-skin="kesari"] .sn-body .sn-person-row .sn-row-more, html[data-skin="kesari"] .sn-body .sn-team-row .sn-row-more { color: #C2410C; border-color: rgba(234, 88, 12, .28); background: rgba(255, 247, 237, .85); }
+html[data-skin="kesari"] .sn-body .sn-person-row .sn-row-more:hover, html[data-skin="kesari"] .sn-body .sn-person-row .sn-row-more.on,
+html[data-skin="kesari"] .sn-body .sn-team-row .sn-row-more:hover, html[data-skin="kesari"] .sn-body .sn-team-row .sn-row-more.on { background: linear-gradient(135deg, #FF9933, #EA580C); color: #FFFFFF; border-color: transparent; box-shadow: 0 8px 18px -8px rgba(234, 88, 12, .8); }
