@@ -159,7 +159,7 @@
         configOverwrite: {
             prejoinConfig: { enabled: false },
             // screen sharing (Chrome / Edge): this call's own tab isn't offered, a tab's sound can be shared,
-            // the browser's window opens on "Window" (the Share window below may change these before each share)
+            // the browser's window opens on "Window"
             screenShareSettings: { desktopDisplaySurface: "window", desktopSelfBrowserSurface: "exclude", desktopSystemAudio: "include", desktopSurfaceSwitching: "include", desktopPreferCurrentTab: false },
             prejoinPageEnabled: false,
             disableDeepLinking: true,
@@ -276,97 +276,17 @@
     $("micBtn").onclick = () => api.executeCommand("toggleAudio");
     $("camBtn").onclick = () => api.executeCommand("toggleVideo");
     // =====================================================================
-    // Share: our own window first (a tab / a window / the entire screen, sound, tips), then the browser's.
-    // While sharing: a pill in the top bar (what, how long, Change, Stop), a one-time tip about the browser's bar.
+    // Share: straight to the browser's own window. While sharing: a pill in the top bar (how long, Change, Stop),
+    // the Share button turns red, and a one-time tip about the browser's own bar.
     // =====================================================================
-    let sharing = false, shareKind = "window", shareStarted = 0, shareTimer = null, reopenAfterStop = false;
-    const SHARE = {
-        browser: { what: "a browser tab", next: "Microsoft Edge Tab / Chrome Tab", go: "Choose a tab",
-            tip: "Playing a video? Share its tab with sound on, and everyone hears it clearly.",
-            sound: "Everyone hears the tab's sound, like a video. Keep “Share tab audio” on in the next window." },
-        window: { what: "a window", next: "Window", go: "Choose a window",
-            tip: "Share a window, not the whole screen, so the call doesn't show inside itself.",
-            sound: "Windows can't share their sound: pick a tab or the entire screen for that." },
-        monitor: { what: "your entire screen", next: "Entire Screen", go: "Share my screen",
-            tip: "Your whole screen shows pop-ups and messages too. Turn on Do not disturb first.",
-            sound: "Shares your computer's sound (on Windows). Turn on “Share system audio” in the next window." }
-    };
+    let sharing = false, shareStarted = 0, shareTimer = null, reshareAfterStop = false;
     const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { } } };
-    const shareSheet = $("shareSheet");
-    let ssPick = store.get("sn-share-kind", "window");
-    if (!SHARE[ssPick]) ssPick = "window";
-    const sw = (id, on) => { const b = $(id); if (b) b.setAttribute("aria-checked", String(!!on)); };
-    const swOn = (id) => $(id)?.getAttribute("aria-checked") === "true";
-    sw("ssSound", store.get("sn-share-sound", "1") === "1");
-    sw("ssHide", store.get("sn-share-hide", "1") === "1");
-    function paintSheet() {
-        shareSheet.querySelectorAll(".ss-opt").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.ss === ssPick)));
-        const k = SHARE[ssPick];
-        $("ssTip").textContent = k.tip;
-        $("ssSoundNote").textContent = k.sound;
-        $("ssNext").textContent = k.next;
-        $("ssGoText").textContent = k.go;
-    }
-    let sheetBack = null;
-    function openShareSheet() {
-        if (!shareSheet) { api.executeCommand("toggleShareScreen"); return; }
-        sheetBack = document.activeElement;
-        paintSheet();
-        shareSheet.hidden = false;
-        requestAnimationFrame(() => shareSheet.classList.add("show"));
-        setTimeout(() => shareSheet.querySelector(`.ss-opt[data-ss="${ssPick}"]`)?.focus(), 60);
-    }
-    function closeShareSheet() {
-        if (!shareSheet || shareSheet.hidden) return;
-        shareSheet.classList.remove("show");
-        setTimeout(() => { shareSheet.hidden = true; }, 180);
-        try { sheetBack?.focus(); } catch { }
-    }
-    if (shareSheet) {
-        shareSheet.addEventListener("click", (e) => {
-            if (e.target === shareSheet || e.target.closest("[data-ss-close]")) { closeShareSheet(); return; }
-            const opt = e.target.closest(".ss-opt");
-            if (opt) { ssPick = opt.dataset.ss; paintSheet(); return; }
-            const s2 = e.target.closest(".ss-switch");
-            if (s2) { sw(s2.id, !swOn(s2.id)); return; }
-        });
-        shareSheet.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeShareSheet(); return; }
-            // arrows move between the three choices (a radio group)
-            if (["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(e.key) && e.target.closest(".ss-opt")) {
-                e.preventDefault();
-                const ks = ["browser", "window", "monitor"], i = ks.indexOf(ssPick);
-                ssPick = ks[(i + (e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : 2)) % 3];
-                paintSheet();
-                shareSheet.querySelector(`.ss-opt[data-ss="${ssPick}"]`)?.focus();
-            }
-            if (e.key === "Tab") {                                         // keep the keyboard inside the window
-                const f = [...shareSheet.querySelectorAll("button:not([disabled])")].filter((x) => x.offsetParent);
-                if (!f.length) return;
-                if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
-                else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
-            }
-        });
-        $("ssGo").onclick = () => {
-            const sound = swOn("ssSound"), hide = swOn("ssHide");
-            store.set("sn-share-kind", ssPick); store.set("sn-share-sound", sound ? "1" : "0"); store.set("sn-share-hide", hide ? "1" : "0");
-            shareKind = ssPick;
-            // ask the video service to open the browser's window on the matching choice (where the browser supports it)
-            try {
-                api.executeCommand("overwriteConfig", { screenShareSettings: {
-                    desktopDisplaySurface: ssPick, desktopSelfBrowserSurface: hide ? "exclude" : "include",
-                    desktopSystemAudio: sound ? "include" : "exclude", desktopSurfaceSwitching: "include", desktopPreferCurrentTab: false } });
-            } catch { }
-            closeShareSheet();
-            api.executeCommand("toggleShareScreen");
-        };
-    }
-    $("shareBtn").onclick = () => { if (sharing) api.executeCommand("toggleShareScreen"); else openShareSheet(); };
+    $("shareBtn").onclick = () => api.executeCommand("toggleShareScreen");
     $("shareStopBtn")?.addEventListener("click", () => { if (sharing) api.executeCommand("toggleShareScreen"); });
     $("shareChangeBtn")?.addEventListener("click", () => {
-        // share something else: stop this one, then pick again
-        if (!sharing) { openShareSheet(); return; }
-        reopenAfterStop = true;
+        // share something else: stop this one, then the browser's window opens again
+        if (!sharing) { api.executeCommand("toggleShareScreen"); return; }
+        reshareAfterStop = true;
         api.executeCommand("toggleShareScreen");
     });
     $("shareTipOk")?.addEventListener("click", () => { store.set("sn-share-tip", "1"); $("shareTip").hidden = true; });
@@ -1048,7 +968,6 @@
         const pill = $("sharePill");
         if (on) {
             shareStarted = Date.now();
-            if ($("sharePillWhat")) $("sharePillWhat").textContent = SHARE[shareKind]?.what || "your screen";
             if (pill) pill.hidden = false;
             paintShareTime(); clearInterval(shareTimer); shareTimer = setInterval(paintShareTime, 1000);
             // the tip about the browser's own bar, until "Got it"
@@ -1057,7 +976,7 @@
             clearInterval(shareTimer);
             if (pill) pill.hidden = true;
             if ($("shareTip")) $("shareTip").hidden = true;
-            if (reopenAfterStop) { reopenAfterStop = false; setTimeout(openShareSheet, 250); }
+            if (reshareAfterStop) { reshareAfterStop = false; setTimeout(() => api.executeCommand("toggleShareScreen"), 300); }
         }
     });
     api.addListener("tileViewChanged", ({ enabled }) => {

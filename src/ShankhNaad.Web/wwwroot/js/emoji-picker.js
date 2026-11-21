@@ -7,7 +7,9 @@
 //   SNEmoji.close()
 (function () {
     "use strict";
-    if (window.SNEmoji) return;
+    // The app moves between pages without reloading (js/sn-nav.js): a page's listeners stop when you leave it and
+    // this file runs again when you come back. So no "already loaded" shortcut: close the old panel and set up again.
+    try { window.SNEmoji?.close(true); } catch { }
 
     const BASE = (document.currentScript && document.currentScript.src) || (location.origin + "/js/emoji-picker.js");
     const DATA_URL = new URL("emoji-data.js?v=3", BASE).href;
@@ -64,9 +66,9 @@ html[data-theme="dark"] .sne, .room-body .sne { --sne-bg: #141A33; --sne-fg: #F1
     function prepare(doc) {
         if (docs.has(doc)) return;
         docs.add(doc);
-        const style = doc.createElement("style");
+        let style = doc.getElementById("sne-style");
+        if (!style) { style = doc.createElement("style"); style.id = "sne-style"; doc.head.appendChild(style); }
         style.textContent = css;
-        doc.head.appendChild(style);
         if (!doc.querySelector('link[href*="Noto+Color+Emoji"]')) {
             const l = doc.createElement("link");
             l.rel = "stylesheet";
