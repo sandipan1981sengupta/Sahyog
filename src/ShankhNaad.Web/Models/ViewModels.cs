@@ -267,6 +267,8 @@ public sealed class RoomViewModel
     /// <summary>"Sandy isn't online right now…" when nobody could be rung.</summary>
     public string? OfflineNote { get; init; }
     public string? GuestUrl { get; init; }
+    /// <summary>The chat this call was started from (its messages open from the call's Chat panel). Null = a scheduled meeting.</summary>
+    public Guid? ChatChannelId { get; init; }
     public string? ChannelName { get; init; }
     /// <summary>A one-to-one call: the other person (the room shows "Ringing Sandy…" until they join).</summary>
     public string? CallWithName { get; init; }

@@ -3,7 +3,8 @@
     "use strict";
 
     const cfg = JSON.parse(document.getElementById("roomConfig").textContent);
-    const $ = (id) => document.getElementById(id);
+    // the side panel can be popped out into its own window: look there too
+    const $ = (id) => document.getElementById(id) || (window.__snPopDoc ? window.__snPopDoc.getElementById(id) : null);
 
     const toast = (message) => {
         const el = document.createElement("div");
@@ -61,7 +62,7 @@
         return ["off", "Offline"];
     };
     team.paintPhotos = (root) => {
-        const els = (root || document).querySelectorAll(".avatar[data-user]");
+        const els = root ? root.querySelectorAll(".avatar[data-user]") : [...document.querySelectorAll(".avatar[data-user]"), ...(window.__snPopDoc?.querySelectorAll(".avatar[data-user]") || [])];
         const paint = (el) => {
             const id = lcid(el.getAttribute("data-user"));
             const v = id && team.photos[id];
@@ -78,9 +79,9 @@
         if (root && root.matches && root.matches(".avatar[data-user]")) paint(root);
     };
     team.paintStatus = (root) => {
-        (root || document).querySelectorAll("[data-st-user]").forEach((el) => {
+        (root ? [...root.querySelectorAll("[data-st-user]")] : [...document.querySelectorAll("[data-st-user]"), ...(window.__snPopDoc?.querySelectorAll("[data-st-user]") || [])]).forEach((el) => {
             const [st, label] = team.state(el.getAttribute("data-st-user"));
-            if (el.classList.contains("st-label")) { el.textContent = label; el.className = `st-label st-${st}`; }
+            if (el.classList.contains("st-label")) { el.textContent = label; ["on", "busy", "in", "off"].forEach((k) => el.classList.toggle(`st-${k}`, k === st)); }
             else { el.className = `st-dot ${st}`; el.title = label; }
         });
     };
@@ -139,12 +140,13 @@
             .then((map) => { Object.entries(map || {}).forEach(([k, v]) => { team.photos[lcid(k)] = v; }); team.paintPhotos(); })
             .catch(() => { });
         // avatars drawn later (people list, inbox, messages) get their photo and status as they appear
-        new MutationObserver((changes) => changes.forEach((c) => c.addedNodes.forEach((n) => {
+        team.observe = (root) => new MutationObserver((changes) => changes.forEach((c) => c.addedNodes.forEach((n) => {
             if (n.nodeType !== 1) return;
             if (Object.keys(team.photos).length) team.paintPhotos(n);
             if (n.matches?.("[data-st-user]") || n.querySelector?.("[data-st-user]")) team.paintStatus(n.parentNode || n);
-        }))).observe(document.body, { childList: true, subtree: true });
-    } else team.loadPeople = () => { };
+        }))).observe(root, { childList: true, subtree: true });
+        team.observe(document.body);
+    } else { team.loadPeople = () => { }; team.observe = () => { }; }
 
     // ---------- JaaS ----------
     const api = new JitsiMeetExternalAPI(cfg.domain, {
@@ -481,7 +483,7 @@
     const PANE_SUB = { people: "In this call", chat: "Everyone in the call sees these", msgs: "Your other chats" };
     const paintUnread = () => {
         const b = $("chatBadge"), t = $("chatUnread");
-        [b, t].forEach((x) => { if (!x) return; x.textContent = unread > 9 ? "9+" : String(unread); x.hidden = unread === 0; });
+        [b, t, $("mxCallChatN")].forEach((x) => { if (!x) return; x.textContent = unread > 9 ? "9+" : String(unread); x.hidden = unread === 0; });
         if (b && unread) { b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop"); }
     };
     const showPane = (name) => {
@@ -497,14 +499,95 @@
         if (name === "chat") { unread = 0; paintUnread(); scrollChat(true); setTimeout(() => $("ccInput")?.focus(), 60); }
         if (name === "msgs") window.__snMsgsShown?.();
     };
-    const chatVisible = () => panelOpen && pane === "chat" && !document.hidden;
+    const panelShown = () => window.__snPopDoc ? !window.__snPopDoc.hidden : (panelOpen && !document.hidden);
+    const chatVisible = () => pane === "chat" && panelShown();
     // a dock button opens its view; pressed again (while showing), it closes the panel
+    const linkedChat = () => !!cfg.chatId && !cfg.isGuest && !window.__snPreferCallChat && !!window.__snOpenMessages;
     const togglePane = (name) => {
+        // a call started from a chat: Chat opens that chat (all your messages with them); "Call chat" there switches
+        if (name === "chat" && linkedChat()) {
+            const showing = pane === "msgs" && (window.__snPopDoc || panelOpen) && window.__snOpenIs?.(cfg.chatId);
+            if (showing && !window.__snPopDoc) { setPanel(false); return; }
+            window.__snOpenMessages(cfg.chatId);
+            if (window.__snPopDoc) { try { window.__snPopWin?.focus(); } catch { } }
+            return;
+        }
+        if (window.__snPopDoc) { showPane(name); try { window.__snPopWin?.focus(); } catch { } return; }   // popped out: switch it there
         if (panelOpen && pane === name) { setPanel(false); return; }
         if (!panelOpen) setPanel(true);
         showPane(name);
     };
     window.__snTogglePane = togglePane;
+
+    // ---------- the side panel in a separate window (Chat, Inbox, People), e.g. on another screen or while sharing ----------
+    // Chrome / Edge: a small window that stays on top of others (Document Picture-in-Picture); elsewhere a normal pop-up.
+    // The panel itself moves there (everything keeps working) and comes back when that window closes.
+    let popHome = null;
+    async function popOut() {
+        if (window.__snPopDoc) { try { window.__snPopWin.focus(); } catch { } return; }
+        const w = Math.min(460, screen.availWidth - 40), h = Math.min(760, screen.availHeight - 80);
+        let win = null;
+        try {
+            if (window.documentPictureInPicture?.requestWindow) win = await window.documentPictureInPicture.requestWindow({ width: w, height: h });
+        } catch { win = null; }
+        if (!win) win = window.open("", "sn-room-panel", `popup=yes,width=${w},height=${h},left=${screen.availWidth - w - 30},top=60`);
+        if (!win) { toast("Your browser blocked the new window. Allow pop-ups for this site and try again."); return; }
+        const doc = win.document;
+        doc.title = `${document.title} · ${pane === "msgs" ? "Inbox" : pane === "chat" ? "Chat" : "People"}`;
+        if (!doc.head.querySelector("meta[charset]")) doc.head.insertAdjacentHTML("afterbegin", '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">');
+        // the same look: copy the page's style sheets
+        // (full addresses: the new window has no address of its own to resolve "/css/…" against)
+        // our own style sheets are copied as text (shows at once, nothing to download); others (fonts) by address
+        [...document.styleSheets].forEach((sh) => {
+            try {
+                const st = doc.createElement("style");
+                st.textContent = [...sh.cssRules].map((r) => r.cssText).join("\n");
+                doc.head.appendChild(st);
+            } catch {
+                if (!sh.href) return;
+                const l = doc.createElement("link"); l.rel = "stylesheet"; l.href = sh.href; doc.head.appendChild(l);
+            }
+        });
+        doc.body.className = "room-body sn-popout";
+        doc.body.innerHTML = "";
+        // the panel moves into the new window; a marker keeps its place here
+        popHome = document.createComment("side panel");
+        panel.before(popHome);
+        setMax(false);
+        doc.body.appendChild(doc.adoptNode(panel));
+        window.__snPopDoc = doc; window.__snPopWin = win;
+        document.body.classList.add("panel-popped");
+        panelOpen = true; paintPanel(true);
+        // what this page listens for on its own document is needed there too
+        doc.addEventListener("click", (e) => window.__snEmojiButton?.(e));
+        window.SNEmoji?.prepare?.(doc);
+        team.observe(doc.body);
+        team.paintPhotos(); team.paintStatus();
+        doc.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.defaultPrevented && !doc.querySelector(".sne")) e.stopPropagation(); });
+        const pb = $("panelPopBtn");
+        if (pb) { pb.title = "Bring it back into the call window"; pb.setAttribute("aria-label", "Bring it back into the call window"); }
+        win.addEventListener("pagehide", popIn, { once: true });
+        win.addEventListener("unload", popIn, { once: true });
+        if (pane === "chat") scrollChat(true);
+        notice("Opened in a separate window", "Close that window to bring it back here.", "chat");
+    }
+    function popIn() {
+        const doc = window.__snPopDoc;
+        if (!doc) return;
+        window.__snPopDoc = null;
+        const win = window.__snPopWin; window.__snPopWin = null;
+        window.SNEmoji?.close();
+        try { popHome.replaceWith(document.adoptNode(panel)); } catch { document.querySelector(".room-main")?.appendChild(document.adoptNode(panel)); }
+        popHome = null;
+        document.body.classList.remove("panel-popped");
+        const pb = $("panelPopBtn");
+        if (pb) { pb.title = "Open in a separate window (keep chatting while you share your screen)"; pb.setAttribute("aria-label", "Open in a separate window"); }
+        panelOpen = true; paintPanel(true);
+        try { if (!win.closed) win.close(); } catch { }
+        if (pane === "chat") scrollChat(true);
+    }
+    $("panelPopBtn")?.addEventListener("click", () => window.__snPopDoc ? popIn() : popOut());
+    window.addEventListener("pagehide", () => { try { window.__snPopWin?.close(); } catch { } });
     // Esc while working in the panel closes it (on a phone, tapping outside it does too)
     panel.addEventListener("keydown", (e) => {
         if (e.key !== "Escape" || !panelOpen || e.defaultPrevented) return;
@@ -1158,8 +1241,10 @@
         const isCallCard = (b) => /^\[\[call:/.test(b || "");
         const isGifCard = (b) => /^\[\[gif:/.test(b || "");
         const unFwd = (b) => (b || "").replace(/^\[\[fwd:([^\]\r\n]*)\]\]\n?/, "↪ ");   // forwarded: "↪ text"
+        // the server's times are UTC but may come without the "Z": read them as UTC, not as local time
+        const asDate = (iso) => new Date(typeof iso === "string" && /\d$/.test(iso) && !/[zZ]|[+-]\d\d:?\d\d$/.test(iso.slice(10)) ? iso + "Z" : iso);
         const when = (iso) => {
-            const d = new Date(iso);
+            const d = asDate(iso);
             if (isNaN(d)) return "";
             return d.toDateString() === new Date().toDateString()
                 ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -1201,39 +1286,143 @@
         // ----- one message: reply quote, text, file, "Edited", reactions, and its actions (react · reply · edit · delete) -----
         const msgs = new Map();             // id → message, for reply / edit
         const reacts = new Map();           // id → [{ emoji, userId, name }]
-        const QUICK = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
-        const isMineMsg = (m) => String(m.senderId).toLowerCase() === me;
+        const QUICK = ["👍", "❤️", "😂", "😮", "😢", "🙏", "👏", "🎉"];
+        const myNameLc = lcid(String(cfg.displayName || "").replace(/\s*\(guest\)/i, ""));
+        const isMineMsg = (m) => (!!me && String(m.senderId || "").toLowerCase() === me)
+            || (!!myNameLc && lcid(m.senderName) === myNameLc);          // same name as you in this call: yours too
         const plainOf = (m) => {
             const b = unFwd(m.body);
             return isCallCard(m.body) ? "📞 Call" : isGifCard(b.replace(/^↪ /, "")) ? "🎞️ GIF" : b || (m.attachment ? "📎 " + m.attachment.fileName : "");
         };
         const canEdit = (m) => isMineMsg(m) && !!m.body && !isCallCard(m.body) && !isGifCard(m.body) && !/^\[\[fwd:/.test(m.body);
         const ICON = {
+            plus: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" aria-hidden="true"><path d="M12 4v16M4 12h16" /></svg>',
             react: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01" /></svg>',
             reply: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 6 6v5" /></svg>',
             edit: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>',
+            fwd: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5" /><path d="M20 9H10a6 6 0 0 0-6 6v5" /></svg>',
             del: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>'
         };
-        const bodyHtml = (m) => isCallCard(m.body) ? "&#128222; Call"
-            : isGifCard(unFwd(m.body).replace(/^↪ /, "")) ? "&#127902;&#65039; GIF"
-            : esc(unFwd(m.body)).replace(/\n/g, "<br>");
+        // ----- drawn like the Chat page: picture, "Name · time" above, then a bubble / big emoji / GIF / call card -----
+        const FWD_RE = /^\[\[fwd:([^\]\r\n]{1,80})\]\]\n?/;
+        const GIF_RE = /^\[\[gif:([A-Za-z0-9]{4,64}):(\d{1,4})x(\d{1,4})\]\]$/;
+        const CALL_RE = /^\[\[call:([0-9a-f-]{36})\]\]$/i;
+        const EMOJI_ONE = /^(?:\p{Extended_Pictographic}(?:️|\p{Emoji_Modifier})?(?:‍\p{Extended_Pictographic}(?:️|\p{Emoji_Modifier})?)*|\p{Regional_Indicator}{2}|[#*0-9]️?⃣)$/u;
+        const NOTO = "https://fonts.gstatic.com/s/e/notoemoji/latest/";
+        const graphemes = (t) => (window.Intl && Intl.Segmenter)
+            ? [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(t)].map((x) => x.segment) : Array.from(t);
+        const emojiOnly = (text) => {
+            const t = (text || "").trim();
+            if (!t || t.length > 80) return null;
+            const parts = graphemes(t).filter((g) => !/^\s+$/.test(g));
+            if (!parts.length || parts.length > 5 || !parts.every((g) => EMOJI_ONE.test(g))) return null;
+            if (parts.some((g) => [...g].length === 1 && !/\p{Emoji_Presentation}/u.test(g))) return null;
+            return parts;
+        };
+        const notoCode = (g, keepVs) => [...g].map((c) => c.codePointAt(0)).filter((cp) => keepVs || cp !== 0xfe0f).map((cp) => cp.toString(16)).join("_");
+        const emojiBig = (parts) => `<span class="mx-emo ${parts.length === 1 ? "e1" : parts.length <= 3 ? "e3" : "e5"}" role="img" aria-label="${esc(parts.join(" "))}">`
+            + parts.map((g, i) => { const x = notoCode(g, true), y = notoCode(g, false);
+                return `<span style="--i:${i}"><img src="${NOTO}${x}/512.webp" alt="${esc(g)}" data-alt2="${y !== x ? y : ""}" loading="lazy" decoding="async" draggable="false"></span>`; }).join("") + `</span>`;
+        // a missing animation: try without the variation selector, then the plain emoji; a GIF: the .gif version
+        $("mxMsgs").addEventListener("error", (e) => {
+            const img = e.target;
+            if (!img || img.tagName !== "IMG") return;
+            if (img.closest(".mx-emo")) {
+                if (img.dataset.alt2) { const y = img.dataset.alt2; img.dataset.alt2 = ""; img.src = `${NOTO}${y}/512.webp`; return; }
+                const t = document.createElement("i"); t.className = "mx-emo-t"; t.textContent = img.alt; img.replaceWith(t);
+            } else if (img.dataset.gifFallback) { const f = img.dataset.gifFallback; img.dataset.gifFallback = ""; img.src = f; }
+        }, true);
+        const gifHtml = (body) => {
+            const g = GIF_RE.exec(body.trim());
+            let w = Math.max(1, +g[2]), h = Math.max(1, +g[3]);
+            const k = Math.min(180 / h, 260 / w); w = Math.round(w * k); h = Math.round(h * k);
+            const base = `https://media.giphy.com/media/${g[1]}/`;
+            return `<a class="mx-gif" href="https://giphy.com/gifs/${g[1]}" target="_blank" rel="noopener" title="Open on GIPHY"><img src="${base}200.webp" data-gif-fallback="${base}200.gif" width="${w}" height="${h}" alt="GIF" loading="lazy" decoding="async"><span>GIF</span></a>`;
+        };
+        const linkify = (h) => h.replace(/(https?:\/\/[^\s<]+)/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+        const tm = (iso) => { const d = asDate(iso); return isNaN(d) ? "" : d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); };
+        const dayKey = (iso) => { const d = asDate(iso); return isNaN(d) ? "" : d.toDateString(); };
+        const dayName = (iso) => {
+            const d = asDate(iso), t = new Date(), y = new Date(); y.setDate(t.getDate() - 1);
+            if (d.toDateString() === t.toDateString()) return "Today";
+            if (d.toDateString() === y.toDateString()) return "Yesterday";
+            return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: d.getFullYear() === t.getFullYear() ? undefined : "numeric" });
+        };
+        // call cards: "Missed call from Sandy", "Call ended · 3m 49s" … (states from /meetings/calls)
+        const callStates = new Map();
+        let callQ = new Set(), callT = null;
+        const dur = (a, b) => { const sec = Math.max(0, Math.round((asDate(b) - asDate(a)) / 1000)); const h = Math.floor(sec / 3600), mi = Math.floor((sec % 3600) / 60), sc = sec % 60; return h ? `${h}h ${mi}m` : mi ? `${mi}m ${sc}s` : `${sc}s`; };
+        const PHONE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 15.5c-1.2 0-2.4-.2-3.6-.6a1 1 0 0 0-1 .25l-2.2 2.2a15 15 0 0 1-6.6-6.6l2.2-2.2a1 1 0 0 0 .25-1A11.4 11.4 0 0 1 9.5 4a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1 17 17 0 0 0 17 17 1 1 0 0 0 1-1v-3.5a1 1 0 0 0-1-1z"/></svg>';
+        const callCard = (id, mine, who, at) => {
+            const c = callStates.get(id), o = c ? c.outcome : -1, name = esc(who);
+            let kind = "", title, sub = tm(at);
+            switch (o) {
+                case 0: kind = "ringing"; title = mine ? "Calling…" : `${name} is calling`; break;
+                case 1: kind = "live"; title = "Call in progress"; sub = `Started ${tm(c.answeredUtc || at)}`; break;
+                case 2: kind = "ended"; title = "Call ended"; sub = `${tm(at)} · ${dur(c.answeredUtc || at, c.endedUtc || at)}`; break;
+                case 3: case 5: kind = mine ? "ended" : "missed"; title = mine ? (o === 5 ? "Call cancelled" : "No answer") : `Missed call from ${name}`; break;
+                case 4: kind = mine ? "missed" : "ended"; title = mine ? "Call declined" : "You declined the call"; break;
+                default: title = mine ? "You started a call" : `${name} started a call`;
+            }
+            return `<span class="mx-call-ic ${kind}">${PHONE}</span><span class="mx-call-t"><b>${title}</b><small>${sub}</small></span>`;
+        };
+        const paintCall = (id) => $("mxMsgs").querySelectorAll(`.mx-call[data-call="${id}"]`).forEach((b) => {
+            b.innerHTML = callCard(id, b.dataset.mine === "1", b.dataset.who, b.dataset.at);
+            b.className = `mx-call ${b.dataset.mine === "1" ? "mine" : ""} k${callStates.get(id)?.outcome ?? ""}`;
+        });
+        const queueCall = (id) => {
+            callQ.add(id); clearTimeout(callT);
+            callT = setTimeout(async () => {
+                const ids = [...callQ]; callQ = new Set();
+                try {
+                    const r = await fetch(`/meetings/calls?ids=${ids.join(",")}`, { headers: { Accept: "application/json" }, credentials: "same-origin" });
+                    if (r.ok) (await r.json()).forEach((c) => { const k = String(c.meetingId).toLowerCase(); callStates.set(k, c); paintCall(k); });
+                } catch { }
+            }, 120);
+        };
+        const contentHtml = (body, m, mine) => {
+            if (!body) return "";
+            const f = FWD_RE.exec(body);
+            if (f) return `<span class="mx-fwdl">&#8618; Forwarded from ${esc(f[1])}</span>` + contentHtml(body.slice(f[0].length), m, mine);
+            const call = CALL_RE.exec(body.trim());
+            if (call) { const id = call[1].toLowerCase(); queueCall(id); return `<div class="mx-call ${mine ? "mine" : ""}" data-call="${id}" data-mine="${mine ? 1 : 0}" data-who="${esc(m.senderName || "")}" data-at="${esc(m.sentUtc)}">${callCard(id, mine, m.senderName || "", m.sentUtc)}</div>`; }
+            if (GIF_RE.test(body.trim())) return gifHtml(body);
+            const e = emojiOnly(body);
+            if (e) return emojiBig(e);
+            return `<div class="mx-bub">${linkify(esc(body)).replace(/\n/g, "<br>")}</div>`;
+        };
         const msgHtml = (m) => {
             const mine = isMineMsg(m);
-            const body = bodyHtml(m);
-            const file = m.attachment ? `<a class="mx-file" href="${esc(m.attachment.url)}" target="_blank" rel="noopener">&#128206; ${esc(m.attachment.fileName)}</a>` : "";
-            const who = !mine && open && !open.isDirect ? `<small class="mx-who">${esc(m.senderName)}</small>` : "";
-            const where = m.fromGroup && open && open.isDirect ? `<small class="mx-who">in ${esc(m.fromGroup)}</small>` : "";
+            const isImg = m.attachment && /^image\//i.test(m.attachment.contentType || "");
+            const file = !m.attachment ? "" : isImg
+                ? `<a class="mx-img" href="${esc(m.attachment.url)}" target="_blank" rel="noopener" title="${esc(m.attachment.fileName)}"><img src="${esc(m.attachment.url)}" alt="${esc(m.attachment.fileName)}" loading="lazy" /></a>`
+                : `<a class="mx-file" href="${esc(m.attachment.url)}" target="_blank" rel="noopener"><span class="mx-file-ext">${esc((m.attachment.fileName.split(".").pop() || "file").slice(0, 4))}</span><span class="mx-file-n">${esc(m.attachment.fileName)}</span></a>`;
+            const where = m.fromGroup && open && open.isDirect ? `<span class="mx-where">in ${esc(m.fromGroup)}</span>` : "";
             const quote = m.replyToId
                 ? `<button type="button" class="mx-q" data-jump="${esc(m.replyToId)}" title="Show the message this replies to"><b>${esc(m.replyToSender || "Deleted message")}</b><span>${esc(m.replyToSender ? (m.replyToText || "") : "The original was deleted")}</span></button>` : "";
-            const acts = `<span class="mx-acts" role="toolbar" aria-label="Message actions">`
-                + `<button type="button" data-mx="react" title="React" aria-label="React">${ICON.react}</button>`
-                + (m.fromGroup ? "" : `<button type="button" data-mx="reply" title="Reply" aria-label="Reply">${ICON.reply}</button>`)
-                + (canEdit(m) ? `<button type="button" data-mx="edit" title="Edit" aria-label="Edit">${ICON.edit}</button>` : "")
-                + (mine ? `<button type="button" data-mx="del" class="danger" title="Delete" aria-label="Delete">${ICON.del}</button>` : "")
-                + `</span>`;
-            return `<div class="mx-m ${mine ? "mine" : ""}" data-mid="${esc(m.id)}">${acts}${who}${where}${quote}${body ? `<span class="mx-b">${body}</span>` : ""}${file}`
-                + `<small class="mx-time">${m.editedUtc ? '<i class="mx-ed" title="Edited">Edited</i> · ' : ""}${when(m.sentUtc)}</small>`
-                + `<span class="mx-reacts" data-mid="${esc(m.id)}"></span></div>`;
+            const lbl = (t) => `<span class="mx-al">${t}</span>`;
+            // like the Chat page: a reaction bar above the message (8 quick emoji, + for any emoji, reply, forward),
+            // and for your own messages a blue pencil (edit) and a red bin (delete) beside it
+            const call = isCallCard(m.body);
+            const acts = `<span class="mx-quick" role="toolbar" aria-label="React or reply">`
+                + QUICK.map((e) => `<button type="button" data-pick="${e}" aria-label="React ${e}">${e}</button>`).join("")
+                + `<button type="button" class="mq-more" data-mx="more" title="More reactions" aria-label="More reactions">${ICON.plus}</button>`
+                + (call ? "" : `<span class="mq-sep" aria-hidden="true"></span>`
+                    + (m.fromGroup ? "" : `<button type="button" class="mq-reply" data-mx="reply" title="Reply" aria-label="Reply to this message">${ICON.reply}</button>`)
+                    + `<button type="button" class="mq-fwd" data-mx="fwd" title="Forward" aria-label="Forward this message">${ICON.fwd}</button>`)
+                + `</span>`
+                + (canEdit(m) ? `<button type="button" class="mx-edit-btn" data-mx="edit" title="Edit message (↑ in an empty box edits your last one)" aria-label="Edit message">${ICON.edit}</button>` : "")
+                + (mine ? `<button type="button" class="mx-del-btn" data-mx="del" title="Delete message" aria-label="Delete message">${ICON.del}</button>` : "");
+            const sid = mine ? lcid(cfg.userId) : lcid(m.senderId);
+            const ini = mine ? initials(myName) : (m.senderInitials || initials(m.senderName || "?"));
+            const tone = mine ? myTone : Number(m.senderTone) || 0;
+            const av = `<span class="mx-mav avatar av-36 tone-${tone}"${sid ? ` data-user="${esc(sid)}"` : ""} title="${esc(mine ? "You" : m.senderName)}">${esc(ini)}</span>`;
+            const meta = `<div class="mx-meta">${mine ? "<b>You</b>" : `<b>${esc(m.senderName || "")}</b>`} · ${tm(m.sentUtc)}${where}</div>`;
+            const content = contentHtml(m.body || "", m, mine);
+            const kind = CALL_RE.test((m.body || "").trim()) ? "is-call" : emojiOnly(m.body || "") ? "is-emoji" : "";
+            return `<div class="mx-m ${mine ? "mine" : ""} ${kind}" data-mid="${esc(m.id)}" data-sender="${esc(mine ? "me" : sid || lcid(m.senderName))}" data-at="${esc(m.sentUtc)}">`
+                + av + `<div class="mx-col">${meta}${quote}<div class="mx-body">${content}${file}${m.editedUtc ? '<i class="mx-ed2" title="Edited">Edited</i>' : ""}${acts}</div>`
+                + `<span class="mx-reacts" data-mid="${esc(m.id)}"></span></div></div>`;
         };
         const msgEl = (id) => $("mxMsgs").querySelector(`.mx-m[data-mid="${CSS.escape(String(id))}"]`);
         const paintReacts = (id, bump) => {
@@ -1276,7 +1465,18 @@
             const box = $("mxMsgs");
             const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
             box.querySelector(".mx-empty")?.remove();
+            let prev = [...box.querySelectorAll(".mx-m:not(.mx-up)")].pop();
+            // a new day: "Today", "Yesterday", "Thu, 19 Nov" between the messages
+            if (!prev || dayKey(prev.dataset.at) !== dayKey(m.sentUtc)) {
+                box.insertAdjacentHTML("beforeend", `<div class="mx-day"><span>${dayName(m.sentUtc)}</span></div>`);
+                prev = null;
+            }
             box.insertAdjacentHTML("beforeend", msgHtml(m));
+            // the same person again within 5 minutes: one group (name and picture once, like the Chat page)
+            const el = box.lastElementChild;
+            if (prev && box.lastElementChild.previousElementSibling === prev && prev.dataset.sender === el.dataset.sender
+                && !el.classList.contains("is-call") && !prev.classList.contains("is-call")
+                && Math.abs(asDate(el.dataset.at) - asDate(prev.dataset.at)) < 5 * 60000) el.classList.add("cont");
             if (atEnd || isMineMsg(m)) box.scrollTop = box.scrollHeight;
         };
         const removeMsg = (id) => {
@@ -1294,8 +1494,10 @@
             const el = msgEl(m.id);
             if (!el) return;
             const keep = el.querySelector(".mx-reacts")?.innerHTML || "";
+            const cont = el.classList.contains("cont");
             el.outerHTML = msgHtml(next);
             const fresh = msgEl(m.id);
+            if (cont) fresh?.classList.add("cont");
             const box = fresh?.querySelector(".mx-reacts");
             if (box) { box.innerHTML = keep; box.classList.toggle("has", !!keep.trim()); }
             fresh?.classList.add("flash");
@@ -1328,7 +1530,7 @@
             if (e.key === "Escape" && ctx) { e.preventDefault(); e.stopPropagation(); setCtx(null); }
             if (e.key === "ArrowUp" && !e.target.value && !ctx) {        // ↑ in an empty box: edit your last message
                 const last = [...msgs.values()].reverse().find(canEdit);
-                if (last) { e.preventDefault(); setCtx({ kind: "edit", id: last.id }); }
+                if (last) { e.preventDefault(); startEdit(last.id); }
             }
         });
         const token = () => document.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
@@ -1348,9 +1550,59 @@
             const had = el.querySelector(".mx-pick");
             closePicker();
             if (had) return;
-            el.insertAdjacentHTML("beforeend", `<span class="mx-pick" role="menu" aria-label="Pick a reaction">${QUICK.map((e) => `<button type="button" data-pick="${e}" role="menuitem">${e}</button>`).join("")}</span>`);
+            el.insertAdjacentHTML("beforeend", `<span class="mx-pick" role="menu" aria-label="Pick a reaction">${QUICK.map((e) => `<button type="button" data-pick="${e}" role="menuitem">${e}</button>`).join("")}<button type="button" class="mx-more" data-mx="more" role="menuitem" title="More emoji" aria-label="More emoji">+</button></span>`);
         };
-        let delArmed = null, delT = null;
+        // ----- edit in place (like the Chat page): the text turns into a box with Cancel / Save -----
+        function stopEdit(el) {
+            if (!el) return;
+            el.classList.remove("mx-editing");
+            el.querySelector(".mx-editor")?.remove();
+            const c = el.querySelector(".mx-bub");
+            if (c) c.hidden = false;
+        }
+        function startEdit(id) {
+            const el = msgEl(id), m = msgs.get(Number(id));
+            if (!el || !m || !canEdit(m)) return;
+            $("mxMsgs").querySelectorAll(".mx-m.mx-editing").forEach(stopEdit);
+            const bub = el.querySelector(".mx-bub");
+            if (!bub) return;
+            el.classList.add("mx-editing");
+            bub.hidden = true;
+            const doc = el.ownerDocument;
+            const ed = doc.createElement("form");
+            ed.className = "mx-editor";
+            ed.innerHTML = `<textarea rows="1" maxlength="4000" aria-label="Edit your message"></textarea>
+                <div class="mx-editor-row"><small>Enter to save · Esc to cancel</small>
+                    <span><button type="button" class="mx-editor-cancel">Cancel</button><button type="submit" class="mx-editor-save"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l5 5L20 6" /></svg> Save</button></span></div>`;
+            bub.after(ed);
+            const ta = ed.querySelector("textarea");
+            const original = m.body || "";
+            ta.value = original;
+            const size = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 220) + "px"; };
+            size();
+            ta.addEventListener("input", size);
+            ta.focus();
+            ta.setSelectionRange(ta.value.length, ta.value.length);
+            const cancel = () => { stopEdit(el); $("mxInput")?.focus(); };
+            ed.querySelector(".mx-editor-cancel").addEventListener("click", cancel);
+            ta.addEventListener("keydown", (e) => {
+                if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); }
+                if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); ed.requestSubmit(); }
+            });
+            ed.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                const text = ta.value.trim();
+                if (text === original.trim()) { cancel(); return; }
+                if (!text) { toast("A message can't be empty. To remove it, delete it."); return; }
+                const save = ed.querySelector(".mx-editor-save");
+                save.disabled = true;
+                try {
+                    const upd = await postForm(`/chat/messages/${id}/edit`, { body: text });
+                    if (upd) applyEdit(upd); else stopEdit(el);
+                    $("mxInput")?.focus();
+                } catch (err) { toast(err.message || "The message wasn't changed."); save.disabled = false; }
+            });
+        }
         $("mxMsgs").addEventListener("click", async (e) => {
             const el = e.target.closest(".mx-m");
             const pick = e.target.closest("[data-pick]");
@@ -1365,34 +1617,197 @@
                 return;
             }
             const act = e.target.closest("[data-mx]");
-            if (!act || !el) { if (!e.target.closest(".mx-pick")) closePicker(); return; }
+            if (!act || !el) {
+                if (!e.target.closest(".mx-pick")) closePicker();
+                // a tap on a message keeps its actions (Edit, Reply, …) showing; a tap elsewhere hides them
+                const tapMsg = !e.target.closest("a, button") && e.target.closest(".mx-body") && el;
+                $("mxMsgs").querySelectorAll(".mx-m.acts-on").forEach((x) => { if (x !== tapMsg) x.classList.remove("acts-on"); });
+                if (tapMsg) tapMsg.classList.toggle("acts-on");
+                return;
+            }
             const id = el.dataset.mid, m = msgs.get(Number(id));
             if (!m) return;
-            if (act.dataset.mx === "react") { openPicker(el); return; }
             closePicker();
+            if (act.dataset.mx === "more") {
+                // the full emoji panel, right by the + (like the Chat page); the bar stays up while it's open
+                el.classList.add("acts-open");
+                window.SNEmoji?.open(act, { title: "React with any emoji", onPick: (emo) => react(id, emo), onClose: () => el.classList.remove("acts-open") });
+                return;
+            }
+            if (act.dataset.mx === "fwd") { openForward(m); return; }
             if (act.dataset.mx === "reply") setCtx({ kind: "reply", id });
-            else if (act.dataset.mx === "edit") setCtx({ kind: "edit", id });
+            else if (act.dataset.mx === "edit") startEdit(id);
             else if (act.dataset.mx === "del") {
-                // press once to arm (it turns red and says "Delete?"), again to delete
-                if (delArmed !== act) {
-                    delArmed?.classList.remove("armed");
-                    delArmed = act; act.classList.add("armed"); act.title = "Press again to delete";
-                    clearTimeout(delT); delT = setTimeout(() => { act.classList.remove("armed"); act.title = "Delete"; delArmed = null; }, 3500);
-                    return;
-                }
-                delArmed = null; clearTimeout(delT);
-                el.classList.add("going");
-                try { await postForm(`/chat/messages/${id}/delete`); removeMsg(id); }
-                catch (err) { el.classList.remove("going"); act.classList.remove("armed"); toast(err.message); }
+                // like the Chat page: ask first
+                askDelete(async () => {
+                    el.classList.add("going");
+                    try { await postForm(`/chat/messages/${id}/delete`); removeMsg(id); }
+                    catch (err) { el.classList.remove("going"); toast(err.message || "The message could not be deleted."); }
+                });
             }
         });
+        function askDelete(onYes) {
+            $("mxConfirm")?.remove();
+            $("mxChat").insertAdjacentHTML("beforeend", `<div class="mx-confirm" id="mxConfirm" role="alertdialog" aria-modal="true" aria-labelledby="mxConfirmT">
+                <div class="mx-confirm-card">
+                    <span class="mx-confirm-ic" aria-hidden="true">${ICON.del}</span>
+                    <b id="mxConfirmT">Delete message</b>
+                    <p>Delete this message for everyone in the chat? A file attached to it is deleted too.</p>
+                    <div class="mx-confirm-row"><button type="button" data-no>Cancel</button><button type="button" class="danger" data-yes>Delete</button></div>
+                </div></div>`);
+            const box = $("mxConfirm");
+            const close = () => box.remove();
+            box.querySelector("[data-no]").onclick = close;
+            box.querySelector("[data-yes]").onclick = () => { close(); onYes(); };
+            box.addEventListener("click", (e) => { if (e.target === box) close(); });
+            box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } });
+            setTimeout(() => box.querySelector("[data-yes]").focus(), 30);
+        }
         document.addEventListener("click", (e) => { if (!e.target.closest("#mxMsgs")) closePicker(); });
-        const visible = () => panelOpen && pane === "msgs" && !document.hidden;
+
+        // ----- forward: pick up to 10 of your chats, add a note if you like -----
+        function openForward(m) {
+            $("mxFwd")?.remove();
+            const pickedF = new Set();
+            const src = msgs.get(Number(m.id)) || m;
+            const preview = plainOf(src);
+            $("mxChat").insertAdjacentHTML("beforeend", `<div class="mx-fwd" id="mxFwd" role="dialog" aria-label="Forward message">
+                <div class="mx-fwd-head"><b>Forward message</b><button type="button" class="mx-ctx-x" data-fwd-x aria-label="Close" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button></div>
+                <div class="mx-fwd-prev"><small>${esc(src.senderName || "")}</small><span>${esc(preview.length > 140 ? preview.slice(0, 140) + "…" : preview)}</span></div>
+                <input type="search" class="mx-fwd-q" placeholder="Search your chats" aria-label="Search your chats" />
+                <div class="mx-fwd-list" role="listbox" aria-multiselectable="true"></div>
+                <input type="text" class="mx-fwd-note" maxlength="1000" placeholder="Add a note (optional)" aria-label="Add a note" />
+                <div class="mx-fwd-foot"><small class="mx-fwd-n">Pick up to 10 chats</small><button type="button" class="mx-fwd-send" disabled>Forward</button></div>
+            </div>`);
+            const dlg = $("mxFwd"), list = dlg.querySelector(".mx-fwd-list"), q = dlg.querySelector(".mx-fwd-q"), send = dlg.querySelector(".mx-fwd-send");
+            const paintF = () => {
+                const t = q.value.trim().toLowerCase();
+                const shownChats = chats.filter((c) => !t || c.name.toLowerCase().includes(t));
+                list.innerHTML = shownChats.length ? shownChats.map((c) => `<label class="mx-fwd-row ${pickedF.has(c.id) ? "on" : ""}">
+                    <input type="checkbox" value="${esc(c.id)}" ${pickedF.has(c.id) ? "checked" : ""} />
+                    <span class="mx-av"><span class="avatar av-28 tone-${Number(c.tone) || 0}"${c.isDirect && c.userId ? ` data-user="${esc(lcid(c.userId))}"` : ""}>${esc(c.initials)}</span></span>
+                    <span class="mx-fwd-nm">${esc(c.name)}<small>${c.isDirect ? "Person" : "Group"}</small></span></label>`).join("")
+                    : `<p class="mx-empty">No chats match.</p>`;
+                const n = pickedF.size;
+                dlg.querySelector(".mx-fwd-n").textContent = n ? `${n} picked` : "Pick up to 10 chats";
+                send.disabled = n === 0;
+                send.textContent = n > 1 ? `Forward to ${n}` : "Forward";
+            };
+            list.addEventListener("change", (e) => {
+                const c = e.target;
+                if (!c.matches("input[type=checkbox]")) return;
+                if (c.checked && pickedF.size >= 10) { c.checked = false; toast("You can forward to 10 chats at a time."); return; }
+                c.checked ? pickedF.add(c.value) : pickedF.delete(c.value);
+                paintF();
+            });
+            q.addEventListener("input", paintF);
+            const closeF = () => dlg.remove();
+            dlg.querySelector("[data-fwd-x]").onclick = closeF;
+            dlg.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeF(); } });
+            send.onclick = async () => {
+                send.disabled = true; send.textContent = "Forwarding…";
+                const fd = new FormData();
+                fd.append("from", src.channelId || open.id);
+                pickedF.forEach((id) => fd.append("to", id));
+                fd.append("note", dlg.querySelector(".mx-fwd-note").value);
+                fd.append("__RequestVerificationToken", token());
+                try {
+                    const r = await fetch(`/chat/messages/${src.id}/forward`, { method: "POST", body: fd, headers: { RequestVerificationToken: token(), Accept: "application/json" }, credentials: "same-origin" });
+                    let d = null; try { d = await r.json(); } catch { }
+                    if (!r.ok) throw new Error(d?.error || "Couldn't forward. Try again.");
+                    closeF();
+                    toast(d?.message || "Forwarded.");
+                } catch (err) { toast(err.message); paintF(); }
+            };
+            if (!loaded) loadChats().then(paintF); else paintF();
+            setTimeout(() => q.focus(), 40);
+        }
+
+        // ----- attach a file (the clip, or paste / drop a file onto the chat) -----
+        function upload(file) {
+            if (!file || !open) return;
+            const c = open;
+            const row = document.createElement("div");
+            row.className = "mx-m mine mx-up";
+            row.innerHTML = `<div class="mx-col"><div class="mx-meta"><b>You</b> · Uploading…</div><div class="mx-body"><div class="mx-bub">&#128206; ${esc(file.name)}<span class="mx-bar"><i></i></span></div></div></div>`;
+            const box = $("mxMsgs");
+            box.querySelector(".mx-empty")?.remove();
+            box.appendChild(row); box.scrollTop = box.scrollHeight;
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("__RequestVerificationToken", token());
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", `/chat/${c.id}/upload`);
+            xhr.setRequestHeader("RequestVerificationToken", token());
+            xhr.setRequestHeader("Accept", "application/json");
+            xhr.upload.onprogress = (e) => { if (e.lengthComputable) row.querySelector(".mx-bar i").style.width = `${Math.round(e.loaded * 100 / e.total)}%`; };
+            xhr.onload = () => {
+                let d = null; try { d = JSON.parse(xhr.responseText); } catch { }
+                row.remove();
+                if (xhr.status >= 200 && xhr.status < 300 && d && d.id) {
+                    if (open === c) append(d);
+                    c.lastUtc = d.sentUtc; toTop(c);
+                } else toast(d?.error || (xhr.status === 413 ? "That file is too big." : "Couldn't upload the file. Try again."));
+            };
+            xhr.onerror = () => { row.remove(); toast("Couldn't upload the file. Check your connection."); };
+            xhr.send(fd);
+        }
+        $("mxFile")?.addEventListener("change", (e) => { [...e.target.files].slice(0, 5).forEach(upload); e.target.value = ""; });
+        $("mxInput").addEventListener("paste", (e) => {
+            const files = [...(e.clipboardData?.files || [])];
+            if (files.length) { e.preventDefault(); files.slice(0, 5).forEach(upload); }
+        });
+        const chatBox = $("mxChat");
+        chatBox.addEventListener("dragover", (e) => { if (open && [...(e.dataTransfer?.types || [])].includes("Files")) { e.preventDefault(); chatBox.classList.add("drop"); } });
+        chatBox.addEventListener("dragleave", (e) => { if (!chatBox.contains(e.relatedTarget)) chatBox.classList.remove("drop"); });
+        chatBox.addEventListener("drop", (e) => {
+            chatBox.classList.remove("drop");
+            const files = [...(e.dataTransfer?.files || [])];
+            if (files.length && open) { e.preventDefault(); files.slice(0, 5).forEach(upload); }
+        });
+        const visible = () => pane === "msgs" && panelShown();
         const markRead = (c) => {
             if (c.unread) { c.unread = 0; paintList(); }
             if (hub.state === "Connected") hub.invoke("MarkRead", c.id).catch(() => { });
         };
         const toTop = (c) => { chats = [c, ...chats.filter((x) => x !== c)]; };
+        // ----- earlier messages: scroll to the top (or press "Show earlier messages") for 50 more -----
+        let older = { has: false, busy: false };
+        const paintOlder = () => {
+            const box = $("mxMsgs");
+            let b = box.querySelector(".mx-older");
+            if (!older.has) { b?.remove(); return; }
+            if (!b) { box.insertAdjacentHTML("afterbegin", `<button type="button" class="mx-older">Show earlier messages</button>`); b = box.querySelector(".mx-older"); }
+            else box.prepend(b);
+            b.disabled = older.busy;
+            b.textContent = older.busy ? "Loading earlier messages…" : "Show earlier messages";
+        };
+        async function loadOlder() {
+            if (!open || !older.has || older.busy) return;
+            const box = $("mxMsgs"), c = open;
+            const ids = [...msgs.keys()];
+            if (!ids.length) return;
+            older.busy = true; paintOlder();
+            try {
+                const r = await fetch(`/chat/${c.id}/messages?before=${Math.min(...ids)}`, { headers: { Accept: "application/json" }, credentials: "same-origin" });
+                const d = r.ok ? await r.json() : null;
+                if (open !== c || !d) return;
+                const fromBottom = box.scrollHeight - box.scrollTop;
+                // all of it again, oldest first (days and groups stay right), then back to where you were
+                const all = [...d.messages, ...[...msgs.values()].sort((a, b) => a.id - b.id)];
+                const keepReacts = new Map(reacts);
+                box.innerHTML = ""; shown.clear(); msgs.clear();
+                all.forEach(append);
+                keepReacts.forEach((list, id) => { reacts.set(id, list); paintReacts(id, false); });
+                older.has = !!d.hasOlder;
+                box.scrollTop = box.scrollHeight - fromBottom;
+                loadReacts(d.messages.map((m) => m.id));
+            } catch { toast("Couldn't load earlier messages. Try again."); }
+            finally { older.busy = false; paintOlder(); }
+        }
+        $("mxMsgs").addEventListener("scroll", () => { if ($("mxMsgs").scrollTop < 60) loadOlder(); }, { passive: true });
+        $("mxMsgs").addEventListener("click", (e) => { if (e.target.closest(".mx-older")) loadOlder(); });
+
         async function openChat(id) {
             if (!chats.length) await loadChats();
             const c = chats.find((x) => sameId(x.id, id));
@@ -1412,20 +1827,27 @@
             if (c.isDirect && c.userId) $("mxName").insertAdjacentHTML("afterend", `<small class="mx-hst st-label" data-st-user="${esc(lcid(c.userId))}"></small>`), team.paintStatus(hd);
             msgs.clear(); reacts.clear(); setCtx(null);
             $("mxOpen").href = `/chat/${c.id}`;
+            // the chat this call came from: say so, and offer the call's own chat
+            const linked = !!cfg.chatId && sameId(c.id, cfg.chatId);
+            if ($("mxCallChat")) $("mxCallChat").hidden = !linked;
+            if (linked && $("paneSub")) $("paneSub").textContent = `Your chat with ${c.name}`;
             $("mxMsgs").innerHTML = `<div class="mx-empty">Loading…</div>`;
             try {
                 const r = await fetch(`/chat/${c.id}/recent`, { headers: { Accept: "application/json" }, credentials: "same-origin" });
                 const d = r.ok ? await r.json() : null;
                 if (open !== c) return;
                 $("mxMsgs").innerHTML = d && d.messages.length ? "" : `<div class="mx-empty">${d ? "No messages yet. Say hello!" : "Couldn't load the messages."}</div>`;
+                older = { has: !!d?.hasOlder, busy: false };
                 (d?.messages || []).forEach(append);
+                paintOlder();
                 $("mxMsgs").scrollTop = $("mxMsgs").scrollHeight;
                 loadReacts((d?.messages || []).map((m) => m.id));
+                if (older.has && $("mxMsgs").scrollHeight <= $("mxMsgs").clientHeight + 40) loadOlder();   // a short list: fill the space
             } catch { $("mxMsgs").innerHTML = `<div class="mx-empty">Couldn't load the messages.</div>`; }
             markRead(c);
             setTimeout(() => $("mxInput").focus(), 50);
         }
-        const backToList = () => { setCtx(null); open = null; $("mxChat").hidden = true; $("mxList").hidden = false; paintList(); };
+        const backToList = () => { $("mxFwd")?.remove(); setCtx(null); open = null; $("mxChat").hidden = true; $("mxList").hidden = false; paintList(); };
         $("mxBack").onclick = backToList;
         $("mxList").addEventListener("click", (e) => { const b = e.target.closest(".mx-row"); if (b) openChat(b.dataset.id); });
         $("mxForm").addEventListener("submit", async (e) => {
@@ -1450,7 +1872,16 @@
                 toTop(open);
             } catch { input.value = text; if (replyTo) setCtx({ kind: "reply", id: replyTo }); toast("Couldn't send. Check your connection and try again."); }
         });
-        const openMessages = (id) => { setPanel(true); showPane("msgs"); if (id) openChat(id); };
+        const openMessages = (id) => {
+            if (!window.__snPopDoc) setPanel(true);
+            showPane("msgs");
+            if (id && !(open && sameId(open.id, id) && !$("mxChat").hidden)) openChat(id);
+            else if (id && cfg.chatId && sameId(id, cfg.chatId) && $("paneSub")) $("paneSub").textContent = `Your chat with ${open.name}`;
+        };
+        window.__snOpenIs = (id) => !!open && sameId(open.id, id) && !$("mxChat").hidden;
+        window.__snOpenMessages = openMessages;
+        $("ccLinked")?.addEventListener("click", () => { if (!cfg.chatId) return; window.__snPreferCallChat = false; openMessages(cfg.chatId); });
+        $("mxCallChat")?.addEventListener("click", () => { window.__snPreferCallChat = true; showPane("chat"); });
         window.__snMsgsShown = () => { if (!loaded) loadChats(); else paintList(); if (open) markRead(open); };
         hub.on("MessageReceived", (m) => {
             if (!m || isCallCard(m.body)) return;
@@ -1487,6 +1918,32 @@
         loadChats();
     }
 
+
+    // =====================================================================
+    // Emoji: the 😊 by a message box (Chat and Inbox) opens the shared emoji panel (js/emoji-picker.js);
+    // the emoji goes where you're typing and the panel stays open to pick a few.
+    // =====================================================================
+    const emojiPanel = {
+        open(anchorEl, onPick, o = {}) {
+            if (!window.SNEmoji) { toast("Emoji are still loading. Try again in a moment."); return; }
+            window.SNEmoji.open(anchorEl, { onPick, keepOpen: !o.once, title: o.title });
+        }
+    };
+    const onEmojiButton = (e) => {
+        const btn = e.target.closest("[data-emoji-for]");
+        if (!btn) return;
+        const input = $(btn.dataset.emojiFor) || btn.closest("form")?.querySelector("input[type=text]");
+        if (!input) return;
+        emojiPanel.open(btn, (emo) => {
+            const a = input.selectionStart ?? input.value.length, b = input.selectionEnd ?? input.value.length;
+            if (input.value.length + emo.length > (input.maxLength > 0 ? input.maxLength : 1e9)) return;
+            input.value = input.value.slice(0, a) + emo + input.value.slice(b);
+            input.setSelectionRange(a + emo.length, a + emo.length);
+        });
+    };
+    document.addEventListener("click", onEmojiButton);
+    window.__snEmojiButton = onEmojiButton;
+    document.addEventListener("submit", () => window.SNEmoji?.close(), true);
 
     // =====================================================================
     // Connection bars in the top bar (in place of Jitsi's quality badge):

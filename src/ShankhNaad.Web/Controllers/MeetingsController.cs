@@ -363,6 +363,7 @@ public sealed class MeetingsController : Controller
             LeaveUrl = meeting.ChannelId is Guid ch ? Url.Action("Index", "Chat", new { id = ch })! : Url.Action(nameof(Index))!,
             GuestUrl = meeting.GuestLinkEnabled ? _meetings.GuestUrl(meeting.GuestCode) : null,
             ChannelName = meeting.ChannelId is not null && !meeting.ChannelIsDirect ? meeting.ChannelName : null,
+            ChatChannelId = meeting.ChannelId,
             CallWithName = other?.DisplayName,
             CallWithInitials = other?.Initials,
             CallWithTone = other?.AvatarTone ?? 0

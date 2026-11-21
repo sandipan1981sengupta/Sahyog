@@ -220,15 +220,7 @@
 
     // ---------- reactions on messages (👍 ❤️ 😂 …), like Teams ----------
     const REACTS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "👏", "🎉"];
-    // the "+" panel and the 😊 button in the message box; keep in step with ReactionEmojis.More in ReactionService.cs
-    const EMOJI_GROUPS = [
-        ["Smileys", "😀 😃 😄 😁 😆 😅 🤣 😂 🙂 😉 😊 😇 🥰 😍 🤩 😘 😋 😜 🤪 😎 🤓 🥳 😏 😌 😴 🤗 🤔 🤭 🤫 😶 😐 😑 😬 🙄 😮 😯 😲 😳 🥺 😢 😭 😤 😡 🤯 😱 🤒 🤧 😷".split(" ")],
-        ["Hands", "👍 👎 👌 ✌️ 🤞 🤟 🤘 👏 🙌 👐 🙏 🤝 💪 👋 ✋ 👊 ✊ 🫡 👀 🧠".split(" ")],
-        ["Hearts & fun", "❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💯 💥 ✨ 🔥 ⭐ 🌟 🎉 🎊 🎁 🏆 🥇".split(" ")],
-        ["Work & more", "✅ ❌ ⚠️ ❓ ❗ 💡 📌 📎 📅 ⏰ 📞 💻 📊 📈 🚀 ☕ 🍕 🍰 🌹 🌞".split(" ")]
-    ];
-    // words for the emoji panel's search box (English, a few per emoji)
-    const EMOJI_WORDS = {"😀": "grin smile happy", "😃": "smile happy joy", "😄": "smile happy laugh", "😁": "grin beam happy", "😆": "laugh lol happy", "😅": "sweat laugh nervous phew", "🤣": "rofl laugh lol", "😂": "joy laugh tears lol", "🙂": "slight smile ok", "😉": "wink", "😊": "blush smile happy", "😇": "angel innocent halo", "🥰": "love hearts adore", "😍": "heart eyes love", "🤩": "star struck wow amazing", "😘": "kiss love", "😋": "yum tasty delicious", "😜": "wink tongue silly crazy", "🤪": "zany crazy silly", "😎": "cool sunglasses", "🤓": "nerd geek glasses", "🥳": "party celebrate birthday", "😏": "smirk", "😌": "relieved calm peace", "😴": "sleep tired zzz", "🤗": "hug hugging", "🤔": "think thinking hmm", "🤭": "oops giggle hand", "🤫": "shush quiet secret", "😶": "no mouth silent speechless", "😐": "neutral meh", "😑": "expressionless meh", "😬": "grimace awkward", "🙄": "eye roll whatever", "😮": "wow surprised open mouth", "😯": "hushed surprised", "😲": "astonished shocked wow", "😳": "flushed embarrassed", "🥺": "pleading please puppy", "😢": "cry sad tear", "😭": "sob cry sad", "😤": "triumph huff angry", "😡": "angry mad rage", "🤯": "mind blown explode", "😱": "scream fear shock", "🤒": "sick fever ill", "🤧": "sneeze sick cold", "😷": "mask sick", "👍": "thumbs up like yes ok good", "👎": "thumbs down dislike no bad", "👌": "ok perfect fine", "✌️": "peace victory", "🤞": "fingers crossed luck hope", "🤟": "love you", "🤘": "rock horns", "👏": "clap applause bravo well done", "🙌": "raise hands celebrate hooray", "👐": "open hands", "🙏": "pray thanks please namaste", "🤝": "handshake deal agree", "💪": "strong muscle flex power", "👋": "wave hello hi bye", "✋": "hand stop high five", "👊": "fist bump punch", "✊": "fist power", "🫡": "salute respect yes sir", "👀": "eyes look see watching", "🧠": "brain smart think", "❤️": "heart love red", "🧡": "orange heart", "💛": "yellow heart", "💚": "green heart", "💙": "blue heart", "💜": "purple heart", "🖤": "black heart", "🤍": "white heart", "💔": "broken heart sad", "💯": "hundred perfect 100", "💥": "boom bang", "✨": "sparkles shine new", "🔥": "fire hot lit", "⭐": "star", "🌟": "glowing star shine", "🎉": "party tada celebrate congrats", "🎊": "confetti celebrate", "🎁": "gift present", "🏆": "trophy win award winner", "🥇": "gold medal first winner", "✅": "check done yes tick complete", "❌": "cross no wrong cancel", "⚠️": "warning alert caution", "❓": "question what", "❗": "exclamation important", "💡": "idea bulb light", "📌": "pin pushpin important", "📎": "paperclip attach file", "📅": "calendar date schedule meeting", "⏰": "alarm clock time reminder", "📞": "phone call", "💻": "laptop computer work", "📊": "chart bar stats report", "📈": "chart up growth trend", "🚀": "rocket launch fast ship", "☕": "coffee tea break", "🍕": "pizza food", "🍰": "cake birthday dessert", "🌹": "rose flower", "🌞": "sun sunny morning"};
+    // the "+" panel and the 😊 button in the message box: every emoji, from js/emoji-picker.js
     const msgInfo = new Map();      // message id → { name, text } (for replies)
     const bodies = new Map();       // message id → its text (for editing your own messages)
     const reactState = new Map();   // message id → [{ emoji, userId, name }]
@@ -286,83 +278,41 @@
     });
 
     // ---------- "+" : all the other reactions in a small panel ----------
-    let morePanel = null;
+    // ---------- the emoji panel: every emoji, searchable (js/emoji-picker.js, shared with the call room) ----------
+    // btn.dataset.more = message id → reacts to that message; btn.dataset.emojiFor = "composer" → types into the box
+    let morePanel = null;                  // the button whose panel is open
     function closeMorePanel() {
         if (!morePanel) return;
-        morePanel.owner?.closest(".msg")?.classList.remove("acts-open");
-        morePanel.remove(); morePanel = null;
+        window.SNEmoji?.close();
     }
-    // btn.dataset.more = message id → reacts to that message; btn.dataset.emojiFor = "composer" → types into the box
     function openMorePanel(btn) {
+        if (!window.SNEmoji) return;
         const mid = btn.dataset.more || "";
-        const forBox = !mid;
-        const key = mid || "composer";
-        if (morePanel && morePanel.dataset.key === key) { closeMorePanel(); return; }
-        closeMorePanel();
-        const panel = document.createElement("div");
-        panel.className = "msg-more-panel";
-        panel.dataset.key = key;
-        if (mid) panel.dataset.mid = mid;
-        panel.setAttribute("role", "dialog");
-        panel.setAttribute("aria-label", forBox ? "Emoji" : "More reactions");
-        panel.innerHTML = `<label class="mmp-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" placeholder="Search emoji (happy, thumbs, fire…)" aria-label="Search emoji" autocomplete="off" /></label>`
-            + EMOJI_GROUPS.map(([name, list]) => `<div class="mmp-head" data-group="${name}">${name}</div>` + list.map((e) => {
-                const words = S.escape(`${EMOJI_WORDS[e] || ""} ${name}`.toLowerCase());
-                return forBox
-                    ? `<button type="button" data-insert="${e}" data-words="${words}" data-group="${name}" aria-label="${e}" title="${S.escape(EMOJI_WORDS[e] || "")}">${e}</button>`
-                    : `<button type="button" data-react="${e}" data-mid="${mid}" data-words="${words}" data-group="${name}" aria-label="React ${e}" title="${S.escape(EMOJI_WORDS[e] || "")}">${e}</button>`;
-            }).join("")).join("")
-            + `<div class="mmp-none" hidden>No emoji found</div>`;
-        // search: matches any word that starts with what you type ("thu" → 👍 👎), group headings hide when empty
-        const findBox = panel.querySelector(".mmp-search input");
-        findBox.addEventListener("input", () => {
-            const q = findBox.value.trim().toLowerCase();
-            let any = 0;
-            const shown = {};
-            panel.querySelectorAll("button[data-words]").forEach((b) => {
-                const ok = !q || b.dataset.words.split(" ").some((w) => w.startsWith(q)) || b.textContent === q;
-                b.hidden = !ok;
-                if (ok) { any++; shown[b.dataset.group] = true; }
-            });
-            panel.querySelectorAll(".mmp-head").forEach((h) => { h.hidden = !shown[h.dataset.group]; });
-            panel.querySelector(".mmp-none").hidden = any > 0;
+        const owner = btn;
+        const msg = btn.closest(".msg");
+        if (morePanel === btn && window.SNEmoji.isOpen()) { window.SNEmoji.close(); return; }
+        msg?.classList.add("acts-open");
+        morePanel = btn;
+        window.SNEmoji.open(btn, {
+            keepOpen: !mid,
+            title: mid ? "React with any emoji" : "",
+            onClose: () => { msg?.classList.remove("acts-open"); if (morePanel === owner) morePanel = null; },
+            onPick: (emoji) => {
+                if (mid) { react(Number(mid), emoji, null); return; }
+                if (!box) return;
+                const start = box.selectionStart ?? box.value.length, end = box.selectionEnd ?? box.value.length;
+                box.value = box.value.slice(0, start) + emoji + box.value.slice(end);
+                const at = start + emoji.length;
+                box.focus({ preventScroll: true }); box.setSelectionRange(at, at);
+                box.dispatchEvent(new Event("input"));
+            }
         });
-        // Enter picks the first match
-        findBox.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") { e.stopPropagation(); closeMorePanel(); return; }
-            if (e.key !== "Enter") return;
-            e.preventDefault();
-            panel.querySelector("button[data-words]:not([hidden])")?.click();
-        });
-        document.body.appendChild(panel);
-        panel.owner = btn;
-        btn.closest(".msg")?.classList.add("acts-open");
-        // above the button, kept inside the window; below it if there's no room above
-        const r = btn.getBoundingClientRect(), w = panel.offsetWidth, h = panel.offsetHeight;
-        const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
-        let top = r.top - h - 8;
-        if (top < 8) top = Math.min(r.bottom + 8, window.innerHeight - h - 8);
-        panel.style.left = `${left}px`; panel.style.top = `${Math.max(8, top)}px`;
-        morePanel = panel;
-        requestAnimationFrame(() => { panel.classList.add("show"); findBox.focus({ preventScroll: true }); });
     }
-    // an emoji picked for the message box goes where the cursor is; the panel stays open for more
-    document.addEventListener("click", (e) => {
-        const b = e.target.closest(".msg-more-panel [data-insert]");
-        if (!b || !box) return;
-        e.preventDefault();
-        const start = box.selectionStart ?? box.value.length, end = box.selectionEnd ?? box.value.length;
-        box.value = box.value.slice(0, start) + b.dataset.insert + box.value.slice(end);
-        const at = start + b.dataset.insert.length;
-        box.focus(); box.setSelectionRange(at, at);
-        box.dispatchEvent(new Event("input"));
-    });
     document.addEventListener("click", (e) => {
         const more = e.target.closest("[data-more], [data-emoji-for]");
-        if (more) { e.preventDefault(); openMorePanel(more); return; }
-        if (morePanel && !e.target.closest(".msg-more-panel")) closeMorePanel();
+        if (more) { e.preventDefault(); openMorePanel(more); }
     });
-    scroller?.addEventListener("scroll", closeMorePanel);
+    scroller?.addEventListener("scroll", () => { if (morePanel && morePanel.dataset.more) closeMorePanel(); });
     window.addEventListener("resize", closeMorePanel);
 
     // ---------- reply to a particular message ----------
