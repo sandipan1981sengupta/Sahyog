@@ -334,7 +334,7 @@ public sealed class MeetingsController : Controller
             return View("Full", limits);
 
         var provider = _video.Get(limits.VideoProvider);
-        if (!provider.IsConfigured) return View("VideoNotConfigured");
+        if (!provider.IsConfigured) { ViewData["Provider"] = provider.Name; return View("VideoNotConfigured"); }
 
         var isModerator = meeting.HostId == Me || User.IsInRole(AppRoles.TenantAdmin);
         var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;

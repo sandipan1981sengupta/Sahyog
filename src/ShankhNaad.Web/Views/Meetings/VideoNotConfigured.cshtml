@@ -1,10 +1,19 @@
 @{
     Layout = "_AuthLayout";
     ViewData["Title"] = "Video not set up";
+    var ownServer = string.Equals(ViewData["Provider"] as string, "Jitsi", StringComparison.OrdinalIgnoreCase);
 }
 <div class="auth-card glass-strong center">
     <h2>Video isn't set up yet</h2>
-    <p class="muted">An administrator needs to add the JaaS App ID, API key ID and private key in appsettings.json (section "Jaas"),
-        and copy the private key file (Key/jaas.pk) to the server next to the app.</p>
+    @if (ownServer)
+    {
+        <p class="muted">This plan uses your own Jitsi server. An administrator needs to add its address, app id and app secret
+            in appsettings.json (section "Jitsi": Domain, AppId, AppSecret).</p>
+    }
+    else
+    {
+        <p class="muted">An administrator needs to add the JaaS App ID, API key ID and private key in appsettings.json (section "Jaas"),
+            and copy the private key file (Key/jaas.pk) to the server next to the app.</p>
+    }
     <a class="btn btn-primary" href="/">Back to ShankhNaad</a>
 </div>

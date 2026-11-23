@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using ShankhNaad.DtoLibrary;
 using ShankhNaad.ServiceLibrary;
 using ShankhNaad.Web.Infrastructure;
@@ -15,9 +16,19 @@ public sealed class AdminController : Controller
     private readonly IFileStorage _files;
     private readonly ILogger<AdminController> _log;
     private readonly ILocationService _location;
+    private readonly IUserService _users;
+    private readonly IAccountEmailService _mail;
+    private readonly AppOptions _app;
 
-    public AdminController(ITenantService tenants, IFileStorage files, ILogger<AdminController> log, ILocationService location)
+    /// <summary>How long the client admin's "set your password" link works.</summary>
+    private const int InviteLinkDays = 7;
+
+    public AdminController(ITenantService tenants, IFileStorage files, ILogger<AdminController> log, ILocationService location,
+        IUserService users, IAccountEmailService mail, IOptions<AppOptions> app)
     {
+        _users = users;
+        _mail = mail;
+        _app = app.Value;
         _location = location;
         _tenants = tenants;
         _files = files;
@@ -45,8 +56,65 @@ public sealed class AdminController : Controller
         if (!result.Succeeded)
             return View(nameof(Index), await BuildAsync(input, error: result.Error));
 
-        TempData["Message"] = $"Workspace '{input.Slug}' created. {input.AdminEmail} can now sign in.";
+        if (input.SendInvite && _mail.CanSend)
+        {
+            var problem = await EmailAdminLinkAsync(input.AdminEmail, welcome: true);
+            if (problem is null)
+                TempData["Message"] = $"Workspace '{input.Slug}' created. We emailed {input.AdminEmail.Trim()} a link to set their own password (it works for {InviteLinkDays} days). The temporary password also works until then.";
+            else
+                TempData["Error"] = $"Workspace '{input.Slug}' was created, but the invite email wasn't sent: {problem} Share the temporary password with {input.AdminEmail.Trim()} privately, or select the client and use \"Email admin link\" to try again.";
+        }
+        else
+            TempData["Message"] = $"Workspace '{input.Slug}' created. Share the email {input.AdminEmail.Trim()} and the temporary password with the client admin privately.";
         return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// Emails a client's admins a one-time link to set their own password: a welcome link for an admin who
+    /// has never signed in (7 days), otherwise a set-password link. Each new link cancels the earlier ones.
+    /// </summary>
+    [HttpPost("tenants/{id:guid}/invite-admin")]
+    public async Task<IActionResult> InviteAdmin(Guid id)
+    {
+        var admins = (await _users.ListByTenantAsync(id)).Where(u => u.Role == AppRoles.TenantAdmin && u.IsActive).ToList();
+        if (admins.Count == 0)
+        {
+            TempData["Error"] = "This client has no active admin to email.";
+            return RedirectToAction(nameof(Index));
+        }
+        var sent = new List<string>();
+        var failed = new List<string>();
+        foreach (var a in admins)
+        {
+            var problem = await EmailAdminLinkAsync(a.Email, welcome: a.HasSignedIn != true);
+            if (problem is null) sent.Add(a.Email); else failed.Add($"{a.Email} ({problem})");
+        }
+        if (sent.Count > 0)
+            TempData["Message"] = $"We emailed a link to set a password to {string.Join(", ", sent)} (it works for {InviteLinkDays} days). Earlier links no longer work.";
+        if (failed.Count > 0)
+            TempData["Error"] = $"Not sent to {string.Join("; ", failed)}.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>Creates a one-time link for a client admin and emails it. Returns null when it was sent, otherwise why not.</summary>
+    private async Task<string?> EmailAdminLinkAsync(string email, bool welcome)
+    {
+        if (!_mail.CanSend) return "Email isn't set up on this server yet (Smtp settings).";
+        var person = await _users.FindByEmailAsync(email);
+        if (person is null) return "That admin wasn't found.";
+        if (!person.IsActive) return "That admin is switched off.";
+
+        var (token, error) = await _users.CreatePasswordLinkAsync(person.UserId,
+            welcome ? PasswordLinkPurpose.Welcome : PasswordLinkPurpose.Reset, TimeSpan.FromDays(InviteLinkDays));
+        if (token is null) return error ?? "The link couldn't be created.";
+
+        var url = PasswordLinks.Url(_app, Request, token);
+        var ok = welcome
+            ? await _mail.SendWelcomeAsync(person.Email, person.DisplayName, person.TenantSlug ?? "", person.TenantName ?? "",
+                "CloudWheel Ltd", url, InviteLinkDays)
+            : await _mail.SendPasswordResetAsync(person.Email, person.DisplayName, person.TenantSlug, url, $"{InviteLinkDays} days");
+        if (!ok) _log.LogWarning("Client admin link for {Email} was not sent (see the SMTP line above).", email);
+        return ok ? null : "The mail server didn't accept the email. Check the Smtp settings and the app's log.";
     }
 
     /// <summary>Rename a client: company name and the workspace name people type when signing in.</summary>
@@ -183,6 +251,7 @@ public sealed class AdminController : Controller
             Tenants = tenants,
             Plans = plans,
             NewTenant = form,
+            CanEmail = _mail.CanSend,
             Message = TempData["Message"] as string,
             Error = error ?? TempData["Error"] as string
         };

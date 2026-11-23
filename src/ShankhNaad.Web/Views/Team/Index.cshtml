@@ -85,6 +85,7 @@
                        show-save="false" show-submit="false"
                        show-print="true" print-on-click="SN.print()">
             <action-btn text="My photo" icon-css="bi bi-person-bounding-box" icon-color="#7C3AED" tooltip="Add or change your profile photo" on-click="snPhotoFor(snMe, snMyName)"></action-btn>
+            <action-btn text="My password" icon-css="bi bi-shield-lock-fill" icon-color="#0F766E" tooltip="Change your own password" on-click="snMyPassword()"></action-btn>
             <action-btn text="Profile" icon-css="bi bi-person-vcard-fill" icon-color="#2563EB" tooltip="@(locOn ? "Photo, details and location of the selected person" : "Photo and details of the selected person")" on-click="snPersonCard()"></action-btn>
             @if (locOn && isAdmin)
             {
@@ -332,6 +333,37 @@
     </form>
 </dialog>
 }
+
+@* ---- my password: everyone changes only their own, with the current password ---- *@
+<dialog id="myPasswordDialog" class="sn-dialog glass-strong">
+    <form method="post" asp-antiforgery="true" action="/team/me/password" id="myPasswordForm" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="bi bi-shield-lock-fill" aria-hidden="true"></i></span><div><h2>My password</h2><p>Change your own password. Nobody else can see it.</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body">
+            <modern-group-box title="Change | password" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                <div style="display:flex;flex-direction:column;gap:14px">
+                    <modern-input id="pwCurrent" name="currentPassword" label="Current password" mandatory="true" is-password="true" label-font-size="13.5px"></modern-input>
+                    <modern-input id="pwNew" name="newPassword" label="New password" mandatory="true" is-password="true" placeholder="At least 8 characters" label-font-size="13.5px"></modern-input>
+                    <modern-input id="pwConfirm" name="confirmPassword" label="Confirm new password" mandatory="true" is-password="true" label-font-size="13.5px"></modern-input>
+                    <span class="sn-hint" id="pwNote"><i class="fa fa-info-circle" aria-hidden="true"></i> You stay signed in here. Other devices you're signed in on are signed out and need the new password.</span>
+                    @if (Model.CanEmail)
+                    {
+                        <span class="sn-hint"><i class="fa fa-question-circle" aria-hidden="true"></i> Forgot your current password? Sign out and use "Forgot password" on the sign-in page.</span>
+                    }
+                </div>
+            </modern-group-box>
+        </div>
+        <div class="sn-dlg-foot">
+            <span class="muted small" id="pwFoot" aria-live="polite"></span>
+            <span style="display:flex;gap:10px">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Change password</button>
+            </span>
+        </div>
+    </form>
+</dialog>
 
 @* ---- profile photo: shrunk to a small square in the browser, then stored in the database ---- *@
 <dialog id="photoDialog" class="sn-dialog glass-strong sn-photo-dialog">
@@ -710,6 +742,26 @@
             wire("mEmail", "mEmailHint");
             wire("eEmail", "eEmailHint");
         })();
+
+        // ---- my password: open with empty fields; check the two new ones match before sending ----
+        function snMyPassword() {
+            $("#pwCurrent, #pwNew, #pwConfirm").val("").attr("type", "password").trigger("input");
+            $("#pwFoot").text("");
+            SN.open("myPasswordDialog");
+            setTimeout(function () { $("#pwCurrent").trigger("focus"); }, 300);
+        }
+        $(document).off("submit.snpw").on("submit.snpw", "#myPasswordForm", function (e) {
+            var cur = $("#pwCurrent").val() || "", nw = $("#pwNew").val() || "", cf = $("#pwConfirm").val() || "";
+            var why = !cur ? "Enter your current password."
+                : nw.length < 8 ? "The new password needs at least 8 characters."
+                : nw !== cf ? "The new password and its confirmation don't match."
+                : nw === cur ? "Choose a password different from your current one." : "";
+            if (why) {
+                e.preventDefault();
+                $("#pwFoot").text(why);
+                Sahyog.toast(why, { kind: "info", title: "My password" });
+            }
+        });
 
         // ---- profile photo: pick → crop to a square → shrink to 192 px JPEG → upload ----
         var snPhotoUser = null, snPhotoBlob = null;

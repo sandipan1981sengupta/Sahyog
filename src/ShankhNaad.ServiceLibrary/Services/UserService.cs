@@ -50,6 +50,8 @@ public interface IUserService
     Task<(OperationResult Result, string? Email, string? TenantSlug)> UsePasswordLinkAsync(string token, string newPassword);
     /// <summary>Edits name, email, role and (optionally) the password of a person in a workspace.</summary>
     Task<UpdateUserResult> UpdateAsync(UpdateUserRequest request);
+    /// <summary>Someone changes their own password: the current one must be right. Signs them out on other devices.</summary>
+    Task<UpdateUserResult> ChangeOwnPasswordAsync(Guid tenantId, Guid userId, string currentPassword, string newPassword);
     Task<SetUserActiveStatus> SetActiveAsync(Guid tenantId, Guid userId, bool isActive);
     /// <summary>Saves someone's profile photo. False when they aren't in this workspace.</summary>
     Task<bool> SetPhotoAsync(Guid tenantId, Guid userId, byte[] photo, string contentType);
@@ -293,6 +295,39 @@ public sealed class UserService : IUserService
             4 => new(OperationResult.Fail("The workspace needs at least one admin. Make someone else an admin first."), null),
             _ => new(OperationResult.Fail("Could not save the changes."), null)
         };
+    }
+
+    public async Task<UpdateUserResult> ChangeOwnPasswordAsync(Guid tenantId, Guid userId, string currentPassword, string newPassword)
+    {
+        var me = await GetByIdAsync(userId);
+        if (me is null || me.TenantId != tenantId || !me.IsActive) return new(OperationResult.Fail("Your account wasn't found."), null);
+
+        var login = await FindByEmailAsync(me.Email);
+        if (login is null || login.UserId != userId) return new(OperationResult.Fail("Your account wasn't found."), null);
+        if (login.LockoutEndUtc is DateTime until && until > DateTime.UtcNow)
+            return new(OperationResult.Fail("Too many wrong attempts. Try again in a few minutes."), null);
+
+        if (!Passwords.Verify(login.PasswordHash, currentPassword ?? "").Ok)
+        {
+            // a wrong current password counts like a wrong sign-in, so it can't be guessed here either
+            await _db.QueryAsync("dbo.sahyog_Auth_LoginFailed",
+                p => p.With("@UserId", userId).With("@MaxAttempts", MaxAttempts).With("@LockMinutes", LockMinutes),
+                r => r.UtcN("LockoutEndUtc"));
+            return new(OperationResult.Fail("Your current password is not correct."), null);
+        }
+        if (string.IsNullOrEmpty(newPassword)) return new(OperationResult.Fail("Enter a new password."), null);
+        if (newPassword == currentPassword) return new(OperationResult.Fail("Choose a password different from your current one."), null);
+        if (Passwords.Validate(newPassword) is string error) return new(OperationResult.Fail(error), null);
+
+        return await UpdateAsync(new UpdateUserRequest
+        {
+            TenantId = tenantId,
+            UserId = userId,
+            DisplayName = me.DisplayName,
+            Email = me.Email,
+            Role = me.Role,
+            NewPassword = newPassword
+        });
     }
 
     public async Task<bool> SuperAdminExistsAsync()

@@ -23,8 +23,9 @@ public sealed record VideoJoinInfo(
     string Token);
 
 /// <summary>
-/// The app talks only to this interface. JaaS today; a LiveKit implementation can be added for
-/// 500-person clients later, selected per plan, without changing controllers or views.
+/// The app talks only to this interface, and each plan picks one by name (Admin › Plans › Video):
+/// "JaaS" (8x8's hosted Jitsi) or "Jitsi" (your own Jitsi Meet server). A LiveKit implementation can be
+/// added later the same way, without changing controllers or views.
 /// </summary>
 public interface IVideoProvider
 {
@@ -46,7 +47,7 @@ public sealed class VideoProviderFactory : IVideoProviderFactory
 
     public IVideoProvider Get(string providerName) =>
         _providers.FirstOrDefault(p => string.Equals(p.Name, providerName, StringComparison.OrdinalIgnoreCase))
-        ?? throw new NotSupportedException($"Video provider '{providerName}' is not installed. Set the plan's provider to JaaS.");
+        ?? throw new NotSupportedException($"Video provider '{providerName}' is not installed. Set the plan's provider to JaaS or Jitsi.");
 }
 
 /// <summary>
@@ -166,4 +167,86 @@ public sealed class JaasVideoProvider : IVideoProvider, IDisposable
     {
         if (_rsa.IsValueCreated) _rsa.Value.Dispose();
     }
+}
+
+/// <summary>Settings for your own Jitsi Meet server (appsettings.json, section "Jitsi").</summary>
+public sealed class JitsiOptions
+{
+    /// <summary>The server's public address, without https://, e.g. "meet.yourcompany.com".</summary>
+    public string Domain { get; set; } = "";
+
+    /// <summary>The app id set when the server was installed with token sign-in (jitsi-meet-tokens), e.g. "shankhnaad".</summary>
+    public string AppId { get; set; } = "";
+
+    /// <summary>The app secret set with it. Keep it only in appsettings.json on the server, never in the browser.</summary>
+    public string AppSecret { get; set; } = "";
+
+    /// <summary>The server's XMPP domain. On a standard Ubuntu install it is the same as Domain; leave empty for that.</summary>
+    public string XmppDomain { get; set; } = "";
+
+    public int TokenLifetimeMinutes { get; set; } = 180;
+}
+
+/// <summary>
+/// Your own Jitsi Meet server (free, open source). The browser side is the same Jitsi meeting code as JaaS,
+/// so the room, its controls, chat and themes work unchanged; only the address and the token differ.
+/// The server checks the token with the shared app secret (HS256), so nobody can join a room
+/// without signing in to ShankhNaad first.
+/// </summary>
+public sealed class SelfHostedJitsiVideoProvider : IVideoProvider
+{
+    private readonly JitsiOptions _o;
+
+    public SelfHostedJitsiVideoProvider(IOptions<JitsiOptions> options) => _o = options.Value;
+
+    public string Name => "Jitsi";
+
+    public bool IsConfigured =>
+        !string.IsNullOrWhiteSpace(_o.Domain) && !string.IsNullOrWhiteSpace(_o.AppId) && !string.IsNullOrWhiteSpace(_o.AppSecret);
+
+    public VideoJoinInfo CreateJoin(VideoJoinRequest r)
+    {
+        if (!IsConfigured)
+            throw new InvalidOperationException("Your Jitsi server is not configured. Fill in Jitsi:Domain, Jitsi:AppId and Jitsi:AppSecret.");
+
+        var domain = _o.Domain.Trim().Replace("https://", "").Replace("http://", "").TrimEnd('/');
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        var header = new Dictionary<string, object> { ["alg"] = "HS256", ["typ"] = "JWT" };
+        var payload = new Dictionary<string, object>
+        {
+            ["aud"] = _o.AppId,
+            ["iss"] = _o.AppId,
+            ["sub"] = string.IsNullOrWhiteSpace(_o.XmppDomain) ? domain : _o.XmppDomain.Trim(),
+            ["room"] = r.RoomName,          // token works for this room only
+            ["iat"] = now,
+            ["nbf"] = now - 10,
+            ["exp"] = now + _o.TokenLifetimeMinutes * 60L,
+            ["context"] = new Dictionary<string, object>
+            {
+                ["user"] = new Dictionary<string, object>
+                {
+                    ["id"] = r.UserId,
+                    ["name"] = r.DisplayName,
+                    ["email"] = r.Email ?? "",
+                    ["avatar"] = "",
+                    ["moderator"] = r.IsModerator ? "true" : "false"
+                }
+            }
+        };
+
+        var unsigned = $"{B64Url(JsonSerializer.SerializeToUtf8Bytes(header))}.{B64Url(JsonSerializer.SerializeToUtf8Bytes(payload))}";
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_o.AppSecret));
+        var token = $"{unsigned}.{B64Url(hmac.ComputeHash(Encoding.ASCII.GetBytes(unsigned)))}";
+
+        return new VideoJoinInfo(
+            Provider: Name,
+            Domain: domain,
+            ScriptUrl: $"https://{domain}/external_api.js",
+            RoomName: r.RoomName,
+            Token: token);
+    }
+
+    private static string B64Url(byte[] bytes) =>
+        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 }

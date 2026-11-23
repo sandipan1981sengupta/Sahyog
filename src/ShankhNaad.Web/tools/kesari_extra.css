@@ -45,3 +45,11 @@ html[data-skin="kesari"] #gUp stop:nth-child(3), html[data-skin="kesari"] #gSeat
 html[data-skin="kesari"] #gStore stop:nth-child(1) { stop-color: #EA580C; }
 html[data-skin="kesari"] #gStore stop:nth-child(2) { stop-color: #F59E0B; }
 html[data-skin="kesari"] #gStore stop:nth-child(3) { stop-color: #16A34A; }
+
+/* message boxes (confirm, warning, error, success): white symbol on the saffron | green tile, like the window icons */
+html[data-skin="kesari"] .sn-body .mb-icon,
+html[data-skin="kesari"] .auth-body .mb-icon,
+html[data-skin="kesari"] .sn-body [class*="mb-type-"] .mb-icon,
+html[data-skin="kesari"] .auth-body [class*="mb-type-"] .mb-icon { background: linear-gradient(135deg, #FF8A1F 0%, #F97316 46%, #15803D 54%, #138808 100%) !important; color: #FFFFFF !important; text-shadow: 0 1px 2px rgba(60, 30, 0, .25); box-shadow: 0 10px 22px -10px rgba(234, 88, 12, .6), inset 0 1px 0 rgba(255, 255, 255, .35) !important; }
+html[data-skin="kesari"] .sn-body .mb-icon .mb-icon-svg,
+html[data-skin="kesari"] .auth-body .mb-icon .mb-icon-svg { color: #FFFFFF !important; stroke: currentColor; }

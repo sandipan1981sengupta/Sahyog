@@ -24,6 +24,7 @@ public static class ServiceRegistration
         services.Configure<AppOptions>(config.GetSection("App"));
         services.Configure<StorageOptions>(config.GetSection("Storage"));
         services.Configure<JaasOptions>(config.GetSection("Jaas"));
+        services.Configure<JitsiOptions>(config.GetSection("Jitsi"));       // your own Jitsi Meet server
         services.Configure<SmtpOptions>(config.GetSection("Smtp"));
 
         services.AddSingleton<SqlDb>();
@@ -44,6 +45,7 @@ public static class ServiceRegistration
         services.AddSingleton<MeetingRoomTracker>();
         services.AddSingleton<IFileStorage, LocalFileStorage>();
         services.AddSingleton<IVideoProvider, JaasVideoProvider>();
+        services.AddSingleton<IVideoProvider, SelfHostedJitsiVideoProvider>();
         services.AddSingleton<IVideoProviderFactory, VideoProviderFactory>();
         return services;
     }

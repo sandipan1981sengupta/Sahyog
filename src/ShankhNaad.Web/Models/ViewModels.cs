@@ -314,6 +314,9 @@ public sealed class CreateTenantInput
 
     [Required, MinLength(8), DataType(DataType.Password)]
     public string AdminPassword { get; set; } = "";
+
+    /// <summary>Email the client admin a link to set their own password (the temporary password keeps working until they do).</summary>
+    public bool SendInvite { get; set; } = true;
 }
 
 public sealed class AdminViewModel
@@ -321,6 +324,8 @@ public sealed class AdminViewModel
     public required List<TenantRowVm> Tenants { get; init; }
     public required List<PlanDto> Plans { get; init; }
     public required CreateTenantInput NewTenant { get; init; }
+    /// <summary>False when Smtp isn't set up: no invite emails can be sent.</summary>
+    public bool CanEmail { get; init; }
     public string? Message { get; init; }
     public string? Error { get; init; }
 }

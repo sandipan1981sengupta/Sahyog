@@ -40,7 +40,7 @@
 
     var planItems = Model.Plans.Select(p => (p.PlanId.ToString(inv), $"{p.Name} · {p.MaxUsers} users · {UserExtensions.FormatBytes(p.StorageQuotaMb * 1024L * 1024L)}")).ToList();
         var heightItems = new[] { 360, 540, 720, 1080 }.Select(h => (h.ToString(inv), $"{h}p")).ToList();
-    var providerItems = new List<(string, string)> { ("JaaS", "JaaS (8x8)"), ("LiveKit", "LiveKit") };
+    var providerItems = new List<(string, string)> { ("JaaS", "JaaS (8x8)"), ("Jitsi", "Jitsi (own server)"), ("LiveKit", "LiveKit") };
     var totalUsers = Model.Tenants.Sum(t => t.Users);
     var totalStorage = Model.Tenants.Sum(t => t.StorageUsed);
     var totalQuota = Model.Tenants.Sum(t => t.StorageQuota);
@@ -68,6 +68,10 @@
                        show-print="true" print-on-click="SN.print()">
             <action-btn text="Pause / Resume" icon-css="bi bi-pause-circle-fill" icon-color="#B45309" tooltip="Pause or resume the selected client" on-click="snToggleTenant()"></action-btn>
             <action-btn text="Team location" icon-css="bi bi-geo-alt-fill" icon-color="#DB2777" tooltip="Switch team location on or off for the selected client" on-click="snToggleLocation()"></action-btn>
+            @if (Model.CanEmail)
+            {
+                <action-btn text="Email admin link" icon-css="bi bi-envelope-arrow-up-fill" icon-color="#D97706" tooltip="Email the selected client's admin a link to set their own password" on-click="snInviteAdmin()"></action-btn>
+            }
         </action-header>
     </div>
 
@@ -272,7 +276,7 @@
 <dialog id="newTenantDialog" class="sn-dialog glass-strong" data-open-on-load="@(Context.Request.Method == "POST" && Model.Error is not null ? "true" : "false")">
     <form method="post" asp-antiforgery="true" action="/admin/tenants">
         <div class="sn-dlg-head">
-            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-building-o" aria-hidden="true"></i></span><div><h2>New client workspace</h2><p>The client admin can sign in straight away.</p></div></div>
+            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-building-o" aria-hidden="true"></i></span><div><h2>New client workspace</h2><p>@(Model.CanEmail ? "We email the client admin a link to set their own password." : "Share the temporary password with the client admin privately.")</p></div></div>
             <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
         </div>
         <div class="sn-dlg-body">
@@ -289,6 +293,16 @@
                     <modern-input id="tAdmin" name="NewTenant.AdminName" label="Admin name" mandatory="true" value="@n.AdminName" max-length="100" label-font-size="13.5px"></modern-input>
                     <modern-input id="tEmail" name="NewTenant.AdminEmail" label="Admin email" mandatory="true" value="@n.AdminEmail" max-length="200" label-font-size="13.5px"></modern-input>
                     <div class="full"><modern-input id="tPass" name="NewTenant.AdminPassword" label="Temporary password" mandatory="true" is-password="true" placeholder="At least 8 characters" label-font-size="13.5px"></modern-input></div>
+                    @if (Model.CanEmail)
+                    {
+                        <div class="full">
+                            <modern-checkbox id="tInvite" name="NewTenant.SendInvite" label="Email the admin a set-password link" desc-text="They open the link, choose their own password, then sign in and set up their team. The temporary password works until then." is-toggle-button="true" checked="@n.SendInvite" label-font-size="13.5px"></modern-checkbox>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="full"><span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> Email isn't set up on this server, so share the temporary password with the client admin privately.</span></div>
+                    }
                 </div>
             </modern-group-box>
         </div>
@@ -400,7 +414,7 @@
             var hints = { clients: "Select a client to see its details and change its plan.", plans: "Edit a plan and press Save. Every client on that plan gets the new limits." };
             // header buttons that only work on a client: they fold away while Plans is open (Refresh and Print stay)
             // buttons that act on the selected client: hidden on the Plans tab (Refresh and Print stay)
-            var CLIENT_ONLY = ["new client", "edit", "delete", "export", "pause / resume", "team location"];
+            var CLIENT_ONLY = ["new client", "edit", "delete", "export", "pause / resume", "team location", "email admin link"];
             function clientButtons() {
                 return $("#AdminHeader .hdr-btn").filter(function () {
                     var label = ($(this).attr("aria-label") || $(this).text() || "").replace(/\s+/g, " ").trim().toLowerCase();
@@ -655,6 +669,16 @@
             if (!planId) { Sahyog.toast("Pick the new plan first.", { kind: "info", title: "Choose a plan" }); return; }
             if (String(planId) === String(row.PlanId)) { Sahyog.toast(row.Name + " is already on the " + row.Plan + " plan. Pick a different plan to change it.", { kind: "info", title: "Already on this plan" }); return; }
             SN.post("/admin/tenants/" + row.Id + "/plan", { planId: planId });
+        }
+        // email the selected client's admin a one-time link to set their own password
+        function snInviteAdmin() {
+            var row = SN.need("TenantTable", "a client");
+            if (!row) return;
+            SN.confirmPost("/admin/tenants/" + row.Id + "/invite-admin", {
+                title: "Email admin link",
+                text: "Email the admin of " + row.Name + " a link to set their own password? It works for 7 days, and any earlier link stops working. Their current password keeps working until they use it.",
+                confirmText: "Send link"
+            });
         }
         // team location for the selected client (off erases what was stored)
         function snToggleLocation() {

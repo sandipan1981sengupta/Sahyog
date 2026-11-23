@@ -185,6 +185,31 @@ public sealed class TeamController : Controller
         return RedirectToAction(nameof(Index));
     }
 
+    /// <summary>
+    /// Team → "My password": anyone changes their own password (and only their own). Needs the current password.
+    /// Other devices are signed out; this one stays signed in.
+    /// </summary>
+    [HttpPost("me/password")]
+    public async Task<IActionResult> ChangeMyPassword(string currentPassword, string newPassword, string confirmPassword)
+    {
+        if ((newPassword ?? "") != (confirmPassword ?? ""))
+        {
+            TempData["Error"] = "The new password and its confirmation don't match. Nothing was changed.";
+            return RedirectToAction(nameof(Index));
+        }
+        var me = User.UserGuid();
+        var update = await _users.ChangeOwnPasswordAsync(TenantId, me, currentPassword ?? "", newPassword ?? "");
+        if (!update.Result.Succeeded)
+        {
+            TempData["Error"] = update.Result.Error + " Nothing was changed.";
+            return RedirectToAction(nameof(Index));
+        }
+        if (update.NewStamp is Guid stamp)
+            await CookieAuth.RefreshSelfAsync(HttpContext, User.DisplayName(), (User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "").Trim().ToLowerInvariant(), stamp);
+        TempData["Message"] = "Your password is changed. Use the new password next time you sign in. Any other device you were signed in on is signed out.";
+        return RedirectToAction(nameof(Index));
+    }
+
     /// <summary>Emails someone a one-time link to choose a new password (Team → Edit). Their current password keeps working until they use it.</summary>
     /// <summary>
     /// invite = true ("Resend invite"): someone who has never signed in gets a fresh welcome email (7 days).
