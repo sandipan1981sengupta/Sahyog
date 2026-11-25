@@ -936,10 +936,41 @@
             var v = this.getAttribute("data-org-zoom");
             if (v === "fit") fit(false); else zoomAt(z * (v === "1" ? 1.2 : 1 / 1.2));
         });
+        // ---------- changing tab: the old view slides out, the new one slides in (like changing page), cards rise one by one ----------
+        var ORDER = { mgr: 0, dir: 1, dept: 2, ins: 3 }, going = null;
+        function still() { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
+        function slideIn(el, dir) {
+            if (still() || !el) return;
+            el.classList.remove("org-in-next", "org-in-prev", "org-out-next", "org-out-prev");
+            void el.offsetWidth;
+            el.classList.add("org-in-" + dir);
+            clearTimeout(el.__snIn); el.__snIn = setTimeout(function () { el.classList.remove("org-in-next", "org-in-prev"); }, 1100);
+        }
+        function go(v, after) {
+            if (v === view) { if (after) after(); return; }
+            var dir = ORDER[v] > ORDER[view] ? "next" : "prev", from = usesCanvas() ? vp : pane;
+            var swap = function () {
+                from.classList.remove("org-out-next", "org-out-prev");
+                view = v; draw();
+                slideIn(usesCanvas() ? vp : pane, dir);
+                if (selected && usesCanvas()) setTimeout(function () { centerOn(selected); }, 80);
+                if (after) setTimeout(after, 120);
+            };
+            clearTimeout(going);
+            if (still()) { swap(); return; }
+            from.classList.remove("org-in-next", "org-in-prev");
+            from.classList.add("org-out-" + dir);
+            // swap when the slide-out has really played (a busy first frame can delay it), at most 320 ms
+            var done = false, once = function (e) {
+                if (done || (e && e.target !== from)) return;
+                done = true; from.removeEventListener("animationend", once); clearTimeout(going); swap();
+            };
+            from.addEventListener("animationend", once);
+            going = setTimeout(once, 320);
+        }
         $(document).on("tabcontrol:select.snorg", "#orgTabs", function (e, v) {
             if (!v || v === view) return;
-            view = v; draw();
-            if (selected && usesCanvas()) setTimeout(function () { centerOn(selected); }, 60);
+            go(v);
         });
 
         // ---------- filters ----------
@@ -1003,11 +1034,19 @@
                 : '<p class="sn-org-empty">' + (p.mgr ? "No one else reports to " + esc(byId[p.mgr].n) + "." : "No manager set, so no teammates to show.") + '</p>';
             el.innerHTML = h;
             Sahyog.paintPhotos && Sahyog.paintPhotos(el);
+            if (el.getAttribute("data-who") !== p.id) {   // another person: their card rises in
+                el.setAttribute("data-who", p.id);
+                if (!still()) { el.classList.remove("org-card-in"); void el.offsetWidth; el.classList.add("org-card-in"); }
+            }
         }
+        var sideNow = "card";
         function side(which) {
+            var dir = which === sideNow ? "" : which === "depts" ? "next" : "prev";
+            sideNow = which;
             $("[data-side]").each(function () { this.setAttribute("aria-selected", this.getAttribute("data-side") === which ? "true" : "false"); });
             $("[data-side-pane]").each(function () { this.hidden = this.getAttribute("data-side-pane") !== which; });
             var body = document.getElementById("orgSideBody"); if (body) body.scrollTop = 0;
+            if (dir) slideIn(document.querySelector('[data-side-pane="' + which + '"]'), dir);
             fade();
         }
         // a soft fade at the bottom tells there is more, instead of a scrollbar
@@ -1069,13 +1108,12 @@
         $(document).on("click.snorg", "#orgCard [data-org-edit]", function () { snOrgEdit(this.getAttribute("data-org-edit")); });
         $(document).on("click.snorg", "[data-dept-show]", function () {
             var id = this.getAttribute("data-dept-show");
-            if (view !== "dept") { view = "dept"; draw(); }
-            setTimeout(function () {
+            go("dept", function () {
                 var col = pane.querySelector('[data-dcol="' + id + '"]');
                 if (!col) return;
                 $(pane).find(".org-dcard.flash").removeClass("flash");
                 col.scrollIntoView({ behavior: "smooth", block: "nearest" }); col.classList.add("flash");
-            }, 60);
+            });
         });
         $(document).on("click.snorg", "[data-dept-more]", function () { var k = this.getAttribute("data-dept-more"); deptOpen[k] = !deptOpen[k]; draw(true); });
 
@@ -1118,7 +1156,14 @@
                 var no = {}; ids.forEach(function (id) { no[id] = 1; var d = descendants(id); Object.keys(d).forEach(function (k) { no[k] = 1; }); });
                 $("#mvMgr .ddwl-option").each(function () { var v = String($(this).data("value") || ""); $(this).toggleClass("sn-ddx", !!no[v]); });
                 setModernDropdownWithLabelValue("#mvMgr", "");
-                $("#orgMoveHint").text("Only who they report to changes. The list leaves out the people you picked and everyone below them.");
+                var left = people.filter(function (p) { return !no[p.id]; }).length;
+                if (left) {
+                    $("#orgMoveHint").text("Only who they report to changes. The list shows everyone else (" + left + (left === 1 ? " person" : " people") + ", any department); it leaves out the people you picked and everyone below them, so the chart can't go round in a circle.");
+                } else {
+                    // e.g. the person at the top is picked: everyone is below them, so nobody can be their manager
+                    var blocker = ids.map(function (id) { return byId[id]; }).sort(function (a, b) { return teamSize(b.id) - teamSize(a.id); })[0];
+                    $("#orgMoveHint").text("Nobody can be shown: " + blocker.n + " is picked, and everyone else is in " + blocker.n.split(" ")[0] + "'s team. Untick " + blocker.n.split(" ")[0] + " (or pick fewer people) to choose a manager. \"No manager\" puts them at the top of the chart.");
+                }
             } else {
                 setModernDropdownWithLabelValue("#mvDept", "");
                 $("#orgMoveHint").text("Only the department changes. Who they report to stays the same.");
@@ -1181,14 +1226,14 @@
             if (!a) return;
             if (a.a === "dept") openDept(deptById[a.id]);
             else if (a.a === "edit") snOrgEdit(a.id);
-            else if (a.a === "pick") { view = "mgr"; draw(); select(a.id, true); }
+            else if (a.a === "pick") { go("mgr", function () { select(a.id, true); }); }
             else if (a.a === "deldept") {
                 var d = deptById[a.id];
                 SN.confirmPost("/org/departments/" + d.id + "/delete", { title: "Delete " + d.n + "?", text: "No one is in it, so nothing else changes.", confirmText: "Delete department", danger: true });
             } else if (a.a === "list") {
                 var ids = {}; a.ids.forEach(function (p) { ids[p.id] = 1; });
                 issue = { label: a.label + " · " + a.ids.length, ids: ids };
-                deptFilter = ""; view = "dir"; draw();
+                deptFilter = ""; go("dir");
             }
         });
 

@@ -5013,3 +5013,26 @@ html:not([data-theme="dark"]) .sn-org-page .org-kpi-split { background: rgba(15,
 /* narrow department cards: the faces make room for the name */
 .org-dcard { container-type: inline-size; }
 @container (max-width: 340px) { .org-dcard-faces { display: none !important; } .org-dcard-t small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
+
+/* ===== Org: changing tab slides like changing page (same motion as the app's page changes) ===== */
+.sn-org-page .org-out-next { animation: snVtOutLeft .2s cubic-bezier(.4, 0, 1, 1) both; }
+.sn-org-page .org-out-prev { animation: snVtOutRight .2s cubic-bezier(.4, 0, 1, 1) both; }
+.sn-org-page .org-in-next { animation: snVtInRight .42s cubic-bezier(.2, .8, .2, 1) both; }
+.sn-org-page .org-in-prev { animation: snVtInLeft .42s cubic-bezier(.2, .8, .2, 1) both; }
+/* inside, the cards rise one after another */
+.org-in-next :is(.org-kpis > *, .org-dcards > *, .org-issues > *, .org-dview-side, .org-dir tbody tr, .org-drill > *, .sn-org-dept, .org-tree.org-root > li, .org-loose),
+.org-in-prev :is(.org-kpis > *, .org-dcards > *, .org-issues > *, .org-dview-side, .org-dir tbody tr, .org-drill > *, .sn-org-dept, .org-tree.org-root > li, .org-loose) {
+    animation: snRise .46s cubic-bezier(.2, .8, .2, 1) backwards; animation-delay: .1s; }
+.org-in-next :is(.org-kpis, .org-dcards, .org-issues, .org-drill, .sn-org-dept-list) > :nth-child(2), .org-in-prev :is(.org-kpis, .org-dcards, .org-issues, .org-drill, .sn-org-dept-list) > :nth-child(2), .org-in-next .org-dir tbody tr:nth-child(2), .org-in-prev .org-dir tbody tr:nth-child(2) { animation-delay: .14s; }
+.org-in-next :is(.org-kpis, .org-dcards, .org-issues, .org-drill, .sn-org-dept-list) > :nth-child(3), .org-in-prev :is(.org-kpis, .org-dcards, .org-issues, .org-drill, .sn-org-dept-list) > :nth-child(3), .org-in-next .org-dir tbody tr:nth-child(3), .org-in-prev .org-dir tbody tr:nth-child(3) { animation-delay: .18s; }
+.org-in-next :is(.org-kpis, .org-dcards, .org-issues, .org-drill, .sn-org-dept-list) > :nth-child(4), .org-in-prev :is(.org-kpis, .org-dcards, .org-issues, .org-drill, .sn-org-dept-list) > :nth-child(4), .org-in-next .org-dir tbody tr:nth-child(4), .org-in-prev .org-dir tbody tr:nth-child(4) { animation-delay: .22s; }
+.org-in-next :is(.org-kpis, .org-dcards, .org-issues, .org-drill, .sn-org-dept-list) > :nth-child(5), .org-in-prev :is(.org-kpis, .org-dcards, .org-issues, .org-drill, .sn-org-dept-list) > :nth-child(5), .org-in-next .org-dir tbody tr:nth-child(5), .org-in-prev .org-dir tbody tr:nth-child(5) { animation-delay: .26s; }
+.org-in-next :is(.org-kpis, .org-dcards, .org-issues, .org-drill, .sn-org-dept-list) > :nth-child(n+6), .org-in-prev :is(.org-kpis, .org-dcards, .org-issues, .org-drill, .sn-org-dept-list) > :nth-child(n+6), .org-in-next .org-dir tbody tr:nth-child(n+6), .org-in-prev .org-dir tbody tr:nth-child(n+6) { animation-delay: .3s; }
+.org-in-next .org-dview-side, .org-in-prev .org-dview-side { animation-delay: .2s; }
+/* another person picked: their card rises in */
+.sn-org-card.org-card-in > * { animation: snPaneIn .4s cubic-bezier(.2, .8, .2, 1) backwards; }
+.sn-org-card.org-card-in > :nth-child(n+4) { animation-delay: .05s; }
+.sn-org-card.org-card-in > :nth-child(n+7) { animation-delay: .1s; }
+@media (prefers-reduced-motion: reduce) {
+    .sn-org-page .org-out-next, .sn-org-page .org-out-prev, .sn-org-page .org-in-next, .sn-org-page .org-in-prev, .sn-org-page .org-in-next *, .sn-org-page .org-in-prev *, .sn-org-card.org-card-in > * { animation: none !important; }
+}
