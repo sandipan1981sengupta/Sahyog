@@ -343,16 +343,18 @@
         <div class="sn-dlg-body">
           <div class="sn-d2-side" data-dlg-panel="details">
             <div class="sn-dlg-banner new" id="ngBanner" role="note"><i class="fa fa-info-circle" aria-hidden="true"></i><span><b>This makes a brand-new group chat.</b> It appears at the top of your Chats list.</span></div>
-            <section class="sn-d2-sec" aria-labelledby="ngGroupLbl">
-                <h3 class="sn-d2-label" id="ngGroupLbl">Group</h3>
-                <modern-input id="channelName" name="name" label="Name" mandatory="true" placeholder="Project Alpha" max-length="60" label-font-size="12.5px"></modern-input>
-                <modern-input id="channelDesc" name="description" label="Description" placeholder="What is this group for?" max-length="300" label-font-size="12.5px"></modern-input>
-                <span class="sn-d2-hint">Optional · shown at the top of the chat</span>
-            </section>
+            <modern-group-box title="Group | details" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                <div class="sn-d2-stack">
+                    <modern-input id="channelName" name="name" label="Group name" mandatory="true" placeholder="Project Alpha" max-length="60" label-font-size="13.5px"></modern-input>
+                    <modern-input id="channelDesc" name="description" label="Description" placeholder="What is this group for? (optional)" max-length="300" label-font-size="13.5px"></modern-input>
+                </div>
+            </modern-group-box>
             @* "Add people" from a one-to-one chat: copy that chat's history into the new group *@
             @if (c is { IsDirect: true })
             {
                 <div class="sn-hs" id="historyShare" hidden>
+                    <modern-group-box title="Chat | history" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                    <div class="sn-d2-stack">
                     <input type="hidden" name="fromChat" id="fromChat" value="@c.Id" disabled />
                     <div class="sn-hs-head">
                         <span class="sn-hs-ic"><i class="fa fa-history" aria-hidden="true"></i></span>
@@ -370,6 +372,8 @@
                         <span class="sn-hs-ftext"><b>Include shared files</b><small>No extra storage. Turn off to share messages only.</small></span>
                     </label>
                     <input type="hidden" name="shareFiles" value="false" disabled />
+                    </div>
+                    </modern-group-box>
                 </div>
             }
             @{
@@ -382,14 +386,16 @@
             <p class="sn-d2-note"><i class="fa fa-lock" aria-hidden="true"></i> Only the people you pick can see this group. New teammates aren't added automatically; everybody is always in "Everyone".</p>
           </div>
           <div class="sn-d2-main" data-dlg-panel="people">
-            <partial name="_PeoplePicker" model="groupPicker" />
+            <modern-group-box title="People | in the group" css-class="sn-d2-box" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                <partial name="_PeoplePicker" model="groupPicker" />
+            </modern-group-box>
           </div>
         </div>
         <div class="sn-dlg-foot">
             <span class="sn-d2-sum" data-pp-sum-for="groupPeople" data-none="Nobody picked yet" data-one="You + 1 person" data-many="You + {n} people"></span>
             <span style="display:flex;gap:10px">
                 <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                <button type="submit" class="cee-btn cee-btn-gradient" data-pp-count-for="groupPeople" data-none="Create group" data-one="Create group" data-many="Create group"><span data-pp-label>Create group</span></button>
+                <button type="submit" class="cee-btn cee-btn-gradient" data-pp-count-for="groupPeople" data-none="Create group" data-one="Create group" data-many="Create group"><i class="fa fa-check" aria-hidden="true"></i> <span data-pp-label>Create group</span></button>
             </span>
         </div>
     </form>
@@ -415,9 +421,9 @@
                     var members = Model.Members.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
                     var firstNames = members.Take(3).Select(x => x.Name.Split(' ')[0]).ToList();
                 }
-                <section class="sn-d2-sec" aria-labelledby="addInLbl">
-                    <h3 class="sn-d2-label" id="addInLbl">Already in · @members.Count</h3>
-                    <span class="sn-d2-hint">Everyone in the group will see who you add.</span>
+                <modern-group-box title="Already | in the group" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                  <div class="sn-d2-stack">
+                    <span class="sn-d2-hint">@members.Count @(members.Count == 1 ? "person" : "people") · everyone in the group will see who you add.</span>
                     <div class="sn-d2-in">
                         <span class="sn-d2-faces big" aria-hidden="true">
                             @foreach (var m in members.Take(5))
@@ -434,10 +440,13 @@
                             <span>@m.Name</span>
                         }
                     </div>
-                </section>
+                  </div>
+                </modern-group-box>
                 @if (notIn.Count > 0)
                 {
                     <div class="sn-hs" id="addHistory">
+                    <modern-group-box title="Chat | history" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                    <div class="sn-d2-stack">
                         <div class="sn-hs-head">
                             <span class="sn-hs-ic"><i class="fa fa-history" aria-hidden="true"></i></span>
                             <div><b>What can they see from before?</b><small>People already in the group keep seeing everything.</small></div>
@@ -455,18 +464,22 @@
                     </label>
                     <input type="hidden" name="shareFiles" value="false" />
                     </div>
+                    </modern-group-box>
+                    </div>
                 }
               </div>
               <div class="sn-d2-main" data-dlg-panel="people">
                 @{ var addPicker = new PeoplePickerVm { Id = "addPeople", People = notIn, Title = "Pick who to add", ToLabel = "Add", EmptyText = "Everyone in the workspace is already in this group." }; }
-                <partial name="_PeoplePicker" model="addPicker" />
+                <modern-group-box title="Pick | who to add" css-class="sn-d2-box" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                    <partial name="_PeoplePicker" model="addPicker" />
+                </modern-group-box>
               </div>
             </div>
             <div class="sn-dlg-foot">
                 <span class="sn-d2-sum" data-pp-sum-for="addPeople" data-none="@members.Count in the group · pick who to add" data-one="@members.Count in the group + 1 new" data-many="@members.Count in the group + {n} new"></span>
                 <span style="display:flex;gap:10px">
                     <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                    <button type="submit" class="cee-btn cee-btn-gradient" data-pp-count-for="addPeople" data-none="Add people" data-one="Add 1 person" data-many="Add {n} people"><span data-pp-label>Add people</span></button>
+                    <button type="submit" class="cee-btn cee-btn-gradient" data-pp-count-for="addPeople" data-none="Add people" data-one="Add 1 person" data-many="Add {n} people"><i class="fa fa-user-plus" aria-hidden="true"></i> <span data-pp-label>Add people</span></button>
                 </span>
             </div>
         </form>

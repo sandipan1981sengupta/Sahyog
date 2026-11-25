@@ -713,8 +713,7 @@
         <div class="sn-dlg-body">
           <div class="sn-d2-side" data-dlg-panel="details">
             <div asp-validation-summary="All" class="sn-errors"></div>
-                <section class="sn-d2-sec" aria-labelledby="mWhenLbl">
-                    <h3 class="sn-d2-label" id="mWhenLbl">When</h3>
+                <modern-group-box title="Meeting | details" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
                     <div class="sn-form-grid">
                         <div class="full">
                             <modern-input id="mTitle" name="Form.Title" label="Title" mandatory="true" value="@f.Title" max-length="150"
@@ -802,10 +801,9 @@
                             </div>
                         </div>
                     </div>
-                </section>
+                </modern-group-box>
 
-                <section class="sn-d2-sec" aria-labelledby="mOptLbl">
-                    <h3 class="sn-d2-label" id="mOptLbl">Options</h3>
+                <modern-group-box title="Meeting | options" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
                     <div class="sn-d2-switches">
                         <modern-checkbox id="mLobby" name="Form.LobbyEnabled" label="Lobby" desc-text="Host admits guests" is-toggle-button="true" checked="@f.LobbyEnabled" label-font-size="13px"></modern-checkbox>
                         <modern-checkbox id="mEmail" name="Form.SendEmail" label="Email invites" desc-text="With .ics calendar file" is-toggle-button="true" checked="@f.SendEmail" label-font-size="13px"></modern-checkbox>
@@ -813,17 +811,18 @@
                         <modern-checkbox id="mCaptions" name="Form.CaptionsOn" label="Captions" desc-text="Live subtitles" is-toggle-button="true" checked="@f.CaptionsOn" label-font-size="13px"></modern-checkbox>
                     </div>
                     <span class="sn-d2-hint"><i class="fa fa-shield" aria-hidden="true"></i> @Model.Limits.PlanName plan: up to @Model.Limits.MaxMeetingParticipants people, @Model.Limits.MaxMeetingMinutes min per meeting</span>
-                </section>
+                </modern-group-box>
 
                 @* Agenda: behind "+ Add agenda" unless there is one already *@
                 <button type="button" class="sn-link sn-d2-add" data-d2-toggle="mAgendaBox" data-d2-once="1" aria-expanded="false" hidden="@(!string.IsNullOrWhiteSpace(f.Agenda))"><i class="fa fa-plus" aria-hidden="true"></i> Add agenda</button>
                 <div id="mAgendaBox" hidden="@string.IsNullOrWhiteSpace(f.Agenda)">
                     <modern-input id="mAgenda" name="Form.Agenda" label="Agenda" multiline="true" rows="3" value="@f.Agenda"
-                                  max-length="2000" placeholder="What will you cover?" label-font-size="12.5px"></modern-input>
+                                  max-length="2000" placeholder="What will you cover?" label-font-size="13.5px"></modern-input>
                 </div>
           </div>
 
           <div class="sn-d2-main" data-dlg-panel="people">
+            <modern-group-box title="People | invited" css-class="sn-d2-box" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
                         @if (Model.Team.Count > 0)
                         {
                             var invitePicker = new PeoplePickerVm
@@ -853,6 +852,7 @@
                             <input type="hidden" id="mGuests" name="Form.GuestEmails" value="@f.GuestEmails" />
                             <span class="sn-hint" id="guestHint">They get the guest link by email. Press Enter or comma after each address.</span>
                         </div>
+            </modern-group-box>
           </div>
         </div>
 
@@ -860,7 +860,7 @@
             <span class="sn-d2-sum" data-pp-sum-for="invitePeople" data-none="Just you so far" data-one="You + 1 invited" data-many="You + {n} invited">@(Model.Team.Count == 0 ? "Invite guests by email" : "")</span>
             <span style="display:flex;gap:10px">
                 <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                <button type="submit" class="cee-btn cee-btn-gradient">Schedule</button>
+                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Schedule</button>
             </span>
         </div>
     </form>
