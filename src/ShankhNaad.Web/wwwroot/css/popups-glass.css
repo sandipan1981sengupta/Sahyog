@@ -181,8 +181,9 @@ html body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box {
     border: 1px solid rgba(255, 255, 255, .85) !important;
 }
 html[data-skin="kesari"] body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(255, 252, 247, .7) !important; }
-html[data-theme="dark"] body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(20, 27, 46, .9) !important; border-color: rgba(255, 255, 255, .08) !important; }
-html[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(30, 30, 34, .9) !important; }
+/* Dark and CloudWheel: panels inside a window are a light veil over the glass, like the Profile window's location card */
+html[data-theme="dark"] body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(255, 255, 255, .04) !important; border-color: rgba(255, 255, 255, .08) !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(255, 255, 255, .035) !important; border-color: rgba(255, 255, 255, .08) !important; }
 
 /* Dark and CloudWheel: less glass than Light / Kesari (70 % solid, cards 90 %, a bit more blur) */
 html[data-theme="dark"] { --pop-blur: blur(18px) saturate(150%); }
@@ -199,3 +200,46 @@ html body.sn-body .mt-switch input:checked + .mt-switch-slider,
 html body.sn-body .sn-hs-files input:checked + .sn-hs-sw,
 html body.sn-body .sn-switch.on,
 html body.sn-body .sn-loc-menu.on .sn-loc-menu-sw { background: var(--sn-grad) !important; }
+
+/* ---- month picker (Meetings): frosted glass, solid enough that the calendar behind is only a soft blur ---- */
+html[data-theme="light"] body.sn-body.sn-body .sn-jump-pop.sn-jump-pop.sn-jump-pop {
+    background: linear-gradient(160deg, rgba(255, 255, 255, .88), rgba(248, 250, 252, .82)) !important;
+    backdrop-filter: blur(22px) saturate(170%) !important; -webkit-backdrop-filter: blur(22px) saturate(170%) !important;
+    border: 1px solid rgba(255, 255, 255, .9) !important;
+    box-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgba(15, 23, 42, .08), 0 28px 56px -18px rgba(15, 23, 42, .45) !important;
+}
+html[data-theme="light"][data-skin="kesari"] body.sn-body.sn-body .sn-jump-pop.sn-jump-pop.sn-jump-pop { background: linear-gradient(160deg, rgba(255, 255, 255, .88), rgba(255, 247, 237, .82)) !important; }
+html[data-theme="light"] .sn-jump-head { padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid rgba(15, 23, 42, .08); }
+html[data-theme="light"] .sn-jump-months button:not(.is-current) { background: rgba(255, 255, 255, .78); border-color: rgba(15, 23, 42, .08); box-shadow: 0 1px 2px rgba(15, 23, 42, .05); }
+html[data-theme="light"] .sn-jump-foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(15, 23, 42, .08); }
+html.sn-webkit[data-theme="light"] body.sn-body.sn-body .sn-jump-pop.sn-jump-pop.sn-jump-pop { backdrop-filter: blur(14px) saturate(160%) !important; -webkit-backdrop-filter: blur(14px) saturate(160%) !important; }
+
+/* ---- Meetings page windows (Schedule, meeting details, Edit, Cancel, Move): a little more glass, still easy to read ---- */
+html body .sn-dialog:is(#scheduleDialog, .sn-details-dlg, .sn-cancel-dlg, .sn-edit-dlg, .sn-move-dlg) {
+    --pop-bg: linear-gradient(160deg, rgba(255, 255, 255, .5), rgba(255, 255, 255, .36));
+    --pop-blur: blur(18px) saturate(170%);
+    --pop-foot: rgba(255, 255, 255, .28);
+}
+html[data-skin="kesari"] body .sn-dialog:is(#scheduleDialog, .sn-details-dlg, .sn-cancel-dlg, .sn-edit-dlg, .sn-move-dlg) {
+    --pop-bg: linear-gradient(160deg, rgba(255, 255, 255, .52), rgba(255, 247, 237, .38));
+}
+html[data-theme="dark"] body .sn-dialog:is(#scheduleDialog, .sn-details-dlg, .sn-cancel-dlg, .sn-edit-dlg, .sn-move-dlg) {
+    /* Dark and CloudWheel use the shared window glass (see the top of this file), the same as Profile */
+    --pop-bg: rgba(18, 26, 52, .7); --pop-blur: blur(18px) saturate(150%); --pop-foot: rgba(0, 0, 0, .14);
+    --d2-bg: linear-gradient(155deg, rgba(36, 44, 82, .72) 0%, rgba(20, 26, 52, .68) 55%, rgba(40, 28, 68, .7) 100%);
+}
+html[data-theme="dark"].sn-carbon body .sn-dialog:is(#scheduleDialog, .sn-details-dlg, .sn-cancel-dlg, .sn-edit-dlg, .sn-move-dlg) { --pop-bg: rgba(30, 30, 34, .7); --d2-bg: rgba(30, 30, 34, .7); }
+html.sn-webkit body .sn-dialog:is(#scheduleDialog, .sn-details-dlg, .sn-cancel-dlg, .sn-edit-dlg, .sn-move-dlg) { --pop-blur: blur(14px) saturate(150%); }
+/* the backdrop dims a touch less on this page, so the calendar shows through the glass */
+html body.sn-body .sn-dialog:is(#scheduleDialog, .sn-details-dlg, .sn-cancel-dlg, .sn-edit-dlg, .sn-move-dlg)::backdrop { background: rgba(15, 23, 42, .08); }
+html[data-theme="dark"] body.sn-body .sn-dialog:is(#scheduleDialog, .sn-details-dlg, .sn-cancel-dlg, .sn-edit-dlg, .sn-move-dlg)::backdrop { background: rgba(0, 0, 0, .16); }
+/* sections inside the details window stay see-through, so the glass isn't covered up */
+html[data-theme="dark"] .sn-details-dlg .sn-md-me { background: rgba(255, 255, 255, .05); }
+
+/* ---- Kesari: the meeting count on a day in Week/Day view reads white on saffron ---- */
+html[data-skin="kesari"][data-theme="light"] .sn-sched-head .sn-sched-dayhead em { background: #EA580C; color: #fff; }
+html[data-theme="light"] .sn-sched-head .sn-sched-dayhead em { color: #fff; }
+
+html[data-theme="dark"] body.sn-body .sn-dialog:is(#scheduleDialog, .sn-details-dlg, .sn-cancel-dlg, .sn-edit-dlg, .sn-move-dlg) :is(.sn-dlg-head, .sn-dlg-body) { background: transparent !important; }
+/* Dark (grey): the info boxes in About / Install windows were solid grey; the same veil as the panels */
+html[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-dialog :is(.sn-kv, .sn-perks > div, .sn-steps, .sn-verse-box) { background: rgba(255, 255, 255, .04) !important; }

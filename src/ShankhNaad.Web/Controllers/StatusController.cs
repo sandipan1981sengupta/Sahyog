@@ -25,10 +25,12 @@ public sealed class StatusController : Controller
     private readonly IAppEmailSender _email;
     private readonly IHubContext<ChatHub> _hub;
     private readonly AppOptions _app;
+    private readonly IOrgService _org;
 
     public StatusController(IOutOfOfficeService ooo, IUserService users, ITenantService tenants, IAppEmailSender email,
-        IHubContext<ChatHub> hub, IOptions<AppOptions> app)
+        IHubContext<ChatHub> hub, IOptions<AppOptions> app, IOrgService org)
     {
+        _org = org;
         _ooo = ooo;
         _users = users;
         _tenants = tenants;
@@ -46,10 +48,18 @@ public sealed class StatusController : Controller
     [HttpGet("out-of-office/people")]
     public async Task<IActionResult> People()
     {
+        // job title and department from the org chart, so the picker can show who is who (best effort)
+        var org = new Dictionary<Guid, OrgPersonDto>();
+        try { foreach (var p in (await _org.GetAsync(TenantId)).People) org[p.UserId] = p; } catch { /* org chart not set up: names only */ }
         var list = (await _users.ListByTenantAsync(TenantId))
             .Where(u => u.IsActive && u.UserId != Me)
             .OrderBy(u => u.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .Select(u => new { id = u.UserId, name = u.DisplayName, initials = Names.Initials(u.DisplayName), tone = u.AvatarTone, hasEmail = !string.IsNullOrWhiteSpace(u.Email) });
+            .Select(u => new
+            {
+                id = u.UserId, name = u.DisplayName, initials = Names.Initials(u.DisplayName), tone = u.AvatarTone, hasEmail = !string.IsNullOrWhiteSpace(u.Email),
+                title = org.TryGetValue(u.UserId, out var o) ? o.JobTitle ?? "" : "",
+                dept = org.TryGetValue(u.UserId, out var o2) ? o2.DepartmentName ?? "" : ""
+            });
         return Json(new { people = list, canEmail = _email.IsConfigured });
     }
 

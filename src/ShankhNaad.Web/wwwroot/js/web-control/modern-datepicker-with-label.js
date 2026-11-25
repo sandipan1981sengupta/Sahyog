@@ -1,3 +1,44 @@
+
+// ShankhNaad: a calendar opened inside a pop-up <dialog> is drawn in place (static), so a scrolling column
+// of the dialog could cut it off. While it is open it floats (position: fixed) next to its field, inside the
+// dialog's own box, and opens upwards when there is no room below.
+function mdpwlFloat(selectedDates, dateStr, instance) {
+    var cal = instance && instance.calendarContainer, input = instance && instance.input;
+    if (!cal || !input || !input.closest("dialog")) return;
+    function cbOf(el) {   // the box position: fixed is measured from (a transform / filter / backdrop-filter ancestor, else the window)
+        for (var a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+            var cs = getComputedStyle(a);
+            if (cs.transform !== "none" || cs.filter !== "none" || (cs.backdropFilter && cs.backdropFilter !== "none") ||
+                (cs.webkitBackdropFilter && cs.webkitBackdropFilter !== "none") || cs.perspective !== "none" ||
+                /transform|filter/.test(cs.willChange) || /paint|layout|strict|content/.test(cs.contain)) return a;
+        }
+        return null;
+    }
+    function place() {
+        if (!instance.isOpen) return;
+        cal.style.position = "fixed"; cal.style.zIndex = "100"; cal.style.right = "auto"; cal.style.bottom = "auto";
+        var cb = cbOf(cal), r = input.getBoundingClientRect(), box = cb ? cb.getBoundingClientRect() : { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+        var ox = cb ? box.left + cb.clientLeft : 0, oy = cb ? box.top + cb.clientTop : 0;
+        var dlg = input.closest("dialog").getBoundingClientRect();
+        var w = cal.offsetWidth, h = cal.offsetHeight, gap = 6;
+        var lim = { left: Math.max(dlg.left, 0) + 8, right: Math.min(dlg.right, innerWidth) - 8, top: Math.max(dlg.top, 0) + 8, bottom: Math.min(dlg.bottom, innerHeight) - 8 };
+        var top = r.bottom + gap;
+        if (top + h > lim.bottom && r.top - gap - h >= lim.top) top = r.top - gap - h;       // no room below: open upwards
+        else if (top + h > lim.bottom) top = Math.max(lim.top, lim.bottom - h);              // no room either way: keep it inside
+        var left = Math.min(Math.max(r.left, lim.left), lim.right - w);
+        cal.style.left = (left - ox) + "px"; cal.style.top = (top - oy) + "px";
+        cal.classList.toggle("arrowTop", top > r.top); cal.classList.toggle("arrowBottom", top < r.top);
+    }
+    place();
+    requestAnimationFrame(place);
+    if (!instance._snFloat) {   // follow the field while the dialog column scrolls or the window resizes
+        instance._snFloat = place;
+        document.addEventListener("scroll", function () { if (instance.isOpen) place(); }, true);
+        window.addEventListener("resize", function () { if (instance.isOpen) place(); });
+        instance.config.onClose.push(function () { cal.style.position = ""; cal.style.left = ""; cal.style.top = ""; cal.style.zIndex = ""; });
+    }
+}
+
 // ===== Modern Date Picker With Label Control =====
 // Separate from modern-datepicker.js — auto-initializes every .mdpwl-input
 // on the page. Global helper functions use the "WithLabel" suffix so this
@@ -53,6 +94,7 @@ window.ModernDatePickerWithLabel.init = function (context) {
         checkRequired();   // show immediately on load if empty — don't wait for blur
 
         datePickers[input.id] = flatpickr(input, {
+        onOpen: mdpwlFloat, onMonthChange: mdpwlFloat, onYearChange: mdpwlFloat,
             disableMobile: true,   // always our own calendar (phones would otherwise get the browser's built-in date picker)
             dateFormat: "d-m-Y",
             // ShankhNaad: inside a pop-up <dialog> the calendar must open in place,
@@ -280,8 +322,10 @@ window.setModernDatePickerWithLabelDisabledDates = function (inputSelector, disa
     });
 
     datePickers[input.id] = flatpickr(input, {
+        onOpen: mdpwlFloat, onMonthChange: mdpwlFloat, onYearChange: mdpwlFloat,
             disableMobile: true,   // always our own calendar (phones would otherwise get the browser's built-in date picker)
         dateFormat: "d-m-Y",
+        static: !!input.closest("dialog"),
         allowInput: !typingDisabled,   // CHANGED — was hardcoded true
         disable: normalizedDisable,
         clickOpens: !input.disabled,
@@ -370,8 +414,10 @@ window.setModernDatePickerWithLabelDateRange = function (inputSelector, minDateS
     var maxDate = maxDateString ? new Date(maxDateString + "T00:00:00") : undefined;
 
     datePickers[input.id] = flatpickr(input, {
+        onOpen: mdpwlFloat, onMonthChange: mdpwlFloat, onYearChange: mdpwlFloat,
             disableMobile: true,   // always our own calendar (phones would otherwise get the browser's built-in date picker)
         dateFormat: "d-m-Y",
+        static: !!input.closest("dialog"),
         allowInput: !typingDisabled,   // CHANGED — was hardcoded true
         disable: currentDisable,
         minDate: minDate,

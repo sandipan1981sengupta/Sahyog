@@ -232,13 +232,17 @@
                 <div class="org-cm-chips" id="cmChips" role="tablist" aria-label="Show"></div>
                 <div class="org-cm-list sn-glass-scroll" id="cmList" role="listbox" aria-label="Managers"></div>
             </div>
-            <div id="orgMoveDeptWrap">
-                <modern-group-box title="Move | people" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
-                    <div style="display:flex;flex-direction:column;gap:14px">
-                        <modern-dropdown-with-label id="mvDept" name="departmentId" label="New department" placeholder="No department" items="deptItems" menu-height="240px"></modern-dropdown-with-label>
-                        <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> <span id="orgMoveHint">Only the department changes. Who they report to stays the same.</span></span>
-                    </div>
-                </modern-group-box>
+            @* Move to department: who is moving, where they are now, where they go *@
+            <div id="orgMoveDeptWrap" class="org-cm org-md">
+                <div class="org-cm-top">
+                    <div class="org-cm-who" id="mdWho"></div>
+                    <div class="org-cm-path" id="mdPath" aria-live="polite"></div>
+                </div>
+                <div class="org-cm-h"><b>Choose the new department</b><span id="mdSub"></span></div>
+                <label class="org-cm-find" id="mdFindWrap"><i class="fa fa-search" aria-hidden="true"></i><span class="sr-only">Find a department</span>
+                    <input type="search" id="mdFind" autocomplete="off" placeholder="Find a department" /></label>
+                <div class="org-md-list sn-glass-scroll" id="mdList" role="radiogroup" aria-label="Departments"></div>
+                <label class="org-md-team" id="mdTeamWrap" hidden><input type="checkbox" id="mdTeam" /> <span id="mdTeamT"></span></label>
             </div>
         </div>
         <div class="sn-dlg-foot">
@@ -1008,6 +1012,10 @@
             });
         }
         $(document).off(".snorg");
+        // move to department
+        $(document).on("click.snorg", "#mdList [data-md]", function () { var id = this.getAttribute("data-md"); md.pick = md.pick === id ? undefined : id; var t = document.getElementById("mdList").scrollTop; mdRender(); document.getElementById("mdList").scrollTop = t; });
+        $(document).on("input.snorg", "#mdFind", function () { mdRender(); });
+        $(document).on("change.snorg", "#mdTeam", function () { md.team = this.checked; mdRender(); });
         // chart picks (pick several, then drag them together)
         $(document).on("click.snorg", "#orgSelMode", function () { selMode = !selMode; if (!selMode && !cpickIds().length) cClear(); csel(); });
         $(document).on("click.snorg", "[data-csel]", function () {
@@ -1229,6 +1237,8 @@
             if (this.checked) picked[id] = 1; else delete picked[id];
             $(this).closest("tr").toggleClass("picked", this.checked);
             bulk();
+            // keep the side card on the person you just ticked, so the card and the tick never disagree
+            if (this.checked && id !== selected) { selected = id; $(pane).find("tr.sel").removeClass("sel"); $(this).closest("tr").addClass("sel"); path(); card(); side("card"); }
         });
         $(document).on("change.snorg", "[data-dir-all]", function () {
             var on = this.checked;
@@ -1260,7 +1270,7 @@
             $("#orgMoveH").text(kind === "mgr" ? "Change manager" : "Move to department");
             $("#orgMoveMgrWrap").prop("hidden", kind !== "mgr");
             $("#orgMoveDeptWrap").prop("hidden", kind !== "dept");
-            $("#orgMoveDialog").toggleClass("org-cm-dlg", kind === "mgr");
+            $("#orgMoveDialog").addClass("org-cm-dlg");
             if (kind === "mgr") {
                 var p = byId[ids[0]];
                 cm = { id: p.id, pick: undefined, chip: "sug", more: 0 }; cmCache = { ts: {}, desc: null };
@@ -1271,10 +1281,73 @@
                 setTimeout(function () { var f = document.getElementById("cmFind"); if (f && window.matchMedia("(min-width: 761px)").matches) f.focus(); }, 80);
                 return;
             }
-            $("#orgMoveSub").text(names);
-            $("#cmFoot").text(""); $("#cmGo span").text("Move"); $("#cmGo").prop("disabled", false);
-            setModernDropdownWithLabelValue("#mvDept", "");
+            md = { pick: undefined, team: false };
+            $("#orgMoveSub").text(ids.length === 1 ? byId[ids[0]].n + (byId[ids[0]].title ? " · " + byId[ids[0]].title : "") + " · now in " + (deptName(byId[ids[0]]) || "no department") : names);
+            $("#mdFind").val(""); $("#mdTeam").prop("checked", false);
+            mdRender();
             SN.open("orgMoveDialog");
+        }
+        // ---------- Move to department ----------
+        var md = { pick: undefined, team: false };
+        function first(p) { return p.n.split(" ")[0]; }
+        function mdTeamIds() {
+            var all = {}; moveIds.forEach(function (id) { all[id] = 1; });
+            var extra = [];
+            moveIds.forEach(function (id) { Object.keys(descendants(id)).forEach(function (k) { if (!all[k]) { all[k] = 1; extra.push(k); } }); });
+            return extra;
+        }
+        function mdIds() { return md.team ? moveIds.concat(mdTeamIds()) : moveIds.slice(); }
+        function dPill(id) {
+            if (!id || !deptById[id]) return '<span class="org-cm-c">No department</span>';
+            return '<span class="org-cm-c org-md-c" style="--dc:' + dcol[id] + '"><i></i>' + esc(deptById[id].n) + '</span>';
+        }
+        function mdRender() {
+            var ps = moveIds.map(function (id) { return byId[id]; }), one = ps.length === 1, p = ps[0];
+            var fq = String($("#mdFind").val() || "").trim().toLowerCase();
+            // who is moving
+            if (one) {
+                $("#mdWho").html(av(p, 48) + '<span><b>' + esc(p.n) + '</b><small>' + esc(p.title || "—") + '</small><small>Reports to ' + (p.mgr ? esc(byId[p.mgr].n) : "no one (top of the chart)") + '</small></span>');
+            } else {
+                $("#mdWho").html('<span class="org-csel-faces">' + ps.slice(0, 4).map(function (x) { return av(x, 36); }).join("") + (ps.length > 4 ? '<i>+' + (ps.length - 4) + '</i>' : "") + '</span>' +
+                    '<span><b>' + ps.length + ' people</b><small>' + esc(ps.slice(0, 3).map(first).join(", ") + (ps.length > 3 ? " and " + (ps.length - 3) + " more" : "")) + '</small></span>');
+            }
+            // now → after
+            var now = {}; ps.forEach(function (x) { var k = x.deptId && deptById[x.deptId] ? x.deptId : ""; now[k] = (now[k] || 0) + 1; });
+            var nowH = Object.keys(now).map(function (k) { return dPill(k) + (one ? "" : '<small class="org-md-n">' + now[k] + '</small>'); }).join(" ");
+            var h = '<div class="org-cm-pl"><small>Now</small><span class="org-cm-cs">' + nowH + '</span></div>';
+            if (md.pick === undefined) h += '<div class="org-cm-pl"><small>After</small><span class="org-cm-hint">Pick a department below.</span></div>';
+            else h += '<div class="org-cm-pl after"><small>After</small><span class="org-cm-cs">' + dPill(md.pick).replace("org-cm-c", "org-cm-c new") + '</span></div>';
+            h += '<p class="org-cm-note">Only the department changes. ' + (one ? first(p) + (p.mgr ? " keeps reporting to " + esc(byId[p.mgr].n) + "." : " stays where they are in the chart.") : "Everyone keeps their manager.") + '</p>';
+            $("#mdPath").html(h);
+            // team option
+            var extra = mdTeamIds();
+            $("#mdTeamWrap").prop("hidden", !extra.length);
+            $("#mdTeamT").text(extra.length ? "Also move " + (one ? first(p) + "'s" : "their") + " team (" + extra.length + (extra.length === 1 ? " person" : " people") + ")" : "");
+            // list
+            $("#mdFindWrap").prop("hidden", depts.length < 8);
+            var curOnly = Object.keys(now).length === 1 ? Object.keys(now)[0] : null;
+            var rows = depts.slice().sort(function (a, b) { return a.n.localeCompare(b.n); }).filter(function (d) { return !fq || d.n.toLowerCase().indexOf(fq) >= 0; }).map(function (d) {
+                var n = people.filter(function (x) { return x.deptId === d.id; }).length, head = byId[d.head];
+                return mdRow(d.id, d.n, n + (n === 1 ? " person" : " people") + (head ? " · head " + head.n : ""), dcol[d.id], curOnly === d.id);
+            });
+            if (!fq || "no department".indexOf(fq) >= 0) rows.push(mdRow("", "No department", "Take them out of any department", "#94A3B8", curOnly === ""));
+            $("#mdList").html(rows.join("") || '<p class="org-cm-more-t">No department matches “' + esc(fq) + '”.</p>');
+            $("#mdSub").text(depts.length + (depts.length === 1 ? " department" : " departments"));
+            Sahyog.paintPhotos && Sahyog.paintPhotos(document.getElementById("orgMoveDialog"));
+            // footer
+            var ids = mdIds(), changes = md.pick !== undefined && ids.some(function (id) { return (byId[id].deptId || "") !== md.pick; });
+            var who = ids.length === 1 ? first(byId[ids[0]]) : ids.length + " people";
+            var to = md.pick === undefined ? "" : md.pick ? deptById[md.pick].n : "no department";
+            $("#cmGo").prop("disabled", !changes).find("span").text(md.pick === undefined ? "Choose a department" : md.pick ? "Move " + who + " to " + to : "Remove " + who + " from department");
+            $("#cmFoot").html(md.pick === undefined ? "Nothing changes until you press Move." : !changes ? (ids.length === 1 ? "Already in " : "Already all in ") + esc(to) + "." :
+                "<b>" + esc(who) + "</b> " + (md.pick ? (ids.length === 1 ? "will be in " : "will be in ") + "<b>" + esc(to) + "</b>." : (ids.length === 1 ? "will have" : "will have") + " no department.") + " Undo is offered for 10 seconds.");
+        }
+        function mdRow(id, name, sub2, col, cur) {
+            var sel = md.pick === id;
+            return '<button type="button" role="radio" class="org-md-row' + (sel ? " sel" : "") + '" data-md="' + id + '" aria-checked="' + sel + '" style="--dc:' + col + '">' +
+                '<span class="org-cm-radio" aria-hidden="true">' + (sel ? '<i class="fa fa-check"></i>' : "") + '</span>' +
+                '<span class="org-md-ic" aria-hidden="true"><i class="bi ' + (id ? "bi-briefcase-fill" : "bi-slash-circle") + '"></i></span>' +
+                '<span class="org-cm-t"><b>' + esc(name) + '</b><small>' + esc(sub2) + '</small></span>' + (cur ? '<em class="org-cm-tag">Now</em>' : "") + '</button>';
         }
         function cmBlocked(mid) { return mid !== "" && (mid === cm.id || !!cmDesc()[mid]); }
         function cmWhy(mid) {
@@ -1385,9 +1458,11 @@
         $(document).on("submit.snorg", "#orgMoveForm", function (e) {
             e.preventDefault();
             if (moveKind === "dept") {
-                var v = String($("#mvDept input[type=hidden]").val() || "");
+                if (md.pick === undefined) return;
+                var v = md.pick, ids = mdIds().filter(function (id) { return (byId[id].deptId || "") !== v; });
+                if (!ids.length) return;
                 document.getElementById("orgMoveDialog").close();
-                move(moveIds, { dept: v }).then(function () { picked = {}; cpick = {}; selMode = false; draw(true); });
+                move(ids, { dept: v }).then(function () { picked = {}; cpick = {}; selMode = false; draw(true); });
                 return;
             }
             if (cm.pick === undefined || cm.pick === (byId[cm.id].mgr || "")) return;

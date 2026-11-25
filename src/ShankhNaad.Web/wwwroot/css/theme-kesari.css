@@ -530,6 +530,22 @@ html[data-skin="kesari"] .tc-tab.active .tc-ic { color: #C2410C; }
 html[data-skin="kesari"] .tc-tab.active .tc-badge { color: #7C2D12; background: rgba(194, 65, 12, .14); }
 html[data-skin="kesari"] .sn-org-page .org-kpi { --kc: #F97316; }
 html[data-skin="kesari"] .org-node.cpick { outline: 2px solid var(--sn-primary, #C2410C); }
+html[data-skin="kesari"][data-theme="light"] .sn-sched-dayhead.weekend span { color: #166534; }
+html[data-skin="kesari"][data-theme="light"] .sn-sched-dayhead.today { background: rgba(234, 88, 12, .08); }
+html[data-skin="kesari"][data-theme="light"] .sn-sched-dayhead.today span { color: #C2410C; }
+html[data-skin="kesari"][data-theme="light"] .sn-sched-dayhead em { background: #EA580C; }
+html[data-skin="kesari"][data-theme="light"] .sn-sched-col.today { background-color: rgba(234, 88, 12, .055); }
+html[data-skin="kesari"][data-theme="light"] .sn-mcell.today { background: rgba(234, 88, 12, .06); box-shadow: inset 0 0 0 2px #EA580C; }
+html[data-skin="kesari"][data-theme="light"] .sn-mev:not(.allday) { box-shadow: inset 3px 0 0 #EA580C; }
+html[data-skin="kesari"][data-theme="light"] .sn-mev.tone-pink:not(.allday) { box-shadow: inset 3px 0 0 #15803D; }
+html[data-skin="kesari"][data-theme="light"] .sn-ag-day.today .sn-ag-date { background: #FFF7ED; box-shadow: inset 0 0 0 2px #EA580C; }
+html[data-skin="kesari"][data-theme="light"] .sn-ag-ev { box-shadow: inset 4px 0 0 #EA580C, 0 2px 8px -4px rgba(15, 23, 42, .2); }
+html[data-skin="kesari"][data-theme="light"] .sn-ag-ev.tone-pink { box-shadow: inset 4px 0 0 #15803D, 0 2px 8px -4px rgba(15, 23, 42, .2); }
+html[data-skin="kesari"] .sn-ag-acts .sn-ag-btn.sn-ag-btn { background: #FFF7ED; color: #9A3412; border: 1px solid rgba(194, 65, 12, .35); }
+html[data-skin="kesari"] .sn-ooo-step { background: linear-gradient(135deg, #EA580C, #7E22CE); }
+html[data-skin="kesari"] .sn-ooo-nopick { border: 1.5px dashed rgba(234, 88, 12, .35); }
+html[data-skin="kesari"] .sn-ooo-nopick > i { background: rgba(234, 88, 12, .12); }
+html[data-skin="kesari"] .sn-ooo-person.on { border-color: rgba(234, 88, 12, .35); }
 /* ---- from responsive.css ---- */
 @media (max-width: 1100px) {
 html[data-skin="kesari"] .sn-body .sn-chat-back { color: #7C2D12 !important; border: 1px solid rgba(194, 65, 12, .25) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 6px 14px -8px rgba(194, 65, 12, .6); }

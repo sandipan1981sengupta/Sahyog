@@ -42,6 +42,17 @@
         var tip = k == "cancel" && e.Repeat is not null ? "Cancel this date or the series" : ActTip(k, e);
         return new Microsoft.AspNetCore.Html.HtmlString(edit + $"<span class='sn-ev-del act-{k}' role='button' tabindex='0' data-act='{k}' data-del='{e.MeetingId}' data-title='{t}' data-series='{(e.Repeat is null ? "" : "1")}' data-tip='{tip}' aria-label='{tip}: {t}'>{(k == "cancel" ? BanSvg : TrashSvg)}</span>");
     }
+    // Agenda: the same Edit / Cancel / Delete actions as the calendar icons, as labelled buttons (same data-* so the same handlers run)
+    Microsoft.AspNetCore.Html.IHtmlContent AgActs(CalendarEventVm e)
+    {
+        var k = ActKind(e);
+        var t = System.Net.WebUtility.HtmlEncode(e.Title);
+        var edit = CanMove(e) ? $"<span class='sn-ev-edit sn-ag-btn edit' role='button' tabindex='0' data-edit='{e.MeetingId}' aria-label='Edit {t}'>{PenSvg}<span>Edit</span></span>" : "";
+        if (k.Length == 0) return new Microsoft.AspNetCore.Html.HtmlString(edit);
+        var tip = k == "cancel" && e.Repeat is not null ? "Cancel this date or the series" : ActTip(k, e);
+        var label = k switch { "cancel" => "Cancel", "delete" => "Delete", _ => "Remove" };
+        return new Microsoft.AspNetCore.Html.HtmlString(edit + $"<span class='sn-ev-del sn-ag-btn act-{k}' role='button' tabindex='0' data-act='{k}' data-del='{e.MeetingId}' data-title='{t}' data-series='{(e.Repeat is null ? "" : "1")}' title='{tip}' aria-label='{tip}: {t}'>{(k == "cancel" ? BanSvg : TrashSvg)}<span>{label}</span></span>");
+    }
     // what a meeting on the calendar carries for edit / move / cancel-this-date (and drag and drop when it can move)
     // ✕ 1  ? 2 on a meeting: people who declined / said maybe for that date (hover for their reasons)
     Microsoft.AspNetCore.Html.IHtmlContent AnsBadges(CalendarEventVm e) => e.IsCancelled || (e.Declined + e.Maybe == 0)
@@ -410,6 +421,7 @@
                                         <div class="sn-ag-main">
                                             <div class="sn-ag-title">
                                                 <b>@ev.Title</b>
+                                                @if (ev.IsHost) { <span class="sn-ag-badge mine">You set it up</span> }
                                                 @if (st == "Live") { <span class="sn-ag-badge live">Live</span> }
                                                 @if (ev.IsCancelled) { <span class="sn-ag-badge cancelled">Cancelled</span> }
                                                 @if (st == "Ended") { <span class="sn-ag-badge ended">Ended</span> }
@@ -462,11 +474,11 @@
                                             }
                                         </div>
                                         <div class="sn-ag-acts">
+                                            @AgActs(ev)
                                             @if (!ev.IsCancelled && st != "Ended")
                                             {
                                                 <a class="cee-btn sn-btn-light sn-ag-join" href="/meetings/room/@ev.MeetingId" onclick="event.stopPropagation()"><i class="fa fa-video-camera" aria-hidden="true"></i> Join</a>
                                             }
-                                            @ActBtn(ev)
                                         </div>
                                     </article>
                                 }

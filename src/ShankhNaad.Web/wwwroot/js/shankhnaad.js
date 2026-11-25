@@ -351,7 +351,7 @@
         document.addEventListener("pointerdown", outside, true);
     };
 
-    // ---------- "Team chat · Calls · Meetings" right after the company name in the top bar (also shortcuts) ----------
+    // ---------- "Team chat · Calls · Meetings · Files · Team · Org" right after the company name in the top bar (also shortcuts) ----------
     document.addEventListener("DOMContentLoaded", () => {
         const heading = document.querySelector(".sn-topbar .strip-heading");
         if (!heading || !document.body.dataset.me || heading.parentElement.classList.contains("sn-headrow")) return;
@@ -362,7 +362,11 @@
         const nav = document.createElement("nav");
         nav.className = "sn-app-tags";
         nav.setAttribute("aria-label", "ShankhNaad");
-        nav.innerHTML = [["chat", "/chat", "Team chat", "fa-comments"], ["calls", "/calls", "Calls", "fa-phone"], ["meet", "/meetings", "Meetings", "fa-video-camera"]]
+        // Files, Team and Org only where the side rail has them (a super admin's rail doesn't)
+        const tags = [["chat", "/chat", "Team chat", "fa-comments"], ["calls", "/calls", "Calls", "fa-phone"], ["meet", "/meetings", "Meetings", "fa-video-camera"],
+            ["files", "/files", "Files", "fa-folder-open"], ["team", "/team", "Team", "fa-users"], ["org", "/org", "Org", "fa-sitemap"]]
+            .filter(([k, href]) => k === "chat" || k === "calls" || k === "meet" || document.querySelector('.rr-item-btn[href="' + href + '"], a[href="' + href + '"]'));
+        nav.innerHTML = tags
             .map(([k, href, label, icon]) => `<a href="${href}" class="sn-app-tag ${k}" title="${label}"><span class="sn-app-ic"><i class="fa ${icon}" aria-hidden="true"></i></span><span class="sn-app-lb">${label}</span></a>`)
             .join("");
         row.appendChild(nav);
@@ -561,7 +565,9 @@
                         <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
                     </div>
                     <div class="sn-dlg-body sn-ooo-body">
-                        <div class="sn-field-label" id="oooWhenL">When are you away?</div>
+                      <div class="sn-ooo-col sn-ooo-left">
+                        <div class="sn-ooo-sec-h"><span class="sn-ooo-step">1</span> When are you away?</div>
+                        <div class="sn-field-label sr-only" id="oooWhenL">When are you away?</div>
                         <div class="sn-ooo-when" aria-labelledby="oooWhenL">
                             <button type="button" data-quick="today">Today</button>
                             <button type="button" data-quick="tomorrow">Tomorrow</button>
@@ -587,21 +593,28 @@
                                     <select id="oooToTime" class="sn-ooo-tsel"></select></div>
                             </div>
                         </div>
-                        <label class="sn-field-label" for="oooMsg">Note for colleagues</label>
+                        <div class="sn-ooo-sec-h"><span class="sn-ooo-step">2</span> <label for="oooMsg">Note for colleagues</label></div>
                         <textarea id="oooMsg" class="sn-textarea sn-ooo-msg" rows="3" maxlength="500"></textarea>
-                        <div class="sn-field-label" id="oooMailL">Tell people by email</div>
+                      </div>
+                      <div class="sn-ooo-col sn-ooo-right">
+                        <div class="sn-ooo-sec-h" id="oooMailL"><span class="sn-ooo-step">3</span> Tell people by email</div>
                         <div class="sn-ooo-seg" role="radiogroup" aria-labelledby="oooMailL">
                             <button type="button" role="radio" data-notify="none"><i class="fa fa-ban" aria-hidden="true"></i> Don't email</button>
                             <button type="button" role="radio" data-notify="all"><i class="fa fa-users" aria-hidden="true"></i> Whole team</button>
                             <button type="button" role="radio" data-notify="some"><i class="fa fa-user-plus" aria-hidden="true"></i> Pick people</button>
                         </div>
                         <p class="sn-ooo-mailnote" id="oooMailNote" hidden></p>
+                        <div class="sn-ooo-nopick" id="oooNoPick"><i class="fa fa-envelope-o" aria-hidden="true"></i><b></b><span></span></div>
                         <div class="sn-ooo-people" id="oooPeople" hidden>
                             <div class="sn-ooo-people-top">
-                                <label class="sn-ooo-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" id="oooSearch" placeholder="Search your team" aria-label="Search your team" autocomplete="off" /></label>
-                                <span id="oooPicked">0 picked</span>
-                                <button type="button" class="sn-ooo-linkbtn" id="oooAll">Select shown</button>
-                                <button type="button" class="sn-ooo-linkbtn sn-ooo-clear" id="oooNone">Clear</button>
+                                <label class="sn-ooo-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" id="oooSearch" placeholder="Search by name, title or department" aria-label="Search your team" autocomplete="off" /></label>
+                                <div class="sn-ooo-people-bar">
+                                    <span class="sn-ooo-pickn" id="oooPicked">0 picked</span>
+                                    <span class="sn-ooo-people-acts">
+                                        <button type="button" class="sn-ooo-linkbtn" id="oooAll"><i class="fa fa-check-square-o" aria-hidden="true"></i> Select shown</button>
+                                        <button type="button" class="sn-ooo-linkbtn sn-ooo-clear" id="oooNone"><i class="fa fa-times" aria-hidden="true"></i> Clear</button>
+                                    </span>
+                                </div>
                             </div>
                             <div class="sn-ooo-list" id="oooList" role="listbox" aria-multiselectable="true"><p class="sn-ooo-empty">Loading your team…</p></div>
                         </div>
@@ -609,9 +622,11 @@
                             <span class="sn-ooo-chip"><i class="dot st-ooo" aria-hidden="true"></i><b>Out of office</b> · <span id="oooPrevWhen"></span></span>
                             <q id="oooPrevMsg"></q>
                             <span class="sn-ooo-prev-mail" id="oooPrevMail" hidden><i class="fa fa-envelope-o" aria-hidden="true"></i> <span></span></span></div>
+                      </div>
                     </div>
                     <div class="sn-dlg-foot">
                         <button type="button" class="cee-btn sn-btn-danger-soft" id="oooOff" hidden><i class="fa fa-sign-in" aria-hidden="true"></i> <span>I'm back: turn off</span></button>
+                        <span class="sn-ooo-footsum" id="oooFootSum"></span>
                         <span style="display:flex;gap:10px;margin-left:auto">
                             <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
                             <button type="submit" class="cee-btn cee-btn-gradient" id="oooSave"><i class="fa fa-check" aria-hidden="true"></i> <span>Turn on</span></button>
@@ -723,20 +738,20 @@
             // ----- who to tell by email -----
             let people = null, picked = new Set(), canEmail = true;
             const paintPicked = () => {
-                q("#oooPicked").textContent = picked.size + " picked";
+                q("#oooPicked").innerHTML = "<b>" + picked.size + "</b> picked";
                 preview();
             };
             const paintList = () => {
                 const list = q("#oooList");
                 if (!people) return;
                 const term = q("#oooSearch").value.trim().toLowerCase();
-                const shown = people.filter((p) => !term || p.name.toLowerCase().includes(term));
+                const shown = people.filter((p) => !term || (p.name + " " + (p.title || "") + " " + (p.dept || "")).toLowerCase().includes(term));
                 if (!shown.length) { list.innerHTML = `<p class="sn-ooo-empty">${people.length ? "Nobody matches." : "Nobody else in your team yet."}</p>`; return; }
                 list.innerHTML = shown.map((p) => {
                     const on = picked.has(p.id);
                     return `<button type="button" class="sn-ooo-person${on ? " on" : ""}" role="option" aria-selected="${on}" data-id="${esc(p.id)}"${p.hasEmail ? "" : " disabled title=\"No email address\""}>
                         <span class="avatar av-28 sn-ooo-av tone-${+p.tone || 0}" data-user="${esc(p.id)}">${esc(p.initials)}</span>
-                        <span class="sn-ooo-pname">${esc(p.name)}${p.hasEmail ? "" : "<small>no email address</small>"}</span>
+                        <span class="sn-ooo-pname"><b>${esc(p.name)}</b><small>${p.hasEmail ? esc([p.title, p.dept].filter(Boolean).join(" · ")) : "no email address"}</small></span>
                         <i class="sn-ooo-tick fa fa-check" aria-hidden="true"></i></button>`;
                 }).join("");
                 window.Sahyog?.paintPhotos?.(list);
@@ -752,7 +767,7 @@
             q("#oooSearch").addEventListener("input", paintList);
             q("#oooAll").addEventListener("click", () => {
                 const term = q("#oooSearch").value.trim().toLowerCase();
-                (people || []).filter((p) => p.hasEmail && (!term || p.name.toLowerCase().includes(term))).forEach((p) => picked.add(p.id));
+                (people || []).filter((p) => p.hasEmail && (!term || (p.name + " " + (p.title || "") + " " + (p.dept || "")).toLowerCase().includes(term))).forEach((p) => picked.add(p.id));
                 paintList(); paintPicked();
             });
             q("#oooNone").addEventListener("click", () => { picked.clear(); paintList(); paintPicked(); });
@@ -764,6 +779,7 @@
                     people = d.people || []; canEmail = d.canEmail !== false;
                 } catch { people = []; }
                 paintList(); notifyNote(); preview();
+                if (oooDlg.dataset.notify === "all") pickNotify("all");
             };
             const notifyNote = () => {
                 const n = q("#oooMailNote"), w = oooDlg.dataset.notify;
@@ -774,6 +790,12 @@
                 oooDlg.dataset.notify = w;
                 oooDlg.querySelectorAll("[data-notify]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.notify === w)));
                 q("#oooPeople").hidden = w !== "some";
+                const np = q("#oooNoPick");
+                np.hidden = w === "some";
+                np.dataset.kind = w;
+                np.querySelector("b").textContent = w === "all" ? "Everyone in your team gets an email" : "No email is sent";
+                np.querySelector("span").textContent = w === "all" ? (people ? people.filter((p) => p.hasEmail).length + " people with an email address. They also see your status in the app." : "Everyone with an email address. They also see your status in the app.")
+                    : "Your status and note still show in the app. Pick “Whole team” or “Pick people” to email them too.";
                 if (w !== "none") loadPeople();
                 if (w === "some") setTimeout(() => q("#oooSearch").focus(), 30);
                 notifyNote(); preview();
@@ -815,6 +837,14 @@
                 pm.hidden = w === "none" || !canEmail;
                 pm.querySelector("span").textContent = w === "all" ? `Email to the whole team${people ? ` (${all} ${all === 1 ? "person" : "people"})` : ""}`
                     : `Email to ${picked.size ? [...picked].map((id) => (people || []).find((p) => p.id === id)?.name).filter(Boolean).slice(0, 3).join(", ") + (picked.size > 3 ? ` and ${picked.size - 3} more` : "") : "nobody yet: pick people above"}`;
+                // the footer sums it up
+                const fs = q("#oooFootSum");
+                if (fs) {
+                    const startsNow = from && +from <= +today && (!part || !start || start <= new Date());
+                    const n = w === "all" ? all : w === "some" ? picked.size : 0;
+                    fs.textContent = (!from ? "Pick your first day" : startsNow ? "Turns on now" : "Starts " + dayName(from))
+                        + " · " + (w === "none" || !canEmail ? "no email" : n === 1 ? "1 person gets an email" : n + " people get an email");
+                }
             };
             oooDlg._preview = preview;
             q("#oooMsg").addEventListener("input", preview);
