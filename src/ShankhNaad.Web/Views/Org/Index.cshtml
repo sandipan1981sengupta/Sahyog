@@ -41,6 +41,7 @@
                        show-refresh="true" refresh-on-click="SN.reload()"
                        show-add="false" show-edit="false" show-delete="false" show-import="false"
                        show-export="false" show-save="false" show-submit="false" show-print="true" print-on-click="SN.print()">
+            <action-btn text="Export CSV" icon-css="bi bi-download" icon-color="#0EA5E9" tooltip="Download everyone (or the people you picked in Directory) as a spreadsheet" on-click="snOrgExport()"></action-btn>
             @if (isAdmin)
             {
                 <action-btn text="Edit person" icon-css="bi bi-person-gear" icon-color="#2563EB" tooltip="Job title, department, manager and contact details of the selected person" on-click="snOrgEdit()"></action-btn>
@@ -68,35 +69,64 @@
     }
 
     <div class="sn-org">
-        <section class="sn-org-main glass" aria-label="Org chart">
+        <section class="sn-org-main glass" aria-label="Organization">
             <div class="sn-org-bar">
                 <div class="sn-org-bar-t"><b>@Model.TenantName</b><span>@Model.People.Count @(Model.People.Count == 1 ? "person" : "people") · @Model.Departments.Count @(Model.Departments.Count == 1 ? "department" : "departments")</span></div>
-                <div class="sn-org-seg" role="tablist" aria-label="Show the chart">
-                    <button type="button" role="tab" aria-selected="true" data-org-view="mgr"><i class="bi bi-diagram-3" aria-hidden="true"></i> By manager</button>
-                    <button type="button" role="tab" aria-selected="false" data-org-view="dept"><i class="bi bi-grid-3x2-gap" aria-hidden="true"></i> By department</button>
-                </div>
+                <tab-control id="orgTabs" height="44px" font-size="13.5px" font-weight="600" active-font-weight="700" transition-duration=".38s">
+                    <tab id="mgr" text="Chart" icon="bi bi-diagram-3" active="true"></tab>
+                    <tab id="dir" text="Directory" icon="bi bi-list-nested" badge="@Model.People.Count.ToString()"></tab>
+                    <tab id="dept" text="Departments" icon="bi bi-briefcase" badge="@Model.Departments.Count.ToString()"></tab>
+                    <tab id="ins" text="Insights" icon="bi bi-lightbulb"></tab>
+                </tab-control>
                 <label class="sn-org-search">
                     <i class="fa fa-search" aria-hidden="true"></i>
                     <span class="sr-only">Find a person</span>
                     <input type="search" id="orgSearch" placeholder="Find a person, title or department" autocomplete="off" />
                 </label>
             </div>
+            <div class="sn-org-sub" id="orgSub">
+                <nav class="org-path" id="orgPath" aria-label="Where the selected person sits"></nav>
+                <div class="org-filters">
+                    <button type="button" class="org-filter" id="orgDeptFilter" aria-haspopup="menu"><span>Department: All</span> <i class="fa fa-angle-down" aria-hidden="true"></i></button>
+                    <button type="button" class="org-filter" id="orgOnlineFilter" aria-pressed="false"><i class="org-on-dot on" aria-hidden="true"></i> Online now</button>
+                    <button type="button" class="org-filter" id="orgIssueFilter" hidden><span></span> <i class="fa fa-times" aria-hidden="true"></i></button>
+                </div>
+                <div class="org-legend" id="orgLegend" aria-label="Department colours"></div>
+            </div>
             <div class="sn-org-viewport" id="orgViewport" tabindex="0" aria-label="Chart: drag to move around, Ctrl + mouse wheel to zoom">
                 <div class="sn-org-canvas" id="orgCanvas"></div>
             </div>
+            <div class="sn-org-pane" id="orgPane" hidden></div>
             <div class="sn-org-zoom" role="group" aria-label="Zoom">
                 <button type="button" data-org-zoom="-1" aria-label="Zoom out" title="Zoom out"><i class="fa fa-minus" aria-hidden="true"></i></button>
                 <span id="orgZoomText">100%</span>
                 <button type="button" data-org-zoom="1" aria-label="Zoom in" title="Zoom in"><i class="fa fa-plus" aria-hidden="true"></i></button>
                 <button type="button" data-org-zoom="fit" aria-label="Fit to screen" title="Fit the whole chart on screen"><i class="fa fa-expand" aria-hidden="true"></i></button>
             </div>
-            <span class="sn-org-tip">Click a person for their card · drag to move around</span>
+            <span class="sn-org-tip" id="orgTip">Click a person for their card · drag the background to move around@(isAdmin ? " · drag a person onto another to change their manager" : "")</span>
+            <button type="button" class="org-minimap" id="orgMini" aria-label="Map of the whole chart. Click to go there." title="Map of the whole chart · click to go there"></button>
+            <div class="org-bulk" id="orgBulk" hidden role="toolbar" aria-label="Picked people">
+                <b id="orgBulkN"></b>
+                @if (isAdmin)
+                {
+                    <button type="button" data-org-bulk="mgr"><i class="bi bi-diagram-2" aria-hidden="true"></i> Change manager…</button>
+                    <button type="button" data-org-bulk="dept"><i class="bi bi-briefcase" aria-hidden="true"></i> Move to department…</button>
+                }
+                <button type="button" data-org-bulk="group"><i class="fa fa-users" aria-hidden="true"></i> Start a group chat</button>
+                <button type="button" data-org-bulk="export"><i class="bi bi-download" aria-hidden="true"></i> Export</button>
+                <button type="button" class="org-bulk-x" data-org-bulk="clear" aria-label="Clear the picked people"><i class="fa fa-times" aria-hidden="true"></i></button>
+            </div>
         </section>
 
-        <div class="sn-org-side">
-            <aside class="sn-org-card glass" id="orgCard" aria-label="Profile card" aria-live="polite"></aside>
+        <div class="sn-org-side glass">
+            <div class="org-side-tabs" role="tablist" aria-label="Side panel">
+                <button type="button" role="tab" aria-selected="true" data-side="card"><i class="fa fa-id-card-o" aria-hidden="true"></i> Profile</button>
+                <button type="button" role="tab" aria-selected="false" data-side="depts"><i class="bi bi-briefcase" aria-hidden="true"></i> Departments <em>@Model.Departments.Count</em></button>
+            </div>
+            <div class="org-side-body" id="orgSideBody">
+            <aside class="sn-org-card" id="orgCard" aria-label="Profile card" aria-live="polite" data-side-pane="card"></aside>
 
-            <aside class="sn-org-depts glass" aria-label="Departments">
+            <aside class="sn-org-depts" aria-label="Departments" data-side-pane="depts" hidden>
                 <div class="sn-org-depts-head">
                     <b>Departments</b>
                     <small>@withDept of @Model.People.Count placed</small>
@@ -113,9 +143,13 @@
                     @foreach (var d in Model.Departments)
                     {
                         <div class="sn-org-dept" data-dept-row="@d.DepartmentId">
-                            <button type="button" class="sn-org-dept-main" data-dept-show="@d.DepartmentId" title="Show @d.Name in the chart">
-                                <span class="sn-org-dept-ic" aria-hidden="true"><i class="bi bi-briefcase-fill"></i></span>
+                            <button type="button" class="sn-org-dept-main" data-dept-show="@d.DepartmentId" title="Show @d.Name">
+                                <span class="sn-org-dept-ic" aria-hidden="true" data-dept-color="@d.DepartmentId"><i class="bi bi-briefcase-fill"></i></span>
                                 <span class="sn-org-dept-t"><b>@d.Name</b><small>@d.People @(d.People == 1 ? "person" : "people")@(d.HeadName is null ? "" : " · Head: " + d.HeadName)</small></span>
+                                @if (d.People == 0)
+                                {
+                                    <span class="org-empty-tag">Empty</span>
+                                }
                             </button>
                             @if (isAdmin)
                             {
@@ -125,15 +159,74 @@
                     }
                 </div>
             </aside>
+            </div>
         </div>
     </div>
 
-    @* Chat and Call from the profile card *@
+    @* Chat, Call, Video and group chat from the page *@
     <div id="orgForms" hidden>
         <form method="post" asp-antiforgery="true" action="/chat" id="orgChatForm"></form>
-        <form method="post" asp-antiforgery="true" action="/meetings/instant" id="orgCallForm"><input type="hidden" name="userId" id="orgCallUser" /></form>
+        <form method="post" asp-antiforgery="true" action="/meetings/instant" id="orgCallForm"><input type="hidden" name="userId" id="orgCallUser" /><input type="hidden" name="video" id="orgCallVideo" value="false" /></form>
     </div>
 </main>
+
+@* ---- Directory: start a group chat with the picked people ---- *@
+<dialog id="orgGroupDialog" class="sn-dialog glass-strong">
+    <form method="post" asp-antiforgery="true" action="/chat/groups" id="orgGroupForm" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-users" aria-hidden="true"></i></span><div><h2>New group chat <span class="sn-dlg-tag new">New chat</span></h2><p id="orgGroupSub">With the people you picked</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body">
+            <modern-group-box title="Group | details" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                <div style="display:flex;flex-direction:column;gap:14px">
+                    <modern-input id="orgGroupName" name="name" label="Group name" mandatory="true" placeholder="e.g. Engineering leads" max-length="60" label-font-size="13.5px"></modern-input>
+                    <div class="org-group-faces" id="orgGroupFaces"></div>
+                </div>
+            </modern-group-box>
+            <div id="orgGroupMembers" hidden></div>
+        </div>
+        <div class="sn-dlg-foot">
+            <span class="muted small">You are added too.</span>
+            <span style="display:flex;gap:10px;margin-left:auto">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Create group</button>
+            </span>
+        </div>
+    </form>
+</dialog>
+
+@if (isAdmin)
+{
+@* ---- Directory: change the manager / department of the picked people ---- *@
+<dialog id="orgMoveDialog" class="sn-dialog glass-strong">
+    <form method="post" action="#" id="orgMoveForm" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="bi bi-diagram-2" aria-hidden="true"></i></span><div><h2 id="orgMoveH">Change manager</h2><p id="orgMoveSub"></p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body">
+            <modern-group-box title="Move | people" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                <div style="display:flex;flex-direction:column;gap:14px">
+                    <div id="orgMoveMgrWrap">
+                        <modern-dropdown-with-label id="mvMgr" name="managerId" label="New manager" placeholder="No manager (top of the chart)" items="managerItems" menu-height="260px"></modern-dropdown-with-label>
+                    </div>
+                    <div id="orgMoveDeptWrap">
+                        <modern-dropdown-with-label id="mvDept" name="departmentId" label="New department" placeholder="No department" items="deptItems" menu-height="240px"></modern-dropdown-with-label>
+                    </div>
+                    <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> <span id="orgMoveHint">Only this changes; titles and contact details stay as they are.</span></span>
+                </div>
+            </modern-group-box>
+        </div>
+        <div class="sn-dlg-foot">
+            <span style="display:flex;gap:10px;margin-left:auto">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Move</button>
+            </span>
+        </div>
+    </form>
+</dialog>
+}
 
 @if (isAdmin)
 {
@@ -160,10 +253,16 @@
                         </div>
                         <modern-dropdown-with-label id="oMgr" name="managerId" label="Reports to (manager)" placeholder="No manager (top of the chart)" items="managerItems" menu-height="260px"></modern-dropdown-with-label>
                         <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> <span id="oMgrHint">The list never offers this person or anyone who reports to them, so the chart can't go round in a circle.</span></span>
-                        <div class="sn-org-grid3">
-                            <modern-input id="oPhone" name="phone" label="Phone (optional)" max-length="40" placeholder="+91 98xxx xxxxx" label-font-size="13.5px"></modern-input>
-                            <modern-input id="oEmp" name="employeeCode" label="Employee ID (optional)" max-length="40" placeholder="EMP-0042" label-font-size="13.5px"></modern-input>
+                        <div class="sn-org-grid2">
+                            <modern-input id="oPhone" name="phone" label="Phone (optional)" max-length="40" input-type="phone" placeholder="+91 98xxx xxxxx" label-font-size="13.5px"></modern-input>
+                            <modern-input id="oEmp" name="employeeCode" label="Employee ID" max-length="40" is-read-only="true" placeholder="Given automatically" label-font-size="13.5px"></modern-input>
+                        </div>
+                        <div class="sn-org-grid2">
                             <modern-datepicker-with-label id="oJoined" name="joined" label="Joined (optional)" placeholder="dd-mm-yyyy"></modern-datepicker-with-label>
+                            <span></span>
+                        </div>
+                        <div>
+                            <span class="sn-hint sn-org-emp-hint"><i class="fa fa-check" aria-hidden="true"></i> Employee IDs are given automatically, in order: EMP-000001, EMP-000002, … <span id="oEmpNext"></span></span>
                         </div>
                         <div id="oAdminWrap">
                             <modern-checkbox id="oAdmin" name="makeAdmin" label="Admin of this workspace" desc-text="Off: a normal team member. On: they can also add, edit and remove people and manage groups." is-toggle-button="true" on-text="ON" off-text="OFF" label-font-size="13.5px"></modern-checkbox>
@@ -174,7 +273,7 @@
         </div>
         <div class="sn-dlg-foot">
             <span class="muted small">Changing the email or admin role signs them out once.</span>
-            <span style="display:flex;gap:10px">
+            <span style="display:flex;gap:10px;margin-left:auto">
                 <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
                 <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Save</button>
             </span>
@@ -282,39 +381,75 @@
         var people = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(people));
         var depts = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(depts));
         var ME = "@me", IS_ADMIN = @(isAdmin ? "true" : "false");
-        var START = "@(Model.Select ?? "")", START_VIEW = new URLSearchParams(location.search).get("view") === "dept" ? "dept" : "mgr";
+        var qs = new URLSearchParams(location.search);
+        var START = "@(Model.Select ?? "")", START_VIEW = ({ dept: "dept", dir: "dir", ins: "ins" })[qs.get("view")] || "mgr";
         if (location.search) history.replaceState(null, "", location.pathname);
 
+        // ---------- data ----------
         var byId = {}, kids = {};
         people.forEach(function (p) { byId[p.id] = p; });
-        people.forEach(function (p) {
-            if (p.mgr && !byId[p.mgr]) p.mgr = "";          // manager not active any more → top of the chart
-            if (p.mgr) (kids[p.mgr] = kids[p.mgr] || []).push(p);
-        });
+        function rebuild() {
+            kids = {};
+            people.forEach(function (p) {
+                if (p.mgr && !byId[p.mgr]) p.mgr = "";          // manager not active any more → top of the chart
+                if (p.mgr) (kids[p.mgr] = kids[p.mgr] || []).push(p);
+            });
+        }
+        rebuild();
         var deptById = {}; depts.forEach(function (d) { deptById[d.id] = d; });
+        // one colour per department (by name), used on the card edge, the tags, the legend and the map
+        var PAL = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#F97316", "#84CC16"];
+        var dcol = {};
+        depts.slice().sort(function (a, b) { return a.n.localeCompare(b.n); }).forEach(function (d, i) { dcol[d.id] = PAL[i % PAL.length]; });
+        function colorOf(p) { return (p && dcol[p.deptId]) || "#94A3B8"; }
+        function deptName(p) { return p.deptId && deptById[p.deptId] ? deptById[p.deptId].n : ""; }
 
         function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
         function av(p, size) {
             return '<span class="avatar av-' + size + ' tone-' + (p.t % 6) + '" data-presence="' + p.id + '">' + esc(p.i) + '<i class="dot' + (p.on ? " on" : "") + '"></i></span>';
         }
-        function sub(p) { return p.title || p.dept || (p.admin ? "Admin" : "Team member"); }
-        function node(p, cls) {
-            var n = (kids[p.id] || []).length;
-            return '<div class="org-node' + (cls ? " " + cls : "") + (p.id === ME ? " me" : "") + '" data-id="' + p.id + '" role="button" tabindex="0" aria-label="' + esc(p.n + ", " + sub(p)) + '">' +
-                av(p, 38) + '<span class="org-node-t"><b>' + esc(p.n) + '</b><small>' + esc(sub(p)) + '</small></span>' +
-                (n && view === "mgr" ? '<button type="button" class="org-badge" data-toggle="' + p.id + '" title="' + n + (n === 1 ? " person reports" : " people report") + ' to ' + esc(p.n) + '. Click to show or hide them." aria-label="' + n + (n === 1 ? " report" : " reports") + ', show or hide"><i class="fa fa-users" aria-hidden="true"></i> ' + n + '</button>' : "") +
-                '</div>';
+        function sub(p) { return p.title || deptName(p) || (p.admin ? "Admin" : "Team member"); }
+        function dpill(p) {
+            var d = deptName(p);
+            return d ? '<span class="org-dp" style="--dc:' + colorOf(p) + '"><i aria-hidden="true"></i>' + esc(d) + '</span>' : "";
         }
+        function teamSize(id) { var n = 0; (kids[id] || []).forEach(function (c) { n += 1 + teamSize(c.id); }); return n; }
         function descendants(id) {
             var out = {}, stack = [id];
             while (stack.length) { (kids[stack.pop()] || []).forEach(function (c) { if (!out[c.id]) { out[c.id] = 1; stack.push(c.id); } }); }
             return out;
         }
+        function chainOf(p) {
+            var chain = [], guard = 0;
+            for (var m = p.mgr; m && byId[m] && guard < 50; m = byId[m].mgr, guard++) chain.unshift(byId[m]);
+            return chain;
+        }
+        function text(p) { return (p.n + " " + p.title + " " + deptName(p) + " " + p.email).toLowerCase(); }
+        function byName(a, b) { return a.n.localeCompare(b.n); }
 
-        // ---------- by manager: a tree; people whose reports have no reports of their own get a compact column ----------
+        // ---------- filters (search, department, online, a "needs a look" list) ----------
+        var q = "", deptFilter = "", onlineOnly = false, issue = null;   // issue: { label, ids }
+        function passes(p) {
+            if (deptFilter === "none" ? !!(p.deptId && deptById[p.deptId]) : (deptFilter && p.deptId !== deptFilter)) return false;
+            if (onlineOnly && !p.on) return false;
+            if (issue && !issue.ids[p.id]) return false;
+            return true;
+        }
+        function filtering() { return !!(q || deptFilter || onlineOnly || issue); }
+
+        // ---------- a person in the chart ----------
+        function node(p, cls) {
+            var n = (kids[p.id] || []).length;
+            return '<div class="org-node' + (cls ? " " + cls : "") + (p.id === ME ? " me" : "") + '" style="--dc:' + colorOf(p) + '" data-id="' + p.id + '" role="button" tabindex="0" aria-label="' + esc(p.n + ", " + sub(p)) + '">' +
+                av(p, 38) + '<span class="org-node-t"><b>' + esc(p.n) + '</b><small>' + esc(p.title || (p.admin ? "Admin" : "Team member")) + '</small>' + dpill(p) + '</span>' +
+                (n ? '<button type="button" class="org-badge" data-toggle="' + p.id + '" title="' + teamSize(p.id) + ' in ' + esc(p.n.split(" ")[0]) + '\'s team (' + n + ' direct). Click to show or hide them." aria-label="' + n + (n === 1 ? " report" : " reports") + ', show or hide"><i class="fa fa-users" aria-hidden="true"></i> ' + teamSize(p.id) + '</button>' : "") +
+                '</div>';
+        }
+
+        // ---------- Chart: a tree; people whose reports have no reports of their own get a compact column ----------
         var collapsed = {};
         function branch(p, depth) {
-            var list = (kids[p.id] || []).slice().sort(function (a, b) { return a.n.localeCompare(b.n); });
+            var list = (kids[p.id] || []).slice().sort(byName);
             if (!list.length) return '<li>' + node(p) + '</li>';
             var leafy = list.every(function (c) { return !(kids[c.id] || []).length; });
             var shut = collapsed[p.id] === true || (collapsed[p.id] === undefined && depth >= 4);
@@ -323,48 +458,274 @@
                 : '<ul>' + list.map(function (c) { return branch(c, depth + 1); }).join("") + '</ul>';
             return '<li class="' + (leafy ? "has-stack" : "") + (shut ? " shut" : "") + '" data-li="' + p.id + '">' + node(p) + inner + '</li>';
         }
+        function tops() {
+            var roots = people.filter(function (p) { return !p.mgr; }).sort(function (a, b) { return (teamSize(b.id) - teamSize(a.id)) || byName(a, b); });
+            return { tops: roots.filter(function (p) { return (kids[p.id] || []).length; }), loose: roots.filter(function (p) { return !(kids[p.id] || []).length; }).sort(byName) };
+        }
         function drawManagers() {
-            var roots = people.filter(function (p) { return !p.mgr; }).sort(function (a, b) {
-                return ((kids[b.id] || []).length - (kids[a.id] || []).length) || a.n.localeCompare(b.n);
-            });
-            // people with reports first (the real top), then everyone not placed yet in a tidy group
-            var tops = roots.filter(function (p) { return (kids[p.id] || []).length; });
-            var loose = roots.filter(function (p) { return !(kids[p.id] || []).length; });
-            var h = tops.length ? '<ul class="org-tree org-root">' + tops.map(function (p) { return branch(p, 1); }).join("") + '</ul>' : "";
-            if (loose.length) {
-                h += '<div class="org-loose"><div class="org-loose-h"><b>' + (tops.length ? "Not placed yet" : "Everyone") + '</b><small>' + loose.length +
-                    (loose.length === 1 ? " person" : " people") + ' without a manager' + (IS_ADMIN ? " · use Edit person or Import CSV to set who they report to" : "") + '</small></div>' +
-                    '<div class="org-loose-grid">' + loose.sort(function (a, b) { return a.n.localeCompare(b.n); }).map(function (p) { return node(p, "small"); }).join("") + '</div></div>';
+            var t = tops();
+            var h = t.tops.length ? '<ul class="org-tree org-root">' + t.tops.map(function (p) { return branch(p, 1); }).join("") + '</ul>' : "";
+            if (t.loose.length) {
+                h += '<div class="org-loose"><div class="org-loose-h"><b>' + (t.tops.length ? "Not placed yet" : "Everyone") + '</b><small>' + t.loose.length +
+                    (t.loose.length === 1 ? " person" : " people") + ' without a manager' + (IS_ADMIN ? " · drag them onto their manager, or use Edit person" : "") + '</small></div>' +
+                    '<div class="org-loose-grid">' + t.loose.map(function (p) { return node(p, "small"); }).join("") + '</div></div>';
             }
             return h;
         }
 
-        // ---------- by department: one column per department, head first ----------
-        function drawDepartments() {
-            var cols = depts.map(function (d) { return { id: d.id, n: d.n, head: d.head, list: people.filter(function (p) { return p.deptId === d.id; }) }; });
-            var none = people.filter(function (p) { return !p.deptId || !deptById[p.deptId]; });
-            if (none.length) cols.push({ id: "", n: "No department", head: "", list: none });
-            if (!cols.length) return '<p class="org-empty-chart">No departments yet.</p>';
-            return '<div class="org-depts">' + cols.map(function (c) {
-                var head = c.head && byId[c.head] ? byId[c.head] : null;
-                var rest = c.list.filter(function (p) { return !head || p.id !== head.id; }).sort(function (a, b) { return a.n.localeCompare(b.n); });
-                return '<section class="org-dcol" data-dcol="' + c.id + '"><header><span class="org-dcol-ic" aria-hidden="true"><i class="bi bi-briefcase-fill"></i></span><span><b>' + esc(c.n) + '</b><small>' +
-                    c.list.length + (c.list.length === 1 ? " person" : " people") + (head ? " · Head: " + esc(head.n) : "") + '</small></span></header>' +
-                    (head ? node(head, "head") : "") + rest.map(function (p) { return node(p, "small"); }).join("") +
-                    (!c.list.length ? '<p class="org-dcol-empty">No one here yet.</p>' : "") + '</section>';
-            }).join("") + '</div>';
+        // ---------- Directory: the tree as a table, with tick boxes ----------
+        var dirShut = {}, picked = {};
+        function dirRows() {
+            var out = [];
+            if (filtering()) {
+                people.filter(function (p) { return passes(p) && (!q || text(p).indexOf(q) >= 0); }).sort(byName).forEach(function (p) { out.push({ p: p, lv: 0, flat: true }); });
+                return out;
+            }
+            function walk(p, lv) {
+                out.push({ p: p, lv: lv });
+                if (dirShut[p.id]) return;
+                (kids[p.id] || []).slice().sort(byName).forEach(function (c) { walk(c, lv + 1); });
+            }
+            var t = tops();
+            t.tops.forEach(function (p) { walk(p, 0); });
+            t.loose.forEach(function (p) { walk(p, 0); });
+            return out;
+        }
+        function drawDirectory() {
+            var rows = dirRows();
+            var allPicked = rows.length && rows.every(function (r) { return picked[r.p.id]; });
+            var h = '<div class="org-dir-wrap"><table class="org-dir"><thead><tr>' +
+                '<th class="org-dir-ck"><label class="org-ck"><input type="checkbox" data-dir-all' + (allPicked ? " checked" : "") + ' aria-label="Pick everyone shown" /><span></span></label></th>' +
+                '<th>Name</th><th>Title</th><th>Department</th><th>Reports to</th><th class="num">Team</th><th>Status</th></tr></thead><tbody>';
+            if (!rows.length) h += '<tr><td colspan="7" class="org-dir-empty">No one matches. Clear the search or the filters.</td></tr>';
+            rows.forEach(function (r) {
+                var p = r.p, n = (kids[p.id] || []).length, team = teamSize(p.id), m = byId[p.mgr];
+                h += '<tr data-row="' + p.id + '" class="' + (picked[p.id] ? "picked" : "") + (p.id === selected ? " sel" : "") + '">' +
+                    '<td class="org-dir-ck"><label class="org-ck"><input type="checkbox" data-dir-pick="' + p.id + '"' + (picked[p.id] ? " checked" : "") + ' aria-label="Pick ' + esc(p.n) + '" /><span></span></label></td>' +
+                    '<td><div class="org-dir-name" style="padding-left:' + (r.lv * 22) + 'px">' +
+                    (!r.flat && n ? '<button type="button" class="org-dir-tog' + (dirShut[p.id] ? " shut" : "") + '" data-dir-tog="' + p.id + '" aria-label="' + (dirShut[p.id] ? "Show" : "Hide") + ' ' + esc(p.n.split(" ")[0]) + '\'s team" aria-expanded="' + !dirShut[p.id] + '"><i class="fa fa-angle-down" aria-hidden="true"></i></button>' : '<span class="org-dir-tog-sp"></span>') +
+                    av(p, 32) + '<span><b>' + esc(p.n) + (p.id === ME ? ' <em>(you)</em>' : "") + '</b><small>' + esc(p.email) + '</small></span></div></td>' +
+                    '<td>' + esc(p.title || "—") + '</td><td>' + (dpill(p) || '<span class="muted">—</span>') + '</td>' +
+                    '<td>' + (m ? '<button type="button" class="org-link" data-pick="' + m.id + '">' + esc(m.n) + '</button>' : '<span class="muted">—</span>') + '</td>' +
+                    '<td class="num">' + (team ? team + (n !== team ? ' <small class="muted">(' + n + ' direct)</small>' : "") : '<span class="muted">—</span>') + '</td>' +
+                    '<td><span class="org-st' + (p.on ? " on" : "") + '" data-presence-text="' + p.id + '"><i class="org-on-dot' + (p.on ? " on" : "") + '" aria-hidden="true"></i>' + (p.on ? "Online" : "Offline") + '</span></td></tr>';
+            });
+            h += '</tbody></table></div>';
+            var shown = rows.length;
+            h = '<div class="org-pane-note">' + shown + ' of ' + people.length + ' people' + (filtering() ? " · filtered, shown A–Z" : " · shown as a tree, managers first") + '</div>' + h;
+            return h;
+        }
+        function bulk() {
+            var ids = Object.keys(picked).filter(function (id) { return byId[id]; });
+            var bar = document.getElementById("orgBulk");
+            bar.hidden = view !== "dir" || !ids.length;
+            document.getElementById("orgBulkN").textContent = ids.length + " picked";
         }
 
+        // ---------- Departments: one card per department ----------
+        var deptOpen = {};
+        function drawDeptCards() {
+            var total = people.length || 1;
+            var cols = depts.slice().sort(function (a, b) { return (b.count - a.count) || a.n.localeCompare(b.n); }).map(function (d) {
+                return { id: d.id, n: d.n, head: d.head, list: people.filter(function (p) { return p.deptId === d.id; }) };
+            });
+            var none = people.filter(function (p) { return !p.deptId || !deptById[p.deptId]; });
+            if (none.length) cols.push({ id: "", n: "No department", head: "", list: none });
+            var list = issues();
+            var top = kpis(list);
+            var side = '<aside class="org-dview-side" aria-label="Needs a look"><div class="org-dview-side-h"><b>Needs a look</b>' + (list.length ? '<em class="org-ins-n">' + list.length + '</em>' : "") + '</div>' +
+                '<p class="org-dview-side-p">Things that make the chart wrong or confusing. Fix them in one click.</p>' + issueCards(list) + '</aside>';
+            if (!cols.length) return '<div class="org-dview"><div class="org-dview-main">' + top + '<p class="org-empty-chart">No departments yet.' + (IS_ADMIN ? " Add one with Departments in the bar above, or import a CSV." : "") + '</p></div>' + side + '</div>';
+            return '<div class="org-dview"><div class="org-dview-main">' + top + '<div class="org-dcards">' + cols.map(function (c) {
+                var color = c.id ? dcol[c.id] : "#94A3B8";
+                var head = c.head && byId[c.head] ? byId[c.head] : null;
+                var list = c.list.filter(passes).filter(function (p) { return !q || text(p).indexOf(q) >= 0; });
+                var rest = list.filter(function (p) { return !head || p.id !== head.id; }).sort(byName);
+                var open = deptOpen[c.id || "none"], showN = open ? rest.length : 5;
+                var pct = Math.round(c.list.length / total * 100);
+                var managers = c.list.filter(function (p) { return (kids[p.id] || []).length; }).length;
+                return '<article class="org-dcard" data-dcol="' + c.id + '" style="--dc:' + color + '">' +
+                    '<header><span class="org-dcard-ic" aria-hidden="true"><i class="bi bi-briefcase-fill"></i></span><span class="org-dcard-t"><b>' + esc(c.n) + '</b><small>' +
+                    c.list.length + (c.list.length === 1 ? " person" : " people") + ' · ' + pct + '%' + (managers ? ' · ' + managers + (managers === 1 ? " team" : " teams") : "") + '</small></span>' +
+                    '<span class="org-dcard-faces" aria-hidden="true">' + c.list.slice().sort(byName).slice(0, 4).map(function (p) { return av(p, 28); }).join("") + (c.list.length > 4 ? '<i>+' + (c.list.length - 4) + '</i>' : "") + '</span>' +
+                    (IS_ADMIN && c.id ? '<button type="button" class="sn-org-dept-edit" data-dept-edit="' + c.id + '" aria-label="Edit ' + esc(c.n) + '" title="Rename, change head or delete"><i class="fa fa-pencil" aria-hidden="true"></i></button>' : "") + '</header>' +
+                    '<div class="org-dcard-bar" aria-hidden="true"><span style="width:' + Math.max(pct, 2) + '%"></span></div>' +
+                    (c.id ? (head ? '<button type="button" class="org-dcard-head" data-pick="' + head.id + '">' + av(head, 34) + '<span><small>Head</small><b>' + esc(head.n) + '</b></span><em>' + esc(head.title || "") + '</em></button>'
+                        : '<div class="org-dcard-head none"><i class="fa fa-user-o" aria-hidden="true"></i><span><small>Head</small><b>No head yet</b></span></div>') : "") +
+                    '<div class="org-dcard-list">' + rest.slice(0, showN).map(function (p) {
+                        var m = byId[p.mgr];
+                        return '<button type="button" class="org-dcard-row" data-pick="' + p.id + '">' + av(p, 28) + '<span><b>' + esc(p.n) + '</b><small>' + esc(p.title || "—") + '</small></span>' + (m ? '<em>→ ' + esc(m.n.split(" ")[0]) + '</em>' : "") + '</button>';
+                    }).join("") +
+                    (!list.length ? '<p class="org-dcol-empty">' + (c.list.length ? "No one here matches the filters." : "No one here yet.") + '</p>' : "") + '</div>' +
+                    (rest.length > 5 ? '<button type="button" class="org-link" data-dept-more="' + (c.id || "none") + '">' + (open ? "Show fewer" : "+" + (rest.length - 5) + " more") + '</button>' : "") +
+                    '</article>';
+            }).join("") + '</div></div>' + side + '</div>';
+        }
+
+        // ---------- Insights: numbers and "Needs a look" ----------
+        function issues() {
+            var out = [];
+            var t = tops();
+            depts.forEach(function (d) {
+                var n = people.filter(function (p) { return p.deptId === d.id; }).length;
+                if (!n) out.push({ kind: "warn", title: "“" + d.n + "” has nobody in it", text: "An empty department makes the chart and the filters harder to read. If it is really a job title, delete it and put the title on the person instead.", acts: IS_ADMIN ? [{ t: "Delete it", a: "deldept", id: d.id }, { t: "Edit", a: "dept", id: d.id }] : [] });
+                else if (!d.head || !byId[d.head]) out.push({ kind: "info", title: d.n + " has no head", text: "Choose who leads it; they are shown first in the department.", acts: IS_ADMIN ? [{ t: "Choose a head", a: "dept", id: d.id }] : [] });
+                else if (byId[d.head].deptId !== d.id) out.push({ kind: "info", title: byId[d.head].n + " heads " + d.n + " but is in " + (deptName(byId[d.head]) || "no department"), text: "Usually the head belongs to the department they lead.", acts: IS_ADMIN ? [{ t: "Edit " + byId[d.head].n.split(" ")[0], a: "edit", id: d.head }] : [] });
+            });
+            if (depts.length) {
+                var noDept = people.filter(function (p) { return !p.deptId || !deptById[p.deptId]; });
+                if (noDept.length) out.push({ kind: "warn", title: noDept.length + (noDept.length === 1 ? " person has" : " people have") + " no department", text: noDept.slice(0, 4).map(function (p) { return p.n; }).join(", ") + (noDept.length > 4 ? " and " + (noDept.length - 4) + " more" : "") + ".", acts: [{ t: "Show them", a: "list", ids: noDept, label: "No department" }] });
+            }
+            if (t.tops.length && t.loose.length) out.push({ kind: "warn", title: t.loose.length + (t.loose.length === 1 ? " person isn't" : " people aren't") + " placed in the chart", text: "They have no manager and no team, so they sit apart. " + (IS_ADMIN ? "Drag them onto their manager in the Chart, or pick them in Directory and use Change manager." : ""), acts: [{ t: "Show them", a: "list", ids: t.loose, label: "Not placed" }] });
+            if (t.tops.length > 1) out.push({ kind: "info", title: t.tops.length + " people are at the top of the chart", text: t.tops.map(function (p) { return p.n; }).join(", ") + " have no manager. Most organizations have one person at the top.", acts: [{ t: "Show them", a: "list", ids: t.tops, label: "At the top" }] });
+            var noTitle = people.filter(function (p) { return !p.title; });
+            if (noTitle.length) out.push({ kind: "info", title: noTitle.length + (noTitle.length === 1 ? " person has" : " people have") + " no job title", text: "A title tells others what someone does, on the chart and in their card.", acts: [{ t: "Show them", a: "list", ids: noTitle, label: "No job title" }] });
+            var wide = people.filter(function (p) { return (kids[p.id] || []).length > 10; });
+            wide.forEach(function (p) { out.push({ kind: "info", title: p.n + " has " + kids[p.id].length + " direct reports", text: "That is a lot for one manager. A team lead in between can help.", acts: [{ t: "Show the team", a: "pick", id: p.id }] }); });
+            return out;
+        }
+        function depth() {
+            var max = 0;
+            people.forEach(function (p) { max = Math.max(max, chainOf(p).length + 1); });
+            return max;
+        }
+        function kpis(list) {
+            var managers = people.filter(function (p) { return (kids[p.id] || []).length; });
+            var avg = managers.length ? (people.filter(function (p) { return p.mgr; }).length / managers.length) : 0;
+            var used = depts.filter(function (d) { return people.some(function (p) { return p.deptId === d.id; }); });
+            var empty = depts.length - used.length;
+            var deepest = people.slice().sort(function (a, b) { return chainOf(b).length - chainOf(a).length; })[0];
+            var top = tops().tops[0];
+            var online = people.filter(function (p) { return p.on; }).length;
+            var now = new Date(), joined = people.filter(function (p) { var d = (p.joined || "").split("-"); return d.length === 3 && +d[1] === now.getMonth() + 1 && +d[2] === now.getFullYear(); }).length;
+            var biggest = managers.slice().sort(function (a, b) { return kids[b.id].length - kids[a.id].length; })[0];
+            var lv = people.length ? depth() : 0;
+            var bars = function (vals, color) {
+                var max = Math.max.apply(null, vals.concat([1]));
+                return '<span class="org-kpi-bars" aria-hidden="true">' + vals.map(function (v, i) { return '<i style="height:' + Math.max(4, Math.round(v / max * 26)) + 'px;background:' + (typeof color === "function" ? color(i) : color) + '"></i>'; }).join("") + '</span>';
+            };
+            var kpi = function (icon, color, label, value, sub, viz, cls) {
+                return '<div class="org-kpi ' + (cls || "") + '" style="--kc:' + color + '"><div class="org-kpi-h"><span class="org-kpi-ic" aria-hidden="true"><i class="' + icon + '"></i></span><small>' + label + '</small></div>' +
+                    '<div class="org-kpi-v"><b>' + value + '</b>' + (viz || "") + '</div><span class="org-kpi-s">' + sub + '</span></div>';
+            };
+            var split = used.length ? '<span class="org-kpi-split" aria-hidden="true">' + used.map(function (d) {
+                var n = people.filter(function (p) { return p.deptId === d.id; }).length;
+                return '<i style="width:' + (n / people.length * 100).toFixed(1) + '%;background:' + dcol[d.id] + '"></i>';
+            }).join("") + '</span>' : "";
+            var sizes = managers.map(function (m) { return kids[m.id].length; }).sort(function (a, b) { return b - a; }).slice(0, 6);
+            var steps = []; for (var i = 1; i <= Math.min(lv, 8); i++) steps.push(i);
+            var h = '<div class="org-kpis">' +
+                kpi("bi bi-people", "#3B82F6", "People", people.length, joined ? "+" + joined + " joined this month" : online + " online now",
+                    '<span class="org-kpi-on"><i></i>' + online + ' online</span>') +
+                kpi("bi bi-briefcase", "#10B981", "Departments", depts.length, used.length + " with people" + (empty ? " · " + empty + " empty" : ""), split) +
+                kpi("bi bi-person-lines-fill", "#06B6D4", "Average team", avg ? avg.toFixed(1) : "—",
+                    managers.length + (managers.length === 1 ? " manager" : " managers") + (biggest ? " · largest: " + esc(biggest.n.split(" ")[0]) + " (" + kids[biggest.id].length + ")" : ""), sizes.length ? bars(sizes, "#22D3EE") : "") +
+                kpi("bi bi-diagram-3", "#8B5CF6", "Levels", lv, top && deepest && deepest.id !== top.id ? esc(top.n.split(" ")[0]) + " → " + esc(deepest.n) : "from the top down",
+                    steps.length > 1 ? bars(steps, function (i) { return "hsl(" + (262 - i * 4) + ", 80%, " + (72 - i * 4) + "%)"; }) : "") +
+                kpi("bi bi-exclamation-triangle", "#F59E0B", "Needs a look", list.length, list.length ? (list.length === 1 ? "1 thing to fix" : list.length + " things to fix") : "nothing to fix",
+                    list.length ? '<button type="button" class="org-kpi-fix" data-org-fix>Fix now <i class="fa fa-arrow-right" aria-hidden="true"></i></button>' : '<span class="org-kpi-on"><i></i>All good</span>', list.length ? "warn" : "ok") + '</div>';
+            return h;
+        }
+        function issueCards(list) {
+            lastIssues = list;
+            if (!list.length) return '<div class="org-ok"><i class="fa fa-check" aria-hidden="true"></i> Everything looks right: every department has people and a head, and everyone has a place in the chart.</div>';
+            return '<div class="org-issues">' + list.map(function (it, i) {
+                return '<div class="org-issue ' + it.kind + '"><b><i class="fa ' + (it.kind === "warn" ? "fa-exclamation-triangle" : "fa-info-circle") + '" aria-hidden="true"></i>' + esc(it.title) + '</b><p>' + esc(it.text) + '</p>' +
+                    (it.acts.length ? '<div class="org-issue-acts">' + it.acts.map(function (a, j) { return '<button type="button" class="' + (j ? "sn-org-mini-btn" : "org-act") + '" data-issue="' + i + '" data-act="' + j + '">' + esc(a.t) + '</button>'; }).join("") + '</div>' : "") + '</div>';
+            }).join("") + '</div>';
+        }
+        function drawInsights() {
+            var list = issues();
+            var h = kpis(list) + '<h3 class="org-ins-h">Needs a look</h3>';
+            return h + issueCards(list);
+        }
+        var lastIssues = [];
+        function insightCount() {
+            var n = issues().length, t = document.querySelector('#orgTabs .tc-tab[data-tab-id="ins"]');
+            if (!t) return;
+            var b = t.querySelector(".tc-badge");
+            if (!n) { if (b) b.remove(); return; }
+            if (!b) { b = document.createElement("span"); b.className = "tc-badge warn"; t.appendChild(b); }
+            b.textContent = n;
+        }
+
+        // ---------- a phone: step through the chart, one person at a time ----------
+        function phone() { return window.matchMedia("(max-width: 700px)").matches; }
+        function drawDrill() {
+            if (q) {
+                var hits = people.filter(function (p) { return passes(p) && text(p).indexOf(q) >= 0; }).sort(byName);
+                return '<div class="org-drill"><div class="org-sec">' + hits.length + (hits.length === 1 ? " match" : " matches") + '</div>' +
+                    (hits.length ? hits.map(function (p) { return drillRow(p); }).join("") : '<p class="sn-org-empty">No one matches.</p>') + '</div>';
+            }
+            var p = byId[selected] || tops().tops[0] || people[0];
+            if (!p) return '<p class="sn-org-empty">No one here yet.</p>';
+            var m = byId[p.mgr], team = (kids[p.id] || []).slice().sort(byName);
+            var peers = m ? (kids[m.id] || []).filter(function (c) { return c.id !== p.id; }) : [];
+            var h = '<div class="org-drill">';
+            if (m) h += '<button type="button" class="org-drill-up" data-pick="' + m.id + '"><i class="fa fa-level-up" aria-hidden="true"></i>' + av(m, 28) + '<span><small>Reports to</small><b>' + esc(m.n) + '</b></span></button>';
+            h += '<div class="org-drill-focus" style="--dc:' + colorOf(p) + '"><div class="org-drill-who">' + av(p, 56) + '<span><b>' + esc(p.n) + (p.id === ME ? ' <em>(you)</em>' : "") + '</b><small>' + esc(p.title || "") + '</small>' + dpill(p) + '</span></div>' +
+                '<div class="org-drill-acts">' + (p.id !== ME ? '<button type="button" data-org-chat="' + p.id + '"><i class="fa fa-comment" aria-hidden="true"></i> Chat</button><button type="button" data-org-call="' + p.id + '"><i class="fa fa-phone" aria-hidden="true"></i> Call</button>' : "") +
+                '<button type="button" data-org-cardjump><i class="fa fa-id-card-o" aria-hidden="true"></i> Card</button></div></div>';
+            h += '<div class="org-sec">Team · ' + team.length + ' direct' + (teamSize(p.id) !== team.length ? ", " + teamSize(p.id) + " in all" : "") + '</div>';
+            h += team.length ? team.map(function (c) { return drillRow(c); }).join("") : '<p class="sn-org-empty">No one reports to ' + esc(p.n.split(" ")[0]) + '.</p>';
+            if (peers.length) h += '<div class="org-sec">Works with · same manager</div><div class="org-drill-peers">' + peers.sort(byName).map(function (c) { return '<button type="button" data-pick="' + c.id + '">' + av(c, 26) + esc(c.n) + '</button>'; }).join("") + '</div>';
+            return h + '</div>';
+        }
+        function drillRow(p) {
+            var t = teamSize(p.id);
+            return '<button type="button" class="org-drill-row" style="--dc:' + colorOf(p) + '" data-pick="' + p.id + '">' + av(p, 40) + '<span><b>' + esc(p.n) + '</b><small>' + esc(sub(p)) + '</small></span>' +
+                (t ? '<em><i class="fa fa-users" aria-hidden="true"></i> ' + t + '</em>' : "") + '<i class="fa fa-angle-right" aria-hidden="true"></i></button>';
+        }
+
+        // ---------- draw the current view ----------
         var view = START_VIEW, selected = null;
-        var vp = document.getElementById("orgViewport"), canvas = document.getElementById("orgCanvas");
+        var vp = document.getElementById("orgViewport"), canvas = document.getElementById("orgCanvas"), pane = document.getElementById("orgPane");
+        var main = document.querySelector(".sn-org-main");
+        function usesCanvas() { return view === "mgr" && !phone(); }
         function draw(keepPos) {
-            canvas.innerHTML = view === "dept" ? drawDepartments() : drawManagers();
-            $("[data-org-view]").each(function () { this.setAttribute("aria-selected", this.getAttribute("data-org-view") === view ? "true" : "false"); });
-            if (selected) $(canvas).find('.org-node[data-id="' + selected + '"]').addClass("sel");
-            applySearch();
-            Sahyog.paintPhotos && Sahyog.paintPhotos(canvas);
+            var chart = usesCanvas();
+            main.setAttribute("data-view", chart ? "mgr" : view === "mgr" ? "drill" : view);
+            vp.hidden = !chart; pane.hidden = chart;
+            var tc = $("#orgTabs").data("tc-api");
+            if (tc && tc.getActive() && tc.getActive().id !== view) tc.select(view);
+            if (chart) {
+                canvas.innerHTML = drawManagers();
+                if (selected) markPath();
+                applySearch();
+                Sahyog.paintPhotos && Sahyog.paintPhotos(canvas);
+                if (!keepPos) requestAnimationFrame(function () { fit(true); });
+                else requestAnimationFrame(minimap);
+            } else {
+                var top = keepPos ? pane.scrollTop : 0;
+                pane.innerHTML = view === "dir" ? drawDirectory() : view === "dept" ? drawDeptCards() : view === "ins" ? drawInsights() : drawDrill();
+                pane.scrollTop = top;
+                Sahyog.paintPhotos && Sahyog.paintPhotos(pane);
+            }
             Sahyog.paintPresence && Sahyog.paintPresence();
-            if (!keepPos) requestAnimationFrame(function () { fit(true); });
+            path(); legend(); filterUi(); bulk(); insightCount();
+        }
+
+        // ---------- the bar under the tabs: path, filters, colour key ----------
+        function path() {
+            var el = document.getElementById("orgPath"), p = byId[selected];
+            if (!p || view === "ins" || view === "dept") { el.innerHTML = ""; return; }
+            el.innerHTML = chainOf(p).map(function (c) { return '<button type="button" data-pick="' + c.id + '">' + esc(c.n) + '</button><i class="fa fa-angle-right" aria-hidden="true"></i>'; }).join("") + '<b>' + esc(p.n) + '</b>';
+        }
+        function legend() {
+            var el = document.getElementById("orgLegend");
+            var used = depts.filter(function (d) { return people.some(function (p) { return p.deptId === d.id; }); }).sort(function (a, b) { return a.n.localeCompare(b.n); });
+            el.innerHTML = view === "mgr" || view === "dept" ? used.map(function (d) {
+                return '<button type="button" class="org-dp' + (deptFilter === d.id ? " on" : "") + '" style="--dc:' + dcol[d.id] + '" data-legend="' + d.id + '" title="Show only ' + esc(d.n) + '"><i aria-hidden="true"></i>' + esc(d.n) + '</button>';
+            }).join("") : "";
+        }
+        function filterUi() {
+            var d = deptFilter === "none" ? "No department" : deptFilter && deptById[deptFilter] ? deptById[deptFilter].n : "All";
+            $("#orgDeptFilter span").text("Department: " + d);
+            $("#orgDeptFilter").toggleClass("on", !!deptFilter);
+            $("#orgOnlineFilter").attr("aria-pressed", onlineOnly ? "true" : "false").toggleClass("on", onlineOnly);
+            $("#orgIssueFilter").prop("hidden", !issue).addClass("on").find("span").text(issue ? issue.label : "");
+            document.getElementById("orgSub").hidden = view === "ins";
+            $(".org-filters").prop("hidden", view === "ins");
         }
 
         // ---------- zoom and move ----------
@@ -372,6 +733,7 @@
         function apply() {
             canvas.style.transform = "translate(" + x + "px," + y + "px) scale(" + z + ")";
             document.getElementById("orgZoomText").textContent = Math.round(z * 100) + "%";
+            miniView();
         }
         function zoomAt(nz, cx, cy) {
             nz = Math.max(.3, Math.min(1.8, nz));
@@ -386,12 +748,13 @@
             var s = Math.min((r.width - 40) / w, (r.height - 40) / h);
             z = Math.max(.3, Math.min(onlyShrink ? 1 : 1.4, s));
             x = (r.width - w * z) / 2; y = onlyShrink ? 16 : Math.max(16, (r.height - h * z) / 2);
-            apply();
+            apply(); minimap();
         }
         // stop any glide first, so positions are read from where the chart really ends up
         function settle() { canvas.classList.remove("glide"); apply(); void canvas.offsetWidth; }
         function glide() { canvas.classList.add("glide"); apply(); clearTimeout(window.__snOrgGl); window.__snOrgGl = setTimeout(function () { canvas.classList.remove("glide"); }, 320); }
         function centerOn(id) {
+            if (!usesCanvas()) return;
             var el = canvas.querySelector('.org-node[data-id="' + id + '"]');
             if (!el) return;
             settle();
@@ -402,123 +765,278 @@
             y += (r.top + r.height / 2) - (e.top + e.height / 2);
             glide();
         }
-        var drag = null;
+
+        // ---------- the small map of the whole chart (bottom right) ----------
+        var mini = document.getElementById("orgMini"), miniScale = 1, miniPad = 8;
+        function minimap() {
+            if (!usesCanvas()) return;
+            var cw = canvas.scrollWidth, ch = canvas.scrollHeight;
+            var big = people.length > 6;
+            mini.hidden = !big || !cw;
+            if (mini.hidden) return;
+            var W = 150, H = 96;
+            miniScale = Math.min((W - miniPad * 2) / cw, (H - miniPad * 2) / ch);
+            var cr = canvas.getBoundingClientRect(), h = "";
+            canvas.querySelectorAll(".org-node").forEach(function (el) {
+                var r = el.getBoundingClientRect(), p = byId[el.getAttribute("data-id")];
+                var nx = (r.left - cr.left) / z, ny = (r.top - cr.top) / z;
+                h += '<i style="left:' + (miniPad + nx * miniScale).toFixed(1) + 'px;top:' + (miniPad + ny * miniScale).toFixed(1) + 'px;width:' + Math.max(3, r.width / z * miniScale).toFixed(1) +
+                    'px;height:' + Math.max(2, r.height / z * miniScale).toFixed(1) + 'px;background:' + colorOf(p) + (el.classList.contains("sel") ? ";outline:1.5px solid #fff" : "") + '"></i>';
+            });
+            mini.innerHTML = h + '<b class="org-mini-view"></b>';
+            miniView();
+        }
+        function miniView() {
+            if (!mini || mini.hidden) return;
+            var v = mini.querySelector(".org-mini-view"); if (!v) return;
+            var r = vp.getBoundingClientRect();
+            var l = miniPad + (-x / z) * miniScale, t = miniPad + (-y / z) * miniScale;
+            v.style.left = l + "px"; v.style.top = t + "px";
+            v.style.width = (r.width / z * miniScale) + "px"; v.style.height = (r.height / z * miniScale) + "px";
+        }
+        mini.addEventListener("click", function (e) {
+            var mr = mini.getBoundingClientRect(), r = vp.getBoundingClientRect();
+            var cx = (e.clientX - mr.left - miniPad) / miniScale, cy = (e.clientY - mr.top - miniPad) / miniScale;
+            settle(); x = r.width / 2 - cx * z; y = r.height / 2 - cy * z; glide();
+        });
+
+        // ---------- move the chart by dragging the background; move a person by dragging them onto someone ----------
+        var drag = null, pdrag = null, justDragged = 0;
         vp.addEventListener("pointerdown", function (e) {
-            if (e.button !== 0 || e.target.closest(".org-node, button, a, input")) return;
+            if (e.button !== 0) return;
+            var nodeEl = e.target.closest(".org-node");
+            if (nodeEl && IS_ADMIN && !e.target.closest(".org-badge")) { pdrag = { id: nodeEl.getAttribute("data-id"), sx: e.clientX, sy: e.clientY, on: false, pid: e.pointerId }; return; }
+            if (e.target.closest(".org-node, button, a, input")) return;
             drag = { sx: e.clientX, sy: e.clientY, x: x, y: y, id: e.pointerId };
             vp.setPointerCapture(e.pointerId); vp.classList.add("dragging");
         });
         vp.addEventListener("pointermove", function (e) {
+            if (pdrag && e.pointerId === pdrag.pid) { personMove(e); return; }
             if (!drag || e.pointerId !== drag.id) return;
             x = drag.x + e.clientX - drag.sx; y = drag.y + e.clientY - drag.sy; apply();
         });
         function endDrag() { drag = null; vp.classList.remove("dragging"); }
-        vp.addEventListener("pointerup", endDrag); vp.addEventListener("pointercancel", endDrag);
+        vp.addEventListener("pointerup", function (e) { if (pdrag && e.pointerId === pdrag.pid) personDrop(e); endDrag(); });
+        vp.addEventListener("pointercancel", function () { personCancel(); endDrag(); });
         vp.addEventListener("wheel", function (e) {
             var r = vp.getBoundingClientRect();
             if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomAt(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX - r.left, e.clientY - r.top); }
             else { e.preventDefault(); x -= e.deltaX; y -= e.deltaY; apply(); }
         }, { passive: false });
+
+        var ghost = null, below = {}, target = null;
+        function personMove(e) {
+            if (!pdrag.on) {
+                if (Math.abs(e.clientX - pdrag.sx) + Math.abs(e.clientY - pdrag.sy) < 8) return;
+                pdrag.on = true;
+                vp.setPointerCapture(e.pointerId);
+                var p = byId[pdrag.id];
+                below = descendants(p.id);
+                ghost = document.createElement("div");
+                ghost.className = "org-ghost";
+                ghost.innerHTML = av(p, 30) + '<span><b>' + esc(p.n) + '</b><small>Drop on their new manager</small></span>';
+                document.body.appendChild(ghost);
+                canvas.querySelector('.org-node[data-id="' + p.id + '"]').classList.add("lifted");
+                vp.classList.add("moving");
+            }
+            ghost.style.left = (e.clientX + 14) + "px"; ghost.style.top = (e.clientY + 10) + "px";
+            ghost.style.display = "none";
+            var hit = document.elementFromPoint(e.clientX, e.clientY);
+            ghost.style.display = "";
+            var t = hit && hit.closest && hit.closest("#orgCanvas .org-node");
+            var id = t ? t.getAttribute("data-id") : null;
+            var ok = id && id !== pdrag.id && !below[id] && id !== byId[pdrag.id].mgr;
+            if (target && target !== t) target.classList.remove("drop", "nodrop");
+            target = t || null;
+            if (t) t.classList.add(ok ? "drop" : "nodrop");
+            ghost.querySelector("small").textContent = !t ? "Drop on their new manager" : ok ? byId[pdrag.id].n.split(" ")[0] + " will report to " + byId[id].n
+                : id === pdrag.id ? "Drop on someone else" : id === byId[pdrag.id].mgr ? "Already their manager" : "Can't: " + byId[id].n.split(" ")[0] + " reports to " + byId[pdrag.id].n.split(" ")[0];
+        }
+        function personCancel() {
+            if (ghost) ghost.remove(); ghost = null;
+            if (target) target.classList.remove("drop", "nodrop"); target = null;
+            $(canvas).find(".org-node.lifted").removeClass("lifted");
+            vp.classList.remove("moving");
+            pdrag = null;
+        }
+        function personDrop() {
+            var was = pdrag, t = target;
+            var ok = was && was.on && t && t.classList.contains("drop");
+            if (was && was.on) justDragged = Date.now();
+            personCancel();
+            if (ok) move([was.id], { mgr: t.getAttribute("data-id") });
+        }
+
+        // ---------- change manager / department, with Undo ----------
+        function post(url, fields) {
+            var fd = new FormData();
+            Object.keys(fields).forEach(function (k) { [].concat(fields[k]).forEach(function (v) { fd.append(k, v); }); });
+            fd.append("__RequestVerificationToken", token());
+            return fetch(url, { method: "POST", body: fd, headers: { RequestVerificationToken: token() } }).then(function (r) { return r.json(); });
+        }
+        function move(ids, to, quiet) {
+            var before = ids.map(function (id) { return { id: id, mgr: byId[id].mgr, dept: byId[id].deptId }; });
+            var fields = { ids: ids };
+            if ("mgr" in to) fields.managerId = to.mgr || "";
+            if ("dept" in to) fields.departmentId = to.dept || "";
+            return post("/org/move", fields).then(function (res) {
+                if (!res.ok) { Sahyog.toast((res.errors && res.errors[0]) || res.error || "Nothing was changed.", { kind: "error", title: "Not moved" }); return; }
+                ids.forEach(function (id) { if ("mgr" in to) byId[id].mgr = to.mgr || ""; if ("dept" in to) byId[id].deptId = to.dept || ""; });
+                rebuild(); recount(); draw(true); card();
+                if (quiet) return;
+                var who = ids.length === 1 ? byId[ids[0]].n : ids.length + " people";
+                var what = "mgr" in to ? (to.mgr ? (ids.length === 1 ? " now reports to " : " now report to ") + byId[to.mgr].n : (ids.length === 1 ? " is" : " are") + " now at the top of the chart")
+                    : (to.dept ? (ids.length === 1 ? " is" : " are") + " now in " + deptById[to.dept].n : (ids.length === 1 ? " has" : " have") + " no department now");
+                Sahyog.toast(who + what + "." + (res.errors && res.errors.length ? " " + res.errors.length + " couldn't be moved: " + res.errors[0] : ""), {
+                    kind: res.errors && res.errors.length ? "warn" : "success", title: "Moved", ms: 10000,
+                    action: { text: "Undo", onClick: function () { undo(before, "mgr" in to); } }
+                });
+            }).catch(function () { Sahyog.toast("The change couldn't be saved. Check your connection and try again.", { kind: "error", title: "Not moved" }); });
+        }
+        function undo(before, mgr) {
+            // one request per old value, so everyone goes back to where they were
+            var groups = {};
+            before.forEach(function (b) { var k = mgr ? b.mgr : b.dept; (groups[k] = groups[k] || []).push(b.id); });
+            var jobs = Object.keys(groups).map(function (k) { return move(groups[k], mgr ? { mgr: k } : { dept: k }, true); });
+            Promise.all(jobs).then(function () { Sahyog.toast("Put back as it was.", { kind: "success" }); });
+        }
+        function recount() { depts.forEach(function (d) { d.count = people.filter(function (p) { return p.deptId === d.id; }).length; }); }
+
+        // ---------- search ----------
+        function applySearch() {
+            if (!usesCanvas()) return;
+            canvas.querySelectorAll(".org-node").forEach(function (el) {
+                var p = byId[el.getAttribute("data-id")];
+                var hit = q && p && text(p).indexOf(q) >= 0;
+                el.classList.toggle("hit", !!hit);
+                el.classList.toggle("dim", !!p && ((!!q && !hit) || !passes(p)));
+            });
+        }
+        function openTo(match) {
+            people.forEach(function (p) {
+                if (!match(p)) return;
+                for (var m = p.mgr, guard = 0; m && guard < 100; m = (byId[m] || {}).mgr, guard++) collapsed[m] = false;
+            });
+        }
         $(document).off(".snorg");
+        $(document).on("input.snorg", "#orgSearch", function () {
+            q = this.value.trim().toLowerCase();
+            if (usesCanvas()) {
+                if (q) { openTo(function (p) { return text(p).indexOf(q) >= 0; }); draw(true); } else applySearch();
+                var first = canvas.querySelector(".org-node.hit");
+                if (first) centerOn(first.getAttribute("data-id"));
+            } else draw(true);
+        });
+        $(document).on("keydown.snorg", "#orgSearch", function (e) {
+            if (e.key !== "Enter") return;
+            var hit = people.filter(function (p) { return q && passes(p) && text(p).indexOf(q) >= 0; }).sort(byName)[0];
+            if (hit) { if (phone() && view === "mgr") { this.value = ""; q = ""; } select(hit.id, true); }
+        });
         $(document).on("click.snorg", "[data-org-zoom]", function () {
             var v = this.getAttribute("data-org-zoom");
             if (v === "fit") fit(false); else zoomAt(z * (v === "1" ? 1.2 : 1 / 1.2));
         });
-        $(document).on("click.snorg", "[data-org-view]", function () {
-            var v = this.getAttribute("data-org-view");
-            if (v !== view) { view = v; draw(); if (selected) setTimeout(function () { centerOn(selected); }, 60); }
+        $(document).on("tabcontrol:select.snorg", "#orgTabs", function (e, v) {
+            if (!v || v === view) return;
+            view = v; draw();
+            if (selected && usesCanvas()) setTimeout(function () { centerOn(selected); }, 60);
         });
 
-        // ---------- search ----------
-        var q = "";
-        function applySearch() {
-            var nodes = canvas.querySelectorAll(".org-node");
-            nodes.forEach(function (el) {
-                var p = byId[el.getAttribute("data-id")];
-                var hit = q && p && (p.n + " " + p.title + " " + p.dept + " " + p.email).toLowerCase().indexOf(q) >= 0;
-                el.classList.toggle("hit", !!hit);
-                el.classList.toggle("dim", !!q && !hit);
-            });
+        // ---------- filters ----------
+        function refilter() {
+            if (usesCanvas()) { if (filtering()) openTo(passes); draw(true); } else draw(true);
         }
-        $(document).on("input.snorg", "#orgSearch", function () {
-            q = this.value.trim().toLowerCase();
-            if (q && view === "mgr") {
-                // open the branches that lead to a match
-                people.forEach(function (p) {
-                    if ((p.n + " " + p.title + " " + p.dept + " " + p.email).toLowerCase().indexOf(q) < 0) return;
-                    for (var m = p.mgr, guard = 0; m && guard < 100; m = (byId[m] || {}).mgr, guard++) collapsed[m] = false;
-                });
-                draw(true);
-            } else applySearch();
-            var first = canvas.querySelector(".org-node.hit");
-            if (first) centerOn(first.getAttribute("data-id"));
+        $(document).on("click.snorg", "#orgDeptFilter", function () {
+            var items = [{ label: "All departments", icon: "fa fa-th-large", run: function () { deptFilter = ""; refilter(); } }, "sep"];
+            depts.slice().sort(function (a, b) { return a.n.localeCompare(b.n); }).forEach(function (d) {
+                items.push({ label: d.n, sub: d.count + (d.count === 1 ? " person" : " people"), icon: "fa fa-circle", kind: "", run: function () { deptFilter = d.id; refilter(); } });
+            });
+            items.push({ label: "No department", icon: "fa fa-circle-o", run: function () { deptFilter = "none"; refilter(); } });
+            SN.openMenu(this, { name: "Show a department", sub: "Others are dimmed in the chart" }, items);
         });
-        $(document).on("keydown.snorg", "#orgSearch", function (e) {
-            if (e.key !== "Enter") return;
-            var first = canvas.querySelector(".org-node.hit");
-            if (first) select(first.getAttribute("data-id"), true);
-        });
+        $(document).on("click.snorg", "#orgOnlineFilter", function () { onlineOnly = !onlineOnly; refilter(); });
+        $(document).on("click.snorg", "#orgIssueFilter", function () { issue = null; refilter(); });
+        $(document).on("click.snorg", "[data-legend]", function () { var id = this.getAttribute("data-legend"); deptFilter = deptFilter === id ? "" : id; refilter(); });
 
         // ---------- select a person → profile card ----------
-        var tab = "org";
-        function mini(p, extra) {
+        function miniP(p, extra) {
             return '<button type="button" class="org-mini" data-pick="' + p.id + '">' + av(p, 32) + '<span><b>' + esc(p.n) + '</b><small>' + esc(sub(p)) + (extra || "") + '</small></span></button>';
+        }
+        function tenure(p) {
+            if (!p.joined) return "";
+            var parts = p.joined.split("-"); if (parts.length !== 3) return "";
+            var d = new Date(+parts[2], +parts[1] - 1, +parts[0]), now = new Date();
+            var months = (now.getFullYear() - d.getFullYear()) * 12 + now.getMonth() - d.getMonth();
+            if (months < 1) return "new";
+            return months < 12 ? months + (months === 1 ? " month" : " months") : Math.floor(months / 12) + (months >= 24 ? " years" : " year");
         }
         function card() {
             var el = document.getElementById("orgCard"), p = byId[selected];
-            if (!p) { el.innerHTML = '<p class="sn-org-empty">Click a person in the chart to see their card.</p>'; return; }
-            var chain = [], guard = 0;
-            for (var m = p.mgr; m && byId[m] && guard < 20; m = byId[m].mgr, guard++) chain.unshift(byId[m]);
-            var peers = p.mgr ? (kids[p.mgr] || []).filter(function (c) { return c.id !== p.id; }) : [];
-            var reports = (kids[p.id] || []).slice().sort(function (a, b) { return a.n.localeCompare(b.n); });
-            var line = [p.title, p.dept].filter(Boolean).join(" · ") || (p.admin ? "Admin" : "Team member");
-            var h = '<div class="org-card-top">' + av(p, 56) + '<div><b>' + esc(p.n) + (p.id === ME ? ' <em>(you)</em>' : "") + '</b><span>' + esc(line) + '</span>' +
-                '<small><i class="org-on-dot' + (p.on ? " on" : "") + '"></i>' + (p.on ? "Online" : "Offline") + (p.admin ? " · Workspace admin" : "") + '</small></div></div>';
-            h += '<div class="org-card-acts">';
-            if (p.id !== ME) h += '<button type="button" class="cee-btn sn-btn-light" data-org-chat="' + p.id + '"><i class="fa fa-comment" aria-hidden="true"></i> Chat</button>' +
-                '<button type="button" class="cee-btn cee-btn-gradient" data-org-call="' + p.id + '" title="Sound only; turn video on any time"><i class="fa fa-phone" aria-hidden="true"></i> Call</button>';
-            if (IS_ADMIN) h += '<button type="button" class="cee-btn sn-btn-light" data-org-edit="' + p.id + '"><i class="fa fa-pencil" aria-hidden="true"></i> Edit</button>';
-            h += '</div><div class="org-tabs" role="tablist"><button type="button" role="tab" data-org-tab="contact" aria-selected="' + (tab === "contact") + '">Contact</button>' +
-                '<button type="button" role="tab" data-org-tab="org" aria-selected="' + (tab === "org") + '">Organization</button></div><div class="org-tab-body">';
-            if (tab === "contact") {
-                var row = function (icon, label, value) { return value ? '<div class="org-kv"><i class="' + icon + '" aria-hidden="true"></i><span><small>' + label + '</small>' + value + '</span></div>' : ""; };
-                h += row("fa fa-envelope-o", "Email", '<a href="mailto:' + esc(p.email) + '">' + esc(p.email) + '</a>') +
-                    row("fa fa-phone", "Phone", p.phone ? '<a href="tel:' + esc(p.phone.replace(/\s+/g, "")) + '">' + esc(p.phone) + '</a>' : "") +
-                    row("fa fa-id-badge", "Employee ID", esc(p.emp)) +
-                    row("fa fa-calendar-check-o", "Joined", esc(p.joinedText)) +
-                    row("fa fa-briefcase", "Department", esc(p.dept));
-                if (!p.phone && !p.emp && !p.joinedText && !p.dept) h += '<p class="sn-org-empty">' + (IS_ADMIN ? "Add a phone, employee ID or joined date with Edit." : "No other details yet.") + '</p>';
-            } else {
-                h += '<div class="org-sec">Reports to</div>';
-                if (chain.length) {
-                    h += '<div class="org-chain">' + chain.map(function (c) { return mini(c); }).join('<i class="org-chain-line" aria-hidden="true"></i>') +
-                        '<i class="org-chain-line" aria-hidden="true"></i><div class="org-chain-me">' + av(p, 32) + '<b>' + esc(p.n) + '</b></div></div>';
-                } else h += '<p class="sn-org-empty">' + esc(p.n) + ' is at the top of the chart.</p>';
-                h += '<div class="org-sec">Works with · same manager</div>';
-                h += peers.length ? '<div class="org-minis">' + peers.slice(0, 6).map(function (c) { return mini(c); }).join("") + (peers.length > 6 ? '<span class="org-more">+' + (peers.length - 6) + ' more</span>' : "") + '</div>'
-                    : '<p class="sn-org-empty">' + (p.mgr ? "No one else reports to " + esc(byId[p.mgr].n) + "." : "No manager set, so no teammates to show.") + '</p>';
-                h += '<div class="org-sec">Direct reports' + (reports.length ? " · " + reports.length : "") + '</div>';
-                h += reports.length ? '<div class="org-minis">' + reports.map(function (c) { return mini(c); }).join("") + '</div>'
-                    : '<p class="sn-org-empty">No one reports to ' + esc(p.n.split(" ")[0]) + ' yet.</p>';
-            }
-            el.innerHTML = h + '</div>';
+            if (!p) { el.innerHTML = '<p class="sn-org-empty">Click a person to see their card.</p>'; return; }
+            var chain = chainOf(p);
+            var peers = p.mgr ? (kids[p.mgr] || []).filter(function (c) { return c.id !== p.id; }).sort(byName) : [];
+            var reports = (kids[p.id] || []).slice().sort(byName);
+            var line = [p.title, deptName(p)].filter(Boolean).join(" · ") || (p.admin ? "Admin" : "Team member");
+            var h = '<div class="org-card-cover" style="--dc:' + colorOf(p) + '"></div><div class="org-card-top">' + av(p, 64) + '</div>' +
+                '<div class="org-card-who"><div class="org-card-name"><b>' + esc(p.n) + (p.id === ME ? ' <em>(you)</em>' : "") + '</b>' +
+                (IS_ADMIN ? '<button type="button" class="org-card-edit" data-org-edit="' + p.id + '" title="Edit ' + esc(p.n) + '" aria-label="Edit ' + esc(p.n) + '"><i class="fa fa-pencil" aria-hidden="true"></i> Edit</button>' : "") + '</div><span>' + esc(line) + '</span><div class="org-card-tags">' +
+                '<span class="org-st' + (p.on ? " on" : "") + '" data-presence-text="' + p.id + '"><i class="org-on-dot' + (p.on ? " on" : "") + '" aria-hidden="true"></i>' + (p.on ? "Online" : "Offline") + '</span>' +
+                (p.admin ? '<span class="org-tag">Workspace admin</span>' : "") + '</div></div>';
+            h += '<div class="org-quick">';
+            if (p.id !== ME) h += '<button type="button" data-org-chat="' + p.id + '"><i class="fa fa-comment" aria-hidden="true"></i><span>Chat</span></button>' +
+                '<button type="button" data-org-call="' + p.id + '" title="Sound only; turn video on any time"><i class="fa fa-phone" aria-hidden="true"></i><span>Call</span></button>' +
+                '<button type="button" data-org-video="' + p.id + '"><i class="fa fa-video-camera" aria-hidden="true"></i><span>Video</span></button>';
+            h += '<a href="mailto:' + esc(p.email) + '"><i class="fa fa-envelope" aria-hidden="true"></i><span>Email</span></a></div>';
+            h += '<div class="org-sec">Reporting line</div>';
+            h += '<div class="org-line">' + chain.map(function (c, i) { return miniP(c, i === chain.length - 1 ? " · manager" : ""); }).join("") +
+                '<div class="org-line-me">' + av(p, 32) + '<span><b>' + esc(p.n) + '</b><small>' + (chain.length ? "Level " + (chain.length + 1) : "Top of the chart") + '</small></span></div>' +
+                (reports.length ? '<div class="org-line-down"><i class="fa fa-level-down" aria-hidden="true"></i> ' + reports.length + ' direct' + (teamSize(p.id) !== reports.length ? " · " + teamSize(p.id) + " in the team" : "") + '</div>' : "") + '</div>';
+            if (reports.length) h += '<div class="org-sec">Direct reports · ' + reports.length + '</div><div class="org-minis">' + reports.slice(0, 8).map(function (c) { return miniP(c); }).join("") + (reports.length > 8 ? '<span class="org-more">+' + (reports.length - 8) + ' more</span>' : "") + '</div>';
+            var fact = function (label, value) { return '<div class="org-fact"><small>' + label + '</small><b>' + value + '</b></div>'; };
+            h += '<div class="org-sec">Details</div><div class="org-facts">' +
+                fact("Email", '<a href="mailto:' + esc(p.email) + '">' + esc(p.email) + '</a>') +
+                fact("Phone", p.phone ? '<a href="tel:' + esc(p.phone.replace(/\s+/g, "")) + '">' + esc(p.phone) + '</a>' : '<span class="muted">—</span>') +
+                fact("Employee ID", p.emp ? esc(p.emp) : '<span class="muted">—</span>') +
+                fact("Joined", p.joinedText ? esc(p.joinedText) + (tenure(p) ? ' <span class="muted">· ' + tenure(p) + '</span>' : "") : '<span class="muted">—</span>') + '</div>';
+            h += '<div class="org-sec">Works with · same manager</div>';
+            h += peers.length ? '<div class="org-minis">' + peers.slice(0, 6).map(function (c) { return miniP(c); }).join("") + (peers.length > 6 ? '<span class="org-more">+' + (peers.length - 6) + ' more</span>' : "") + '</div>'
+                : '<p class="sn-org-empty">' + (p.mgr ? "No one else reports to " + esc(byId[p.mgr].n) + "." : "No manager set, so no teammates to show.") + '</p>';
+            el.innerHTML = h;
             Sahyog.paintPhotos && Sahyog.paintPhotos(el);
+        }
+        function side(which) {
+            $("[data-side]").each(function () { this.setAttribute("aria-selected", this.getAttribute("data-side") === which ? "true" : "false"); });
+            $("[data-side-pane]").each(function () { this.hidden = this.getAttribute("data-side-pane") !== which; });
+            var body = document.getElementById("orgSideBody"); if (body) body.scrollTop = 0;
+            fade();
+        }
+        // a soft fade at the bottom tells there is more, instead of a scrollbar
+        function fade() {
+            var b = document.getElementById("orgSideBody"); if (!b) return;
+            b.classList.toggle("more", b.scrollHeight - b.scrollTop - b.clientHeight > 8);
+        }
+        $(document).on("click.snorg", "[data-side]", function () { side(this.getAttribute("data-side")); });
+        $("#orgSideBody").on("scroll", fade);
+        function markPath() {
+            $(canvas).find(".org-node.sel, .org-node.path").removeClass("sel path");
+            var p = byId[selected]; if (!p) return;
+            chainOf(p).forEach(function (c) { var e = canvas.querySelector('.org-node[data-id="' + c.id + '"]'); if (e) e.classList.add("path"); });
+            var el = canvas.querySelector('.org-node[data-id="' + p.id + '"]'); if (el) el.classList.add("sel");
         }
         function select(id, center) {
             if (!byId[id]) return;
             selected = id;
-            $(canvas).find(".org-node.sel").removeClass("sel");
-            var el = canvas.querySelector('.org-node[data-id="' + id + '"]');
-            if (!el && view === "mgr") {   // inside a closed branch: open the way to it
-                for (var m = byId[id].mgr, g = 0; m && g < 100; m = (byId[m] || {}).mgr, g++) collapsed[m] = false;
-                draw(true); el = canvas.querySelector('.org-node[data-id="' + id + '"]');
-            }
-            if (el) el.classList.add("sel");
-            card();
-            if (center) centerOn(id);
+            if (usesCanvas()) {
+                var el = canvas.querySelector('.org-node[data-id="' + id + '"]');
+                if (!el) { for (var m = byId[id].mgr, g = 0; m && g < 100; m = (byId[m] || {}).mgr, g++) collapsed[m] = false; draw(true); }
+                markPath(); minimap();
+                if (center) centerOn(id);
+            } else if (view === "mgr") { draw(); }
+            else { $(pane).find("tr.sel").removeClass("sel"); $(pane).find('tr[data-row="' + id + '"]').addClass("sel"); }
+            path(); card(); side("card");
         }
         $(document).on("click.snorg", "#orgCanvas .org-node", function (e) {
-            if (e.target.closest(".org-badge")) return;
+            if (e.target.closest(".org-badge") || Date.now() - justDragged < 300) return;
             select(this.getAttribute("data-id"));
         });
         $(document).on("keydown.snorg", "#orgCanvas .org-node", function (e) {
@@ -534,29 +1052,144 @@
             var before = canvas.querySelector('.org-node[data-id="' + id + '"]').getBoundingClientRect();
             draw(true);
             var after = canvas.querySelector('.org-node[data-id="' + id + '"]').getBoundingClientRect();
-            x += before.left - after.left; y += before.top - after.top; apply();
+            x += before.left - after.left; y += before.top - after.top; apply(); minimap();
         });
-        $(document).on("click.snorg", "#orgCard [data-pick]", function () { select(this.getAttribute("data-pick"), true); });
-        $(document).on("click.snorg", "#orgCard [data-org-tab]", function () { tab = this.getAttribute("data-org-tab"); card(); });
-        $(document).on("click.snorg", "#orgCard [data-org-chat]", function () {
-            var f = document.getElementById("orgChatForm"); f.action = "/chat/direct/" + this.getAttribute("data-org-chat"); f.submit();
+        $(document).on("click.snorg", "#orgCard [data-pick], #orgPath [data-pick], #orgPane [data-pick]", function (e) {
+            e.stopPropagation();
+            var id = this.getAttribute("data-pick");
+            if (view === "dept" || view === "ins") { select(id); if (window.innerWidth < 1100) document.getElementById("orgCard").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+            select(id, true);
         });
-        $(document).on("click.snorg", "#orgCard [data-org-call]", function () {
-            document.getElementById("orgCallUser").value = this.getAttribute("data-org-call"); document.getElementById("orgCallForm").submit();
-        });
+        function chatWith(id) { var f = document.getElementById("orgChatForm"); f.action = "/chat/direct/" + id; f.submit(); }
+        function callWith(id, video) { document.getElementById("orgCallUser").value = id; document.getElementById("orgCallVideo").value = video ? "true" : "false"; document.getElementById("orgCallForm").submit(); }
+        $(document).on("click.snorg", "[data-org-chat]", function () { chatWith(this.getAttribute("data-org-chat")); });
+        $(document).on("click.snorg", "[data-org-call]", function () { callWith(this.getAttribute("data-org-call"), false); });
+        $(document).on("click.snorg", "[data-org-video]", function () { callWith(this.getAttribute("data-org-video"), true); });
+        $(document).on("click.snorg", "[data-org-cardjump]", function () { document.getElementById("orgCard").scrollIntoView({ behavior: "smooth", block: "start" }); });
         $(document).on("click.snorg", "#orgCard [data-org-edit]", function () { snOrgEdit(this.getAttribute("data-org-edit")); });
         $(document).on("click.snorg", "[data-dept-show]", function () {
             var id = this.getAttribute("data-dept-show");
             if (view !== "dept") { view = "dept"; draw(); }
             setTimeout(function () {
-                var col = canvas.querySelector('[data-dcol="' + id + '"]');
+                var col = pane.querySelector('[data-dcol="' + id + '"]');
                 if (!col) return;
-                $(canvas).find(".org-dcol.flash").removeClass("flash");
-                settle();
-                var r = vp.getBoundingClientRect(), e = col.getBoundingClientRect();
-                x += (r.left + r.width / 2) - (e.left + e.width / 2); y += (r.top + 24) - e.top;
-                glide(); col.classList.add("flash");
+                $(pane).find(".org-dcard.flash").removeClass("flash");
+                col.scrollIntoView({ behavior: "smooth", block: "nearest" }); col.classList.add("flash");
             }, 60);
+        });
+        $(document).on("click.snorg", "[data-dept-more]", function () { var k = this.getAttribute("data-dept-more"); deptOpen[k] = !deptOpen[k]; draw(true); });
+
+        // ---------- Directory: open/close, pick, act on the picked people ----------
+        $(document).on("click.snorg", "[data-dir-tog]", function (e) { e.stopPropagation(); var id = this.getAttribute("data-dir-tog"); dirShut[id] = !dirShut[id]; draw(true); });
+        $(document).on("change.snorg", "[data-dir-pick]", function () {
+            var id = this.getAttribute("data-dir-pick");
+            if (this.checked) picked[id] = 1; else delete picked[id];
+            $(this).closest("tr").toggleClass("picked", this.checked);
+            bulk();
+        });
+        $(document).on("change.snorg", "[data-dir-all]", function () {
+            var on = this.checked;
+            dirRows().forEach(function (r) { if (on) picked[r.p.id] = 1; else delete picked[r.p.id]; });
+            draw(true);
+        });
+        $(document).on("click.snorg", "#orgPane tr[data-row]", function (e) {
+            if (e.target.closest("button, a, label, input")) return;
+            select(this.getAttribute("data-row"));
+        });
+        function pickedIds() { return Object.keys(picked).filter(function (id) { return byId[id]; }); }
+        $(document).on("click.snorg", "[data-org-bulk]", function () {
+            var a = this.getAttribute("data-org-bulk"), ids = pickedIds();
+            if (a === "clear") { picked = {}; draw(true); return; }
+            if (!ids.length) return;
+            if (a === "export") { exportCsv(ids.map(function (id) { return byId[id]; })); return; }
+            if (a === "group") { openGroup(ids); return; }
+            if (a === "mgr" || a === "dept") openMove(ids, a);
+        });
+        var moveIds = [], moveKind = "mgr";
+        function openMove(ids, kind) {
+            moveIds = ids; moveKind = kind;
+            var names = ids.slice(0, 3).map(function (id) { return byId[id].n; }).join(", ") + (ids.length > 3 ? " and " + (ids.length - 3) + " more" : "");
+            $("#orgMoveH").text(kind === "mgr" ? "Change manager" : "Move to department");
+            $("#orgMoveSub").text(names);
+            $("#orgMoveMgrWrap").prop("hidden", kind !== "mgr");
+            $("#orgMoveDeptWrap").prop("hidden", kind !== "dept");
+            if (kind === "mgr") {
+                // never offer the picked people or anyone below them
+                var no = {}; ids.forEach(function (id) { no[id] = 1; var d = descendants(id); Object.keys(d).forEach(function (k) { no[k] = 1; }); });
+                $("#mvMgr .ddwl-option").each(function () { var v = String($(this).data("value") || ""); $(this).toggleClass("sn-ddx", !!no[v]); });
+                setModernDropdownWithLabelValue("#mvMgr", "");
+                $("#orgMoveHint").text("Only who they report to changes. The list leaves out the people you picked and everyone below them.");
+            } else {
+                setModernDropdownWithLabelValue("#mvDept", "");
+                $("#orgMoveHint").text("Only the department changes. Who they report to stays the same.");
+            }
+            SN.open("orgMoveDialog");
+        }
+        $(document).on("submit.snorg", "#orgMoveForm", function (e) {
+            e.preventDefault();
+            var v = moveKind === "mgr" ? String($("#mvMgr input[type=hidden]").val() || "") : String($("#mvDept input[type=hidden]").val() || "");
+            document.getElementById("orgMoveDialog").close();
+            move(moveIds, moveKind === "mgr" ? { mgr: v } : { dept: v }).then(function () { picked = {}; draw(true); });
+        });
+        function openGroup(ids) {
+            var mine = ids.filter(function (id) { return id !== ME; });
+            if (!mine.length) { Sahyog.toast("Pick at least one other person.", { kind: "info" }); return; }
+            var common = mine.map(function (id) { return deptName(byId[id]); });
+            var same = common.every(function (d) { return d && d === common[0]; });
+            $("#orgGroupName").val(same ? common[0] + " team" : "").trigger("input");
+            $("#orgGroupSub").text("With " + mine.length + (mine.length === 1 ? " person" : " people") + " you picked, and you");
+            $("#orgGroupMembers").html(mine.map(function (id) { return '<input type="hidden" name="members" value="' + id + '" />'; }).join(""));
+            $("#orgGroupFaces").html(mine.slice(0, 12).map(function (id) { return av(byId[id], 30); }).join("") + (mine.length > 12 ? '<span class="org-more">+' + (mine.length - 12) + '</span>' : ""));
+            Sahyog.paintPhotos && Sahyog.paintPhotos(document.getElementById("orgGroupFaces"));
+            SN.open("orgGroupDialog");
+        }
+        $(document).on("submit.snorg", "#orgGroupForm", function (e) {
+            var n = $("#orgGroupName").val().trim();
+            if (n.length < 2) { e.preventDefault(); Sahyog.toast("Give the group a name (2–60 characters).", { kind: "error", title: "Name needed" }); }
+        });
+
+        // ---------- export as CSV (opens in Excel) ----------
+        function exportCsv(list) {
+            var cell = function (v) { v = String(v == null ? "" : v); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+            var rows = [["name", "email", "title", "department", "manager_email", "manager", "phone", "employee_id", "joined"]];
+            list.slice().sort(byName).forEach(function (p) {
+                var m = byId[p.mgr];
+                rows.push([p.n, p.email, p.title, deptName(p), m ? m.email : "", m ? m.n : "", p.phone, p.emp, p.joined]);
+            });
+            // the same columns as Import CSV, so the file can be edited and imported again
+            var blob = new Blob(["﻿" + rows.map(function (r) { return r.map(cell).join(","); }).join("\r\n")], { type: "text/csv;charset=utf-8" });
+            var a = document.createElement("a");
+            a.href = URL.createObjectURL(blob); a.download = "organization-" + new Date().toISOString().slice(0, 10) + ".csv";
+            document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+            Sahyog.toast(list.length + (list.length === 1 ? " person" : " people") + " exported. The file opens in Excel and can be imported again.", { kind: "success" });
+        }
+        window.snOrgExport = function () {
+            var ids = view === "dir" ? pickedIds() : [];
+            exportCsv(ids.length ? ids.map(function (id) { return byId[id]; }) : people);
+        };
+
+        $(document).on("click.snorg", "[data-org-fix]", function () {
+            var t = pane.querySelector(".org-dview-side") || pane.querySelector(".org-ins-h");
+            if (!t) return;
+            t.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            var box = pane.querySelector(".org-dview-side, .org-issues");
+            if (box) { box.classList.remove("flash"); void box.offsetWidth; box.classList.add("flash"); }
+        });
+        // ---------- Insights: the buttons on each item ----------
+        $(document).on("click.snorg", "[data-issue]", function () {
+            var it = lastIssues[+this.getAttribute("data-issue")], a = it && it.acts[+this.getAttribute("data-act")];
+            if (!a) return;
+            if (a.a === "dept") openDept(deptById[a.id]);
+            else if (a.a === "edit") snOrgEdit(a.id);
+            else if (a.a === "pick") { view = "mgr"; draw(); select(a.id, true); }
+            else if (a.a === "deldept") {
+                var d = deptById[a.id];
+                SN.confirmPost("/org/departments/" + d.id + "/delete", { title: "Delete " + d.n + "?", text: "No one is in it, so nothing else changes.", confirmText: "Delete department", danger: true });
+            } else if (a.a === "list") {
+                var ids = {}; a.ids.forEach(function (p) { ids[p.id] = 1; });
+                issue = { label: a.label + " · " + a.ids.length, ids: ids };
+                deptFilter = ""; view = "dir"; draw();
+            }
         });
 
         // ---------- admin: edit person ----------
@@ -572,6 +1205,9 @@
             $("#oJob").val(p.title).trigger("input");
             $("#oPhone").val(p.phone).trigger("input");
             $("#oEmp").val(p.emp).trigger("input");
+            var top = 0;
+            people.forEach(function (x) { var m = /^EMP-(\d+)$/i.exec(x.emp || ""); if (m) top = Math.max(top, +m[1]); });
+            $("#oEmpNext").text("The next new person gets EMP-" + String(top + 1).padStart(6, "0") + ".");
             setModernDropdownWithLabelValue("#oDept", p.deptId && deptById[p.deptId] ? p.deptId : "");
             // the manager list leaves out this person and everyone below them
             var below = descendants(p.id);
@@ -703,15 +1339,29 @@
         });
 
         // ---------- start ----------
+        (function syncTabs(n) {   // the tab bar is built when the page is ready: wait for it, then show the right tab and the Insights count
+            if (!$("#orgTabs").data("tc-api") && window.TabControl && TabControl.init) TabControl.init(document.getElementById("orgTabs"));
+            var tc = $("#orgTabs").data("tc-api");
+            if (!tc) { if (n < 40) setTimeout(function () { syncTabs(n + 1); }, 25); return; }
+            if (view !== tc.getActive().id) tc.select(view);
+            insightCount();
+        })(0);
+        $("[data-dept-color]").each(function () { var c = dcol[this.getAttribute("data-dept-color")]; if (c) this.style.setProperty("--dc", c); });
         draw();
         var startId = byId[START] ? START : byId[ME] ? ME : (people[0] || {}).id;
         if (startId) setTimeout(function () {
-            // on a phone the whole chart would be tiny: start readable, around the person instead
-            if (z < .6) { z = .75; apply(); select(startId, true); }
+            if (usesCanvas() && z < .6) { z = .75; apply(); select(startId, true); }   // a big chart: start readable, around the person
             else select(startId, !!byId[START]);
         }, 40);
         else card();
-        $(window).off("resize.snorg").on("resize.snorg", function () { clearTimeout(window.__snOrgRz); window.__snOrgRz = setTimeout(function () { fit(true); }, 150); });
+        var wasPhone = phone();
+        $(window).off("resize.snorg").on("resize.snorg", function () {
+            clearTimeout(window.__snOrgRz);
+            window.__snOrgRz = setTimeout(function () {
+                if (phone() !== wasPhone) { wasPhone = phone(); draw(); if (selected) select(selected, true); return; }
+                if (usesCanvas()) fit(true);
+            }, 150);
+        });
     })();
     </script>
 }

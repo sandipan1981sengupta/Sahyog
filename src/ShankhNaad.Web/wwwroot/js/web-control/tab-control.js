@@ -57,8 +57,11 @@ $(document).ready(function () {
                 var $tab = $("<button>")
                     .attr("type", "button")
                     .addClass("tc-tab")
-                    .attr("data-tab-id", tab.id)
-                    .text(tab.text != null ? tab.text : "");
+                    .attr("data-tab-id", tab.id);
+                // optional icon before the text and a small count after it
+                if (tab.icon) $tab.append($("<i>").addClass("tc-ic " + tab.icon).attr("aria-hidden", "true"));
+                $tab.append($("<span>").addClass("tc-label").text(tab.text != null ? tab.text : ""));
+                if (tab.badge != null && tab.badge !== "") $tab.append($("<span>").addClass("tc-badge" + (tab.badgeKind ? " " + tab.badgeKind : "")).text(tab.badge));
 
                 if (tab.disabled) {
                     $tab.addClass("disabled").attr("aria-disabled", "true");

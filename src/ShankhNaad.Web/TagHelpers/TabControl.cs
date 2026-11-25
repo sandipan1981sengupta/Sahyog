@@ -14,6 +14,9 @@ namespace ShankhNaad.Web.TagHelpers
         public string ActiveBackgroundColor { get; set; }        // optional per-tab override of the active-state pill color (e.g. make one tab red when selected)
         public string ActiveBorderWidth { get; set; }             // optional per-tab override of the active-state border width
         public string ActiveBorderColor { get; set; }              // optional per-tab override of the active-state border color
+        public string Icon { get; set; }                          // optional icon class shown before the text, e.g. "bi bi-telephone-x"
+        public string Badge { get; set; }                         // optional small count after the text, e.g. "5"
+        public string BadgeKind { get; set; }                     // optional badge look: "warn" (amber) — default is a quiet grey
     }
 
     /// <summary>
@@ -148,6 +151,9 @@ namespace ShankhNaad.Web.TagHelpers
         public string ActiveBackgroundColor { get; set; }
         public string ActiveBorderWidth { get; set; }
         public string ActiveBorderColor { get; set; }
+        public string Icon { get; set; }
+        public string Badge { get; set; }
+        public string BadgeKind { get; set; }
 
         public override void Process(TagHelperContext context, TagHelperOutput output)
         {
@@ -163,7 +169,10 @@ namespace ShankhNaad.Web.TagHelpers
                 ActiveTextColor = ActiveTextColor,
                 ActiveBackgroundColor = ActiveBackgroundColor,
                 ActiveBorderWidth = ActiveBorderWidth,
-                ActiveBorderColor = ActiveBorderColor
+                ActiveBorderColor = ActiveBorderColor,
+                Icon = Icon,
+                Badge = Badge,
+                BadgeKind = BadgeKind
             });
 
             output.SuppressOutput();   // <tab> never renders any actual HTML

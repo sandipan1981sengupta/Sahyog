@@ -498,6 +498,10 @@ html[data-skin="kesari"] .sn-org-drop:hover, html[data-skin="kesari"] .sn-org-dr
 html[data-skin="kesari"] .sn-org-drop-ic { background: linear-gradient(115deg, #FF8A1F 0%, #F97316 46%, #15803D 54%, #138808 100%); }
 html[data-skin="kesari"] .sn-org-file .sn-org-mini-btn { color: #C2410C; background: rgba(234, 88, 12, .1); }
 html[data-skin="kesari"] .org-chip.update { color: #C2410C; background: rgba(234, 88, 12, .1); }
+html[data-skin="kesari"] .org-ghost { background: rgba(124, 45, 18, .92); border: 1.5px dashed #FDBA74; }
+html[data-skin="kesari"] .org-issue { box-shadow: inset 3px 0 0 #FB923C; }
+html[data-skin="kesari"] .org-issue b i { color: #F97316; }
+html[data-skin="kesari"] .sn-org-dept-ic[data-dept-color] { background: color-mix(in srgb, var(--dc, #F97316) 14%, transparent); }
 html[data-skin="kesari"] .sn-hbtn.share { background: linear-gradient(135deg, #F97316, #C2410C); }
 html[data-skin="kesari"] .sn-tp-more:hover, html[data-skin="kesari"] .sn-tp-more:focus-visible, html[data-skin="kesari"] .sn-tp-more.on { background: linear-gradient(135deg, #EA580C, #EA580C); }
 html[data-skin="kesari"] .sn-tp-row.drop-over { outline: 2px dashed #F97316; background: rgba(249, 115, 22, .1); }
@@ -522,6 +526,9 @@ html[data-skin="kesari"] .sn-pp-more.less { color: #9A3412; background: rgba(194
 html[data-skin="kesari"] .sn-pp-team i { color: #C2410C; }
 html[data-skin="kesari"] .sn-pp-team:hover { border-color: #C2410C; background: rgba(194, 65, 12, .08); }
 html[data-skin="kesari"] .sn-pp-index button:hover { background: #C2410C; }
+html[data-skin="kesari"] .tc-tab.active .tc-ic { color: #C2410C; }
+html[data-skin="kesari"] .tc-tab.active .tc-badge { color: #7C2D12; background: rgba(194, 65, 12, .14); }
+html[data-skin="kesari"] .sn-org-page .org-kpi { --kc: #F97316; }
 /* ---- from responsive.css ---- */
 @media (max-width: 1100px) {
 html[data-skin="kesari"] .sn-body .sn-chat-back { color: #7C2D12 !important; border: 1px solid rgba(194, 65, 12, .25) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 6px 14px -8px rgba(194, 65, 12, .6); }

@@ -47,7 +47,7 @@ public sealed class OrgController : Controller
     [HttpGet("")]
     public async Task<IActionResult> Index(string? p)
     {
-        var data = await _org.GetAsync(TenantId);
+        var data = await EnsureEmployeeCodesAsync(await _org.GetAsync(TenantId));
         var limits = await _tenants.GetLimitsAsync(TenantId);
         var all = await _users.ListByTenantAsync(TenantId);
         return View(new OrgViewModel
@@ -154,7 +154,11 @@ public sealed class OrgController : Controller
                 await CookieAuth.RefreshSelfAsync(HttpContext, name, mail.ToLowerInvariant(), stamp);
         }
 
-        // 2) place in the organization
+        // 2) place in the organization. The employee ID is given automatically and never typed:
+        //    keep the one they have, or give the next free one.
+        var org = await _org.GetAsync(TenantId);
+        var current = org.People.FirstOrDefault(x => x.UserId == id)?.EmployeeCode;
+        employeeCode = !string.IsNullOrWhiteSpace(current) ? current : EmployeeCode(LastEmployeeNumber(org.People) + 1);
         var status = await _org.SetPersonAsync(new OrgPersonUpdate
         {
             TenantId = TenantId,
@@ -169,6 +173,101 @@ public sealed class OrgController : Controller
         if (status == OrgSaveStatus.Saved) TempData["Message"] = $"{name} is saved.";
         else TempData["Error"] = OrgError(status, name);
         return Back(id);
+    }
+
+    /// <summary>
+    /// Change only the manager and/or the department of one or more people: drag and drop in the chart,
+    /// and "Change manager…" / "Move to department…" in the Directory. Answers JSON.
+    /// managerId / departmentId: left out = keep; "" = none (top of the chart / no department).
+    /// </summary>
+    [HttpPost("move")]
+    [Authorize(Roles = AppRoles.TenantAdmin)]
+    public async Task<IActionResult> Move([FromForm] List<Guid>? ids, [FromForm] string? managerId, [FromForm] string? departmentId)
+    {
+        if (ids is null || ids.Count == 0) return Json(new { ok = false, error = "Pick at least one person." });
+        var data = await _org.GetAsync(TenantId);
+        if (!data.Ready) return Json(new { ok = false, error = NeedsDatabase });
+        var setManager = managerId is not null;
+        var setDepartment = departmentId is not null;
+        Guid? manager = Guid.TryParse(managerId, out var m) ? m : null;
+        Guid? department = Guid.TryParse(departmentId, out var d) ? d : null;
+
+        var moved = 0;
+        var errors = new List<string>();
+        foreach (var id in ids.Distinct().Take(MaxCsvRows))
+        {
+            var p = data.People.FirstOrDefault(x => x.UserId == id);
+            if (p is null) { errors.Add("Someone you picked isn't in this workspace any more."); continue; }
+            // everything else stays as it is
+            var status = await _org.SetPersonAsync(new OrgPersonUpdate
+            {
+                TenantId = TenantId,
+                UserId = id,
+                JobTitle = p.JobTitle ?? "",
+                DepartmentId = setDepartment ? department : p.DepartmentId,
+                ManagerId = setManager ? manager : p.ManagerId,
+                Phone = p.Phone ?? "",
+                EmployeeCode = p.EmployeeCode ?? "",
+                JoinedOn = p.JoinedOn
+            });
+            if (status == OrgSaveStatus.Saved) moved++;
+            else errors.Add(OrgError(status, p.DisplayName));
+        }
+        return Json(new { ok = moved > 0, moved, errors });
+    }
+
+    // ---------------- employee IDs: given automatically, EMP-000001, EMP-000002, … per workspace ----------------
+
+    private static readonly System.Text.RegularExpressions.Regex EmpPattern =
+        new(@"^EMP-(\d{1,9})$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>The highest number already used in this workspace (EMP-004 counts as 4).</summary>
+    private static int LastEmployeeNumber(IEnumerable<OrgPersonDto> people) =>
+        people.Select(x => EmpPattern.Match(x.EmployeeCode ?? ""))
+              .Where(m => m.Success)
+              .Select(m => int.TryParse(m.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : 0)
+              .DefaultIfEmpty(0).Max();
+
+    internal static string EmployeeCode(int number) => "EMP-" + number.ToString("000000", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Everyone without an employee ID gets the next free one, oldest first (by joined date, then name);
+    /// short old-style IDs like EMP-004 are rewritten as EMP-000004.
+    /// Runs when the Org page opens, so people added on the Team page, by CSV or at sign-up get theirs too.
+    /// </summary>
+    private async Task<OrgDataDto> EnsureEmployeeCodesAsync(OrgDataDto data)
+    {
+        if (!data.Ready) return data;
+        // IDs in the old short form (EMP-004) are written the same way as new ones (EMP-000004)
+        var changed = false;
+        foreach (var x in data.People)
+        {
+            var m = EmpPattern.Match(x.EmployeeCode ?? "");
+            if (!m.Success || m.Groups[1].Value.Length == 6 || !int.TryParse(m.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var n) || n > 999999) continue;
+            var code = EmployeeCode(n);
+            if (data.People.Any(o => o.UserId != x.UserId && string.Equals(o.EmployeeCode, code, StringComparison.OrdinalIgnoreCase))) continue;
+            await _org.SetPersonAsync(new OrgPersonUpdate
+            {
+                TenantId = TenantId, UserId = x.UserId, JobTitle = x.JobTitle ?? "", DepartmentId = x.DepartmentId,
+                ManagerId = x.ManagerId, Phone = x.Phone ?? "", EmployeeCode = code, JoinedOn = x.JoinedOn
+            });
+            changed = true;
+        }
+        if (changed) data = await _org.GetAsync(TenantId);
+        var missing = data.People.Where(x => string.IsNullOrWhiteSpace(x.EmployeeCode))
+            .OrderBy(x => x.JoinedOn ?? DateOnly.MaxValue).ThenBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
+        if (missing.Count == 0) return data;
+        var next = LastEmployeeNumber(data.People);
+        foreach (var x in missing)
+        {
+            next++;
+            await _org.SetPersonAsync(new OrgPersonUpdate
+            {
+                TenantId = TenantId, UserId = x.UserId, JobTitle = x.JobTitle ?? "", DepartmentId = x.DepartmentId,
+                ManagerId = x.ManagerId, Phone = x.Phone ?? "", EmployeeCode = EmployeeCode(next), JoinedOn = x.JoinedOn
+            });
+        }
+        return await _org.GetAsync(TenantId);
     }
 
     private static string OrgError(OrgSaveStatus status, string name) => status switch

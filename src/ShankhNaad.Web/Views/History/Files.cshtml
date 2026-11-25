@@ -70,9 +70,9 @@
             <tab-control id="fileTabs" height="44px" font-size="13.5px" font-weight="600" active-font-weight="600" transition-duration=".38s"
                          background="rgba(255,255,255,.55)" active-background-color="#ffffff"
                          text-color="#475569" active-text-color="#0B1220" border-color="rgba(15,23,42,.08)">
-                <tab id="all" text="@($"All  ·  {Model.Files.Count}")" active="true"></tab>
-                <tab id="mine" text="@($"Shared by you  ·  {byMe}")"></tab>
-                <tab id="theirs" text="@($"Shared with you  ·  {Model.Files.Count - byMe}")"></tab>
+                <tab id="all" text="All" icon="bi bi-folder2-open" badge="@Model.Files.Count.ToString()" active="true"></tab>
+                <tab id="mine" text="Shared by you" icon="bi bi-box-arrow-up-right" badge="@byMe.ToString()"></tab>
+                <tab id="theirs" text="Shared with you" icon="bi bi-box-arrow-in-down-left" badge="@((Model.Files.Count - byMe).ToString())"></tab>
             </tab-control>
             <label class="search sn-hist-search">
                 <i class="fa fa-search" aria-hidden="true"></i>
