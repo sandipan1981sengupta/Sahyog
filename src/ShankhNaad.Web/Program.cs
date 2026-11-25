@@ -138,6 +138,25 @@ _ = Task.Run(() =>
 app.UseAuthentication();
 app.UseAuthorization();
 
+// /health: a tiny page for a keep-awake pinger (e.g. UptimeRobot every 5 minutes) and for the desktop app's
+// "Connecting…" screen. It also runs one tiny query, so the database connection stays warm too.
+app.MapGet("/health", async (ShankhNaad.ServiceLibrary.Data.SqlDb db, HttpContext ctx) =>
+{
+    ctx.Response.Headers.CacheControl = "no-store";
+    var watch = System.Diagnostics.Stopwatch.StartNew();
+    try
+    {
+        await using var conn = await db.OpenAsync(ctx.RequestAborted);
+        await using var cmd = new Microsoft.Data.SqlClient.SqlCommand("SELECT 1", conn);
+        await cmd.ExecuteScalarAsync(ctx.RequestAborted);
+        return Results.Text($"ok {watch.ElapsedMilliseconds} ms", "text/plain");
+    }
+    catch
+    {
+        return Results.Text("database not reachable", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+}).AllowAnonymous();
+
 app.MapControllers();
 app.MapHub<ChatHub>("/hubs/chat");
 
