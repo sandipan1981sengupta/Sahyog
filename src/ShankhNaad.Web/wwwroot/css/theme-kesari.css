@@ -529,6 +529,10 @@ html[data-skin="kesari"] .sn-pp-index button:hover { background: #C2410C; }
 html[data-skin="kesari"] .tc-tab.active .tc-ic { color: #C2410C; }
 html[data-skin="kesari"] .tc-tab.active .tc-badge { color: #7C2D12; background: rgba(194, 65, 12, .14); }
 html[data-skin="kesari"] .sn-org-page .org-kpi { --kc: #F97316; }
+html[data-skin="kesari"] .org-mv-p.on { border-color: #C2410C; box-shadow: 0 0 0 3px rgba(194, 65, 12, .18); }
+html[data-skin="kesari"] .org-mv-m:hover { border-color: rgba(194, 65, 12, .45); }
+html[data-skin="kesari"] .org-mv-m.over { border: 2px dashed #C2410C; background: rgba(194, 65, 12, .1); }
+html[data-skin="kesari"] .org-mv-m.top .org-mv-top { color: #C2410C; background: rgba(194, 65, 12, .12); }
 /* ---- from responsive.css ---- */
 @media (max-width: 1100px) {
 html[data-skin="kesari"] .sn-body .sn-chat-back { color: #7C2D12 !important; border: 1px solid rgba(194, 65, 12, .25) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 6px 14px -8px rgba(194, 65, 12, .6); }
