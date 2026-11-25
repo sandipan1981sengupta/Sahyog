@@ -90,6 +90,10 @@
                     <button type="button" class="org-filter" id="orgDeptFilter" aria-haspopup="menu"><span>Department: All</span> <i class="fa fa-angle-down" aria-hidden="true"></i></button>
                     <button type="button" class="org-filter" id="orgOnlineFilter" aria-pressed="false"><i class="org-on-dot on" aria-hidden="true"></i> Online now</button>
                     <button type="button" class="org-filter" id="orgIssueFilter" hidden><span></span> <i class="fa fa-times" aria-hidden="true"></i></button>
+                    <span class="org-treebtns" id="orgTreeBtns" role="group" aria-label="Open or close the tree">
+                        <button type="button" class="org-filter" data-org-tree="all" title="Open every team, all the way down"><i class="fa fa-plus-square-o" aria-hidden="true"></i> Expand all</button>
+                        <button type="button" class="org-filter" data-org-tree="top" title="Close everything below the first level"><i class="fa fa-minus-square-o" aria-hidden="true"></i> Collapse to first level</button>
+                    </span>
                 </div>
                 <div class="org-legend" id="orgLegend" aria-label="Department colours"></div>
             </div>
@@ -103,7 +107,17 @@
                 <button type="button" data-org-zoom="1" aria-label="Zoom in" title="Zoom in"><i class="fa fa-plus" aria-hidden="true"></i></button>
                 <button type="button" data-org-zoom="fit" aria-label="Fit to screen" title="Fit the whole chart on screen"><i class="fa fa-expand" aria-hidden="true"></i></button>
             </div>
-            <span class="sn-org-tip" id="orgTip">Click a person for their card · drag the background to move around@(isAdmin ? " · drag a person onto another to change their manager" : "")</span>
+            @if (isAdmin)
+            {
+                <button type="button" class="org-selmode" id="orgSelMode" aria-pressed="false" title="Pick several people, then drag them together (or Ctrl + click)"><i class="fa fa-check-square-o" aria-hidden="true"></i> <span>Select several</span></button>
+                <div class="org-csel glass" id="orgChartSel" hidden role="toolbar" aria-label="People picked in the chart">
+                    <span class="org-csel-faces" id="orgCselFaces" aria-hidden="true"></span>
+                    <span class="org-csel-t"><b id="orgCselN"></b><small>Drag any of them onto their new manager</small></span>
+                    <button type="button" data-csel="dept"><i class="bi bi-briefcase" aria-hidden="true"></i> Department…</button>
+                    <button type="button" data-csel="clear" aria-label="Clear the picks"><i class="fa fa-times" aria-hidden="true"></i> Clear</button>
+                </div>
+            }
+            <span class="sn-org-tip" id="orgTip">Click a person for their card · drag the background to move around@(isAdmin ? " · drag a person onto another to change their manager · Ctrl + click to pick several" : "")</span>
             <button type="button" class="org-minimap" id="orgMini" aria-label="Map of the whole chart. Click to go there." title="Map of the whole chart · click to go there"></button>
             <div class="org-bulk" id="orgBulk" hidden role="toolbar" aria-label="Picked people">
                 <b id="orgBulkN"></b>
@@ -206,34 +220,32 @@
             <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
         </div>
         <div class="sn-dlg-body">
-            <modern-group-box title="Move | people" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
-                <div style="display:flex;flex-direction:column;gap:14px">
-                    <div id="orgMoveMgrWrap" class="org-mv-wrap">
-                        @* who is moving: their manager now → the new one *@
-                        <div class="org-mv">
-                            <div class="org-mv-col">
-                                <div class="org-mv-h"><b>Moving · <span id="mvN"></span></b><small>Now → new manager. Tap a person to choose for them only.</small></div>
-                                <div class="org-mv-people" id="mvPeople"></div>
-                            </div>
-                            <div class="org-mv-col">
-                                <div class="org-mv-h"><b>Drag a person onto their new manager</b><small>or tap a person, then a manager</small></div>
-                                <label class="sn-org-search org-mv-find"><i class="fa fa-search" aria-hidden="true"></i><span class="sr-only">Find a manager</span><input type="search" id="mvFind" placeholder="Find a manager, title or department" autocomplete="off" /></label>
-                                <div class="org-mv-mgrs" id="mvMgrs"></div>
-                            </div>
-                        </div>
-                        <modern-dropdown-with-label id="mvMgr" name="managerId" label="Or: the same new manager for everyone" placeholder="Pick one manager for all of them" items="managerItems" menu-height="260px"></modern-dropdown-with-label>
-                    </div>
-                    <div id="orgMoveDeptWrap">
-                        <modern-dropdown-with-label id="mvDept" name="departmentId" label="New department" placeholder="No department" items="deptItems" menu-height="240px"></modern-dropdown-with-label>
-                    </div>
-                    <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> <span id="orgMoveHint">Only this changes; titles and contact details stay as they are.</span></span>
+            @* Change manager: one person; suggestions first, search for anyone, see where they will sit *@
+            <div id="orgMoveMgrWrap" class="org-cm">
+                <div class="org-cm-top">
+                    <div class="org-cm-who" id="cmWho"></div>
+                    <div class="org-cm-path" id="cmPath" aria-live="polite"></div>
                 </div>
-            </modern-group-box>
+                <div class="org-cm-h"><b>Choose the new manager</b><span id="cmSub"></span></div>
+                <label class="org-cm-find"><i class="fa fa-search" aria-hidden="true"></i><span class="sr-only">Find a manager</span>
+                    <input type="search" id="cmFind" autocomplete="off" /><kbd id="cmEsc" hidden>esc to clear</kbd></label>
+                <div class="org-cm-chips" id="cmChips" role="tablist" aria-label="Show"></div>
+                <div class="org-cm-list sn-glass-scroll" id="cmList" role="listbox" aria-label="Managers"></div>
+            </div>
+            <div id="orgMoveDeptWrap">
+                <modern-group-box title="Move | people" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                    <div style="display:flex;flex-direction:column;gap:14px">
+                        <modern-dropdown-with-label id="mvDept" name="departmentId" label="New department" placeholder="No department" items="deptItems" menu-height="240px"></modern-dropdown-with-label>
+                        <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> <span id="orgMoveHint">Only the department changes. Who they report to stays the same.</span></span>
+                    </div>
+                </modern-group-box>
+            </div>
         </div>
         <div class="sn-dlg-foot">
+            <span class="muted small" id="cmFoot"></span>
             <span style="display:flex;gap:10px;margin-left:auto">
                 <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Move</button>
+                <button type="submit" class="cee-btn cee-btn-gradient" id="cmGo"><i class="fa fa-check" aria-hidden="true"></i> <span>Move</span></button>
             </span>
         </div>
     </form>
@@ -452,12 +464,38 @@
         // ---------- a person in the chart ----------
         function node(p, cls) {
             var n = (kids[p.id] || []).length;
-            return '<div class="org-node' + (cls ? " " + cls : "") + (p.id === ME ? " me" : "") + '" style="--dc:' + colorOf(p) + '" data-id="' + p.id + '" role="button" tabindex="0" aria-label="' + esc(p.n + ", " + sub(p)) + '">' +
-                av(p, 38) + '<span class="org-node-t"><b>' + esc(p.n) + '</b><small>' + esc(p.title || (p.admin ? "Admin" : "Team member")) + '</small>' + dpill(p) + '</span>' +
+            return '<div class="org-node' + (cls ? " " + cls : "") + (p.id === ME ? " me" : "") + (cpick[p.id] ? " cpick" : "") + '" aria-pressed="' + !!cpick[p.id] + '" style="--dc:' + colorOf(p) + '" data-id="' + p.id + '" role="button" tabindex="0" aria-label="' + esc(p.n + ", " + sub(p)) + '">' +
+                '<i class="org-node-ck" aria-hidden="true"><i class="fa fa-check"></i></i>' + av(p, 38) + '<span class="org-node-t"><b>' + esc(p.n) + '</b><small>' + esc(p.title || (p.admin ? "Admin" : "Team member")) + '</small>' + dpill(p) + '</span>' +
                 (n ? '<button type="button" class="org-badge" data-toggle="' + p.id + '" title="' + teamSize(p.id) + ' in ' + esc(p.n.split(" ")[0]) + '\'s team (' + n + ' direct). Click to show or hide them." aria-label="' + n + (n === 1 ? " report" : " reports") + ', show or hide"><i class="fa fa-users" aria-hidden="true"></i> ' + teamSize(p.id) + '</button>' : "") +
                 '</div>';
         }
 
+        // ---------- Chart: pick several people (Ctrl/⌘/Shift + click, or "Select several"), then drag them together ----------
+        var cpick = {}, selMode = false;
+        function cpickIds() { return Object.keys(cpick).filter(function (id) { return byId[id]; }); }
+        // the people that actually move: a picked person inside another picked person's team moves with that team
+        function cpickTops(ids) {
+            return ids.filter(function (id) { return !chainOf(byId[id]).some(function (c) { return cpick[c.id]; }); });
+        }
+        function csel() {
+            var bar = document.getElementById("orgChartSel"); if (!bar) return;
+            var ids = cpickIds();
+            bar.hidden = !usesCanvas() || !ids.length;
+            $("#orgSelMode").toggleClass("on", selMode).attr("aria-pressed", selMode).prop("hidden", !usesCanvas())
+                .find("span").text(selMode ? "Done picking" : "Select several");
+            vp.classList.toggle("picking", selMode);
+            if (!ids.length) return;
+            document.getElementById("orgCselN").textContent = ids.length + (ids.length === 1 ? " person picked" : " people picked");
+            document.getElementById("orgCselFaces").innerHTML = ids.slice(0, 4).map(function (id) { return av(byId[id], 28); }).join("") + (ids.length > 4 ? '<i>+' + (ids.length - 4) + '</i>' : "");
+            Sahyog.paintPhotos && Sahyog.paintPhotos(bar);
+        }
+        function cToggle(id) {
+            if (cpick[id]) delete cpick[id]; else cpick[id] = 1;
+            var el = canvas.querySelector('.org-node[data-id="' + id + '"]');
+            if (el) { el.classList.toggle("cpick", !!cpick[id]); el.setAttribute("aria-pressed", !!cpick[id]); }
+            csel();
+        }
+        function cClear() { cpick = {}; $(canvas).find(".org-node.cpick").removeClass("cpick").attr("aria-pressed", "false"); csel(); }
         // ---------- Chart: a tree; people whose reports have no reports of their own get a compact column ----------
         var collapsed = {};
         function branch(p, depth) {
@@ -532,6 +570,7 @@
             var bar = document.getElementById("orgBulk");
             bar.hidden = view !== "dir" || !ids.length;
             document.getElementById("orgBulkN").textContent = ids.length + " picked";
+            $('[data-org-bulk="mgr"]').prop("disabled", ids.length !== 1).attr("title", ids.length === 1 ? "Choose who " + byId[ids[0]].n.split(" ")[0] + " reports to" : "Pick one person to change their manager");
         }
 
         // ---------- Departments: one card per department ----------
@@ -562,7 +601,8 @@
                     '<span class="org-dcard-faces" aria-hidden="true">' + c.list.slice().sort(byName).slice(0, 4).map(function (p) { return av(p, 28); }).join("") + (c.list.length > 4 ? '<i>+' + (c.list.length - 4) + '</i>' : "") + '</span>' +
                     (IS_ADMIN && c.id ? '<button type="button" class="sn-org-dept-edit" data-dept-edit="' + c.id + '" aria-label="Edit ' + esc(c.n) + '" title="Rename, change head or delete"><i class="fa fa-pencil" aria-hidden="true"></i></button>' : "") + '</header>' +
                     '<div class="org-dcard-bar" aria-hidden="true"><span style="width:' + Math.max(pct, 2) + '%"></span></div>' +
-                    (c.id ? (head ? '<button type="button" class="org-dcard-head" data-pick="' + head.id + '">' + av(head, 34) + '<span><small>Head</small><b>' + esc(head.n) + '</b></span><em>' + esc(head.title || "") + '</em></button>'
+                    (c.id ? (head ? '<button type="button" class="org-dcard-head' + (head.deptId !== c.id ? " away" : "") + '" data-pick="' + head.id + '">' + av(head, 34) + '<span><small>Head</small><b>' + esc(head.n) + '</b></span><em>' + esc(head.title || "") + '</em></button>' +
+                        (head.deptId !== c.id ? '<p class="org-dcard-away"><i class="fa fa-exclamation-triangle" aria-hidden="true"></i><span>Head is in ' + (deptName(head) ? '<b>' + esc(deptName(head)) + '</b>' : "no department") + ', not a member of ' + esc(c.n) + '.</span></p>' : "")
                         : '<div class="org-dcard-head none"><i class="fa fa-user-o" aria-hidden="true"></i><span><small>Head</small><b>No head yet</b></span></div>') : "") +
                     '<div class="org-dcard-list">' + rest.slice(0, showN).map(function (p) {
                         var m = byId[p.mgr];
@@ -580,9 +620,12 @@
             var t = tops();
             depts.forEach(function (d) {
                 var n = people.filter(function (p) { return p.deptId === d.id; }).length;
-                if (!n) out.push({ kind: "warn", title: "“" + d.n + "” has nobody in it", text: "An empty department makes the chart and the filters harder to read. If it is really a job title, delete it and put the title on the person instead.", acts: IS_ADMIN ? [{ t: "Delete it", a: "deldept", id: d.id }, { t: "Edit", a: "dept", id: d.id }] : [] });
+                var hd = d.head && byId[d.head];
+                if (!n && hd) out.push({ kind: "warn", title: "“" + d.n + "” is empty, but " + hd.n + " is its head", text: hd.n.split(" ")[0] + " is in " + (deptName(hd) || "no department") + ", not " + d.n + ", so the head isn't a member here. If “" + d.n + "” is really a job title, delete it and put the title on " + hd.n.split(" ")[0] + " instead. If it is a real department, move " + hd.n.split(" ")[0] + " into it.",
+                    acts: IS_ADMIN ? [{ t: "Delete it", a: "deldept", id: d.id }, { t: "Move " + hd.n.split(" ")[0] + " here", a: "headin", id: hd.id, dept: d.id }, { t: "Edit", a: "dept", id: d.id }] : [] });
+                else if (!n) out.push({ kind: "warn", title: "“" + d.n + "” has nobody in it", text: "An empty department makes the chart and the filters harder to read. If it is really a job title, delete it and put the title on the person instead.", acts: IS_ADMIN ? [{ t: "Delete it", a: "deldept", id: d.id }, { t: "Edit", a: "dept", id: d.id }] : [] });
                 else if (!d.head || !byId[d.head]) out.push({ kind: "info", title: d.n + " has no head", text: "Choose who leads it; they are shown first in the department.", acts: IS_ADMIN ? [{ t: "Choose a head", a: "dept", id: d.id }] : [] });
-                else if (byId[d.head].deptId !== d.id) out.push({ kind: "info", title: byId[d.head].n + " heads " + d.n + " but is in " + (deptName(byId[d.head]) || "no department"), text: "Usually the head belongs to the department they lead.", acts: IS_ADMIN ? [{ t: "Edit " + byId[d.head].n.split(" ")[0], a: "edit", id: d.head }] : [] });
+                else if (hd.deptId !== d.id) out.push({ kind: "warn", title: "Head isn't a member of " + d.n, text: hd.n + " leads " + d.n + " but is in " + (deptName(hd) || "no department") + ". Usually the head belongs to the department they lead.", acts: IS_ADMIN ? [{ t: "Move " + hd.n.split(" ")[0] + " here", a: "headin", id: hd.id, dept: d.id }, { t: "Choose another head", a: "dept", id: d.id }] : [] });
             });
             if (depts.length) {
                 var noDept = people.filter(function (p) { return !p.deptId || !deptById[p.deptId]; });
@@ -714,7 +757,7 @@
                 Sahyog.paintPhotos && Sahyog.paintPhotos(pane);
             }
             Sahyog.paintPresence && Sahyog.paintPresence();
-            path(); legend(); filterUi(); bulk(); insightCount();
+            path(); legend(); filterUi(); bulk(); csel(); insightCount();
         }
 
         // ---------- the bar under the tabs: path, filters, colour key ----------
@@ -738,6 +781,25 @@
             $("#orgIssueFilter").prop("hidden", !issue).addClass("on").find("span").text(issue ? issue.label : "");
             document.getElementById("orgSub").hidden = view === "ins";
             $(".org-filters").prop("hidden", view === "ins");
+            // Expand all / Collapse: only where there is a tree (the Chart, and Directory when not filtered)
+            var tree = (view === "mgr" && usesCanvas()) || (view === "dir" && !filtering());
+            $("#orgTreeBtns").prop("hidden", !tree);
+            $("[data-org-tree]").each(function () { var on = treeState === this.getAttribute("data-org-tree"); $(this).toggleClass("on", on).attr("aria-pressed", on); });
+        }
+        // ---------- open every team, or close everything below the first level ----------
+        var treeState = null;
+        function openTree(mode) {
+            var tops1 = {};
+            tops().tops.concat(tops().loose).forEach(function (p) { tops1[p.id] = 1; });
+            people.forEach(function (p) {
+                if (!(kids[p.id] || []).length) return;
+                var shut = mode === "top" && !tops1[p.id];
+                if (view === "dir") dirShut[p.id] = shut;
+                else collapsed[p.id] = shut;
+            });
+            treeState = mode;
+            draw(view !== "mgr");
+            Sahyog.toast(mode === "all" ? "Every team is open." : "Showing the top of the chart and their direct reports.", { kind: "info", ms: 1800 });
         }
 
         // ---------- zoom and move ----------
@@ -843,12 +905,19 @@
                 pdrag.on = true;
                 vp.setPointerCapture(e.pointerId);
                 var p = byId[pdrag.id];
-                below = descendants(p.id);
+                // dragging a picked person carries every picked person; dragging anyone else carries just them
+                pdrag.ids = cpick[p.id] && cpickIds().length > 1 ? cpickTops(cpickIds()) : [p.id];
+                if (pdrag.ids.indexOf(p.id) < 0) pdrag.ids.unshift(p.id);
+                below = {}; pdrag.self = {};
+                pdrag.ids.forEach(function (id) { pdrag.self[id] = 1; var d = descendants(id); Object.keys(d).forEach(function (k) { below[k] = id; }); });
+                var many = pdrag.ids.length > 1;
                 ghost = document.createElement("div");
-                ghost.className = "org-ghost";
-                ghost.innerHTML = av(p, 30) + '<span><b>' + esc(p.n) + '</b><small>Drop on their new manager</small></span>';
+                ghost.className = "org-ghost" + (many ? " many" : "");
+                ghost.innerHTML = (many ? '<span class="org-ghost-faces">' + pdrag.ids.slice(0, 3).map(function (id) { return av(byId[id], 30); }).join("") + '</span>' : av(p, 30)) +
+                    '<span><b>' + (many ? pdrag.ids.length + " people" : esc(p.n)) + '</b><small>Drop on their new manager</small></span>';
                 document.body.appendChild(ghost);
-                canvas.querySelector('.org-node[data-id="' + p.id + '"]').classList.add("lifted");
+                Sahyog.paintPhotos && Sahyog.paintPhotos(ghost);
+                pdrag.ids.forEach(function (id) { var el = canvas.querySelector('.org-node[data-id="' + id + '"]'); if (el) el.classList.add("lifted"); });
                 vp.classList.add("moving");
             }
             ghost.style.left = (e.clientX + 14) + "px"; ghost.style.top = (e.clientY + 10) + "px";
@@ -857,12 +926,16 @@
             ghost.style.display = "";
             var t = hit && hit.closest && hit.closest("#orgCanvas .org-node");
             var id = t ? t.getAttribute("data-id") : null;
-            var ok = id && id !== pdrag.id && !below[id] && id !== byId[pdrag.id].mgr;
+            var ids = pdrag.ids, one = ids.length === 1, first = byId[ids[0]].n.split(" ")[0];
+            var already = id && ids.every(function (k) { return byId[k].mgr === id; });
+            var ok = id && !pdrag.self[id] && !below[id] && !already;
             if (target && target !== t) target.classList.remove("drop", "nodrop");
             target = t || null;
             if (t) t.classList.add(ok ? "drop" : "nodrop");
-            ghost.querySelector("small").textContent = !t ? "Drop on their new manager" : ok ? byId[pdrag.id].n.split(" ")[0] + " will report to " + byId[id].n
-                : id === pdrag.id ? "Drop on someone else" : id === byId[pdrag.id].mgr ? "Already their manager" : "Can't: " + byId[id].n.split(" ")[0] + " reports to " + byId[pdrag.id].n.split(" ")[0];
+            var who = one ? first : ids.length + " people";
+            ghost.querySelector("small").textContent = !t ? "Drop on their new manager" : ok ? who + (one ? " will report to " : " will report to ") + byId[id].n
+                : pdrag.self[id] ? "Drop on someone else" : already ? (one ? "Already their manager" : "Already manager of all of them")
+                : "Can't: " + byId[id].n.split(" ")[0] + " is in " + byId[below[id]].n.split(" ")[0] + "'s team";
         }
         function personCancel() {
             if (ghost) ghost.remove(); ghost = null;
@@ -876,7 +949,11 @@
             var ok = was && was.on && t && t.classList.contains("drop");
             if (was && was.on) justDragged = Date.now();
             personCancel();
-            if (ok) move([was.id], { mgr: t.getAttribute("data-id") });
+            if (ok) {
+                var to = t.getAttribute("data-id");
+                var ids = was.ids.filter(function (k) { return byId[k].mgr !== to; });
+                move(ids, { mgr: to }).then(function () { if (was.ids.length > 1) { selMode = false; cClear(); } });
+            }
         }
 
         // ---------- change manager / department, with Undo ----------
@@ -931,6 +1008,17 @@
             });
         }
         $(document).off(".snorg");
+        // chart picks (pick several, then drag them together)
+        $(document).on("click.snorg", "#orgSelMode", function () { selMode = !selMode; if (!selMode && !cpickIds().length) cClear(); csel(); });
+        $(document).on("click.snorg", "[data-csel]", function () {
+            var a = this.getAttribute("data-csel");
+            if (a === "clear") { selMode = false; cClear(); }
+            if (a === "dept") openMove(cpickIds(), "dept");
+        });
+        $(document).on("keydown.snorg", function (e) {
+            if (e.key === "Escape" && usesCanvas() && cpickIds().length && !document.querySelector("dialog[open]")) { selMode = false; cClear(); }
+        });
+
         $(document).on("input.snorg", "#orgSearch", function () {
             q = this.value.trim().toLowerCase();
             if (usesCanvas()) {
@@ -1088,16 +1176,20 @@
         }
         $(document).on("click.snorg", "#orgCanvas .org-node", function (e) {
             if (e.target.closest(".org-badge") || Date.now() - justDragged < 300) return;
+            if (IS_ADMIN && (selMode || e.ctrlKey || e.metaKey || e.shiftKey)) { e.preventDefault(); cToggle(this.getAttribute("data-id")); return; }
             select(this.getAttribute("data-id"));
         });
         $(document).on("keydown.snorg", "#orgCanvas .org-node", function (e) {
-            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(this.getAttribute("data-id")); }
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (IS_ADMIN && (selMode || e.ctrlKey || e.metaKey || e.shiftKey)) cToggle(this.getAttribute("data-id")); else select(this.getAttribute("data-id"));
+            }
         });
-        $(document).on("dblclick.snorg", "#orgCanvas .org-node", function () { if (IS_ADMIN) snOrgEdit(this.getAttribute("data-id")); });
+        $(document).on("dblclick.snorg", "#orgCanvas .org-node", function () { if (IS_ADMIN && !selMode) snOrgEdit(this.getAttribute("data-id")); });
         $(document).on("click.snorg", "#orgCanvas .org-badge", function (e) {
             e.stopPropagation();
             var id = this.getAttribute("data-toggle"), li = canvas.querySelector('li[data-li="' + id + '"]');
-            collapsed[id] = !(li && li.classList.contains("shut"));
+            collapsed[id] = !(li && li.classList.contains("shut")); treeState = null;
             // keep the clicked person where they are on screen while the branch opens or closes
             settle();
             var before = canvas.querySelector('.org-node[data-id="' + id + '"]').getBoundingClientRect();
@@ -1130,7 +1222,8 @@
         $(document).on("click.snorg", "[data-dept-more]", function () { var k = this.getAttribute("data-dept-more"); deptOpen[k] = !deptOpen[k]; draw(true); });
 
         // ---------- Directory: open/close, pick, act on the picked people ----------
-        $(document).on("click.snorg", "[data-dir-tog]", function (e) { e.stopPropagation(); var id = this.getAttribute("data-dir-tog"); dirShut[id] = !dirShut[id]; draw(true); });
+        $(document).on("click.snorg", "[data-dir-tog]", function (e) { e.stopPropagation(); var id = this.getAttribute("data-dir-tog"); dirShut[id] = !dirShut[id]; treeState = null; draw(true); });
+        $(document).on("click.snorg", "[data-org-tree]", function () { openTree(this.getAttribute("data-org-tree")); });
         $(document).on("change.snorg", "[data-dir-pick]", function () {
             var id = this.getAttribute("data-dir-pick");
             if (this.checked) picked[id] = 1; else delete picked[id];
@@ -1153,134 +1246,153 @@
             if (!ids.length) return;
             if (a === "export") { exportCsv(ids.map(function (id) { return byId[id]; })); return; }
             if (a === "group") { openGroup(ids); return; }
+            if (a === "mgr" && ids.length !== 1) { Sahyog.toast("Pick one person to change their manager.", { kind: "info" }); return; }
             if (a === "mgr" || a === "dept") openMove(ids, a);
         });
-        var moveIds = [], moveKind = "mgr", mvAssign = {}, mvActive = null, mvDrag = null;
+        // ---------- Change manager (one person) and Move to department (one or more) ----------
+        var moveIds = [], moveKind = "mgr", cm = { id: null, pick: undefined, chip: "sug", more: 0 };
+        var CM_PAGE = 60, cmCache = { ts: {}, desc: null };
+        function cmTs(id) { return id in cmCache.ts ? cmCache.ts[id] : (cmCache.ts[id] = teamSize(id)); }
+        function cmDesc() { return cmCache.desc || (cmCache.desc = descendants(cm.id)); }
         function openMove(ids, kind) {
-            moveIds = ids; moveKind = kind; mvAssign = {}; mvActive = null;
+            moveIds = ids; moveKind = kind;
             var names = ids.slice(0, 3).map(function (id) { return byId[id].n; }).join(", ") + (ids.length > 3 ? " and " + (ids.length - 3) + " more" : "");
             $("#orgMoveH").text(kind === "mgr" ? "Change manager" : "Move to department");
-            $("#orgMoveSub").text(names);
             $("#orgMoveMgrWrap").prop("hidden", kind !== "mgr");
             $("#orgMoveDeptWrap").prop("hidden", kind !== "dept");
-            $("#orgMoveDialog").toggleClass("org-mv-dlg", kind === "mgr");
+            $("#orgMoveDialog").toggleClass("org-cm-dlg", kind === "mgr");
             if (kind === "mgr") {
-                // the shared list never offers the picked people or anyone below them
-                var no = {}; ids.forEach(function (id) { no[id] = 1; var d = descendants(id); Object.keys(d).forEach(function (k) { no[k] = 1; }); });
-                $("#mvMgr .ddwl-option").each(function () { var v = String($(this).data("value") || ""); $(this).toggleClass("sn-ddx", !!no[v]); });
-                mvSilent = true; setModernDropdownWithLabelValue("#mvMgr", ""); mvSilent = false;
-                $("#mvFind").val("");
-                var left = people.filter(function (p) { return !no[p.id]; }).length;
-                if (left) {
-                    $("#orgMoveHint").text("Only who they report to changes. A person can't go under someone in their own team, so those managers are greyed out while you move them.");
-                } else {
-                    var blocker = ids.map(function (id) { return byId[id]; }).sort(function (a, b) { return teamSize(b.id) - teamSize(a.id); })[0];
-                    $("#orgMoveHint").text(blocker.n + " is picked and everyone else is in " + blocker.n.split(" ")[0] + "'s team, so one manager for everyone isn't possible. Drag each person onto their own manager instead, or untick " + blocker.n.split(" ")[0] + ".");
-                }
-                mvActive = ids.length === 1 ? ids[0] : null;
-                mvRender();
-            } else {
-                setModernDropdownWithLabelValue("#mvDept", "");
-                $("#orgMoveHint").text("Only the department changes. Who they report to stays the same.");
+                var p = byId[ids[0]];
+                cm = { id: p.id, pick: undefined, chip: "sug", more: 0 }; cmCache = { ts: {}, desc: null };
+                $("#orgMoveSub").text(p.n + (p.title ? " · " + p.title : "") + " · " + (p.mgr ? "now under " + byId[p.mgr].n : "now at the top of the chart"));
+                $("#cmFind").val("").attr("placeholder", "Search " + people.length + " people by name, title or department");
+                cmRender();
+                SN.open("orgMoveDialog");
+                setTimeout(function () { var f = document.getElementById("cmFind"); if (f && window.matchMedia("(min-width: 761px)").matches) f.focus(); }, 80);
+                return;
             }
+            $("#orgMoveSub").text(names);
+            $("#cmFoot").text(""); $("#cmGo span").text("Move"); $("#cmGo").prop("disabled", false);
+            setModernDropdownWithLabelValue("#mvDept", "");
             SN.open("orgMoveDialog");
         }
-        var mvSilent = false;
-        function mvName(id) { return id === "" ? "No manager (top)" : byId[id] ? byId[id].n : ""; }
-        function mvBlocked(pid, mid) { return mid !== "" && (mid === pid || !!descendants(pid)[mid]); }
-        function mvRender() {
-            $("#mvN").text(moveIds.length);
-            $("#mvPeople").html(moveIds.map(function (id) {
-                var p = byId[id], now = p.mgr ? mvName(p.mgr) : "No manager", nw = mvAssign[id];
-                return '<div class="org-mv-p' + (id === mvActive ? " on" : "") + (nw !== undefined ? " set" : "") + '" draggable="true" data-mv-p="' + id + '" role="button" tabindex="0" aria-pressed="' + (id === mvActive) + '">' +
-                    '<i class="fa fa-arrows org-mv-grip" aria-hidden="true"></i>' + av(p, 34) +
-                    '<span class="org-mv-who"><b>' + esc(p.n) + '</b><small>' + esc(p.title || deptName(p) || "") + '</small>' +
-                    '<span class="org-mv-line"><em class="now" title="Manager now">' + esc(now) + '</em><i class="fa fa-long-arrow-right" aria-hidden="true"></i>' +
-                    (nw !== undefined ? '<em class="new">' + esc(mvName(nw)) + '</em>' : '<em class="none">Not changed</em>') + '</span></span>' +
-                    (nw !== undefined ? '<button type="button" class="org-mv-undo" data-mv-undo="' + id + '" aria-label="Keep ' + esc(p.n) + '\'s manager" title="Keep their manager"><i class="fa fa-undo" aria-hidden="true"></i></button>' : "") + '</div>';
-            }).join(""));
-            var f = String($("#mvFind").val() || "").trim().toLowerCase();
-            var who = mvDrag || mvActive;
-            var list = people.filter(function (p) { return moveIds.indexOf(p.id) < 0 && (!f || text(p).indexOf(f) >= 0); })
-                .sort(function (a, b) { return (teamSize(b.id) - teamSize(a.id)) || byName(a, b); });
-            var card = function (id, inner, extra) {
-                var bad = who && mvBlocked(who, id), cur = who && (byId[who].mgr || "") === id;
-                var got = moveIds.filter(function (x) { return mvAssign[x] === id; }).length;
-                return '<button type="button" class="org-mv-m' + (bad ? " bad" : "") + (cur ? " cur" : "") + (extra || "") + '" data-mv-m="' + id + '"' + (bad ? ' aria-disabled="true" title="In ' + esc(byId[who].n.split(" ")[0]) + '\'s own team"' : "") + '>' + inner +
-                    (cur ? '<span class="org-mv-tag">Now</span>' : "") + (got ? '<span class="org-mv-tag new">+' + got + '</span>' : "") + '</button>';
-            };
-            var h = card("", '<span class="org-mv-top" aria-hidden="true"><i class="fa fa-level-up"></i></span><span class="org-mv-who"><b>No manager</b><small>Top of the chart</small></span>', " top");
-            h += list.map(function (p) {
-                var t = teamSize(p.id);
-                return card(p.id, av(p, 32) + '<span class="org-mv-who"><b>' + esc(p.n) + '</b><small>' + esc(p.title || "—") + (t ? " · team " + t : "") + '</small></span>' + (deptName(p) ? '<i class="org-mv-dot" style="background:' + colorOf(p) + '" title="' + esc(deptName(p)) + '"></i>' : ""));
-            }).join("");
-            if (!list.length && f) h += '<p class="sn-org-empty">No one matches “' + esc(f) + '”.</p>';
-            $("#mvMgrs").html(h);
+        function cmBlocked(mid) { return mid !== "" && (mid === cm.id || !!cmDesc()[mid]); }
+        function cmWhy(mid) {
+            if (mid === cm.id) return "This is " + byId[cm.id].n.split(" ")[0];
+            var m = byId[mid]; return m && m.mgr === cm.id ? "Reports to " + byId[cm.id].n.split(" ")[0] : "In " + byId[cm.id].n.split(" ")[0] + "'s team";
+        }
+        function cmCrumbs(list, newId) {
+            return list.map(function (x) {
+                var cls = x.id === cm.id ? " me" : x.id === newId ? " new" : "";
+                return '<span class="org-cm-c' + cls + '">' + esc(x.n) + '</span>';
+            }).join('<i class="fa fa-angle-right" aria-hidden="true"></i>');
+        }
+        function cmPathHtml() {
+            var p = byId[cm.id];
+            var now = chainOf(p).concat([p]);
+            var h = '<div class="org-cm-pl"><small>Now</small><span class="org-cm-cs">' + cmCrumbs(now) + '</span></div>';
+            if (cm.pick === undefined) return h + '<div class="org-cm-pl"><small>After</small><span class="org-cm-hint">Pick a manager below to see where ' + esc(p.n.split(" ")[0]) + ' will sit.</span></div>';
+            var m = cm.pick ? byId[cm.pick] : null;
+            var after = m ? chainOf(m).concat([m, p]) : [p];
+            var diff = after.length - now.length, team = cmTs(p.id);
+            h += '<div class="org-cm-pl after"><small>After</small><span class="org-cm-cs">' + cmCrumbs(after, m && m.id) + '</span></div>';
+            h += '<p class="org-cm-note">' + esc(p.n.split(" ")[0]) + (diff > 0 ? " goes " + diff + (diff === 1 ? " level down" : " levels down") : diff < 0 ? " goes " + (-diff) + (diff === -1 ? " level up" : " levels up") : " stays on the same level") +
+                (team ? " · " + (team === 1 ? "the 1 person" : "the " + team + " people") + " in " + (p.n.split(" ")[0]) + "'s team stay under them." : ".") + '</p>';
+            return h;
+        }
+        function cmRow(p, extra) {
+            var bad = p ? cmBlocked(p.id) : false, id = p ? p.id : "";
+            var sel = cm.pick === id, cur = (byId[cm.id].mgr || "") === id;
+            var t = p ? cmTs(p.id) : 0;
+            return '<button type="button" role="option" class="org-cm-row' + (sel ? " sel" : "") + (bad ? " bad" : "") + '" data-cm="' + id + '" aria-selected="' + sel + '"' + (bad ? ' aria-disabled="true"' : "") + '>' +
+                (bad ? '<span class="org-cm-x" aria-hidden="true"><i class="fa fa-times"></i></span>' : '<span class="org-cm-radio" aria-hidden="true">' + (sel ? '<i class="fa fa-check"></i>' : "") + '</span>') +
+                (p ? av(p, 34) : '<span class="org-cm-topic" aria-hidden="true"><i class="fa fa-level-up"></i></span>') +
+                '<span class="org-cm-t"><b>' + (p ? esc(p.n) : "No manager") + '</b><small>' + (p ? esc(p.title || "—") : "Top of the chart") + '</small></span>' +
+                (bad ? '<em class="org-cm-why">' + esc(cmWhy(id)) + '</em>' : "") +
+                (cur ? '<em class="org-cm-tag">Now</em>' : extra ? '<em class="org-cm-tag">' + esc(extra) + '</em>' : "") +
+                (p ? dpill(p) : "") + '<span class="org-cm-team">' + (t ? "team " + t : "") + '</span></button>';
+        }
+        function cmGroup(t) { return '<div class="org-cm-g">' + esc(t) + '</div>'; }
+        function cmRender() {
+            var p = byId[cm.id], q2 = String($("#cmFind").val() || "").trim().toLowerCase();
+            $("#cmEsc").prop("hidden", !q2);
+            $("#cmWho").html(av(p, 48) + '<span><b>' + esc(p.n) + '</b><small>' + esc(p.title || deptName(p) || "") + '</small>' +
+                (cmTs(p.id) ? '<em><i class="fa fa-users" aria-hidden="true"></i> ' + (cmTs(p.id) === 1 ? "Their 1 report moves with them" : "Their team of " + cmTs(p.id) + " moves with them") + '</em>' : "") + '</span>');
+            $("#cmPath").html(cmPathHtml());
+            var others = people.filter(function (x) { return x.id !== cm.id; });
+            var matches = q2 ? others.filter(function (x) { return text(x).indexOf(q2) >= 0; }) : others;
+            if (q2 && cm.chip === "sug") cm.chip = "all";
+            // chips: Suggested · All · each department (biggest first) · No department
+            var dcount = {}; matches.forEach(function (x) { var k = x.deptId && deptById[x.deptId] ? x.deptId : "none"; dcount[k] = (dcount[k] || 0) + 1; });
+            var chips = (q2 ? "" : chipB("sug", "Suggested")) + chipB("all", "All", q2 ? matches.length + (matches.length === 1 ? " match" : " matches") : matches.length);
+            depts.slice().sort(function (a, b) { return (dcount[b.id] || 0) - (dcount[a.id] || 0) || a.n.localeCompare(b.n); }).forEach(function (d) { if (dcount[d.id]) chips += chipB(d.id, d.n, dcount[d.id], dcol[d.id]); });
+            if (dcount.none) chips += chipB("none", "No department", dcount.none, "#94A3B8");
+            $("#cmChips").html(chips);
+            $("#cmSub").text(q2 ? "Results are grouped by department" : cm.chip === "sug" ? "Suggestions first · or search all " + people.length + " people" : "Biggest teams first");
+            var h = "";
+            if (cm.chip === "sug" && !q2) {
+                var used = {}, add = function (x) { if (!x || used[x.id] || x.id === cm.id) return null; used[x.id] = 1; return x; };
+                var mgr = byId[p.mgr], up = mgr && byId[mgr.mgr];
+                if (up) { add(up); h += cmGroup("Up one level") + cmRow(up, mgr.n.split(" ")[0] + "'s manager"); }
+                if (mgr) used[mgr.id] = 1;
+                var heads = depts.map(function (d) { return byId[d.head]; }).filter(function (x) { return x && !cmBlocked(x.id); }).filter(add)
+                    .sort(function (a, b) { return cmTs(b.id) - cmTs(a.id); });
+                if (heads.length) h += cmGroup("Department heads") + heads.map(function (x) { return cmRow(x); }).join("");
+                var same = people.filter(function (x) { return x.deptId && x.deptId === p.deptId && (kids[x.id] || []).length && !cmBlocked(x.id); }).filter(add)
+                    .sort(function (a, b) { return cmTs(b.id) - cmTs(a.id) || byName(a, b); }).slice(0, 8);
+                if (same.length) h += cmGroup("Other managers in " + deptName(p)) + same.map(function (x) { return cmRow(x); }).join("");
+                h += cmGroup("Other choices") + (mgr ? cmRow(mgr) : "") + (p.mgr ? cmRow(null) : "");
+                var below = Object.keys(descendants(p.id)).map(function (id) { return byId[id]; }).filter(Boolean).sort(byName);
+                if (below.length) h += cmGroup("Not possible · in " + p.n.split(" ")[0] + "'s own team") + below.slice(0, 3).map(function (x) { return cmRow(x); }).join("") +
+                    (below.length > 3 ? '<p class="org-cm-more-t">and ' + (below.length - 3) + ' more in ' + esc(p.n.split(" ")[0]) + '\'s team</p>' : "");
+                h += '<p class="org-cm-more-t">Not here? Search above, or open All.</p>';
+            } else {
+                var list = cm.chip === "all" ? matches : matches.filter(function (x) { return cm.chip === "none" ? !(x.deptId && deptById[x.deptId]) : x.deptId === cm.chip; });
+                list = list.slice().sort(function (a, b) { return (cmBlocked(a.id) - cmBlocked(b.id)) || (cmTs(b.id) - cmTs(a.id)) || byName(a, b); });
+                var limit = CM_PAGE * (cm.more + 1), shown = list.slice(0, limit);
+                if (!q2 && cm.chip === "all" && p.mgr) h += cmRow(null);
+                var groups = {}, order = [];
+                shown.forEach(function (x) { var k = x.deptId && deptById[x.deptId] ? x.deptId : "none"; if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(x); });
+                if (cm.chip === "all") order.sort(function (a, b) { return groups[b].length - groups[a].length; });
+                order.forEach(function (k) {
+                    if (cm.chip === "all") h += cmGroup((k === "none" ? "No department" : deptById[k].n) + " · " + (dcount[k] || groups[k].length));
+                    h += groups[k].map(function (x) { return cmRow(x); }).join("");
+                });
+                if (!list.length) h += '<p class="org-cm-more-t">No one matches “' + esc(q2) + '”.</p>';
+                else if (list.length > shown.length) h += '<p class="org-cm-more-t">Showing ' + shown.length + ' of ' + list.length + (q2 ? "" : " · type to narrow it down") + ' <button type="button" class="org-link" data-cm-more>Show ' + Math.min(CM_PAGE, list.length - shown.length) + ' more</button></p>';
+            }
+            $("#cmList").html(h);
             Sahyog.paintPhotos && Sahyog.paintPhotos(document.getElementById("orgMoveDialog"));
+            var ok = cm.pick !== undefined && cm.pick !== (p.mgr || "");
+            $("#cmGo").prop("disabled", !ok).find("span").text(cm.pick === undefined ? "Choose a manager" : cm.pick === "" ? "Move to the top" : "Move under " + byId[cm.pick].n);
+            $("#cmFoot").html(cm.pick === undefined ? "Nothing changes until you press Move." : !ok ? "That is already their manager." :
+                esc(p.n) + (cm.pick ? " will report to <b>" + esc(byId[cm.pick].n) + "</b>." : " will be at the top of the chart.") + " Undo is offered for 10 seconds.");
         }
-        function mvSet(pid, mid) {
-            if (mvBlocked(pid, mid)) { Sahyog.toast(byId[mid].n + " is in " + byId[pid].n.split(" ")[0] + "'s own team, so " + byId[pid].n.split(" ")[0] + " can't report to them.", { kind: "info", title: "Not possible" }); return false; }
-            if ((byId[pid].mgr || "") === mid) delete mvAssign[pid]; else mvAssign[pid] = mid;
-            return true;
+        function chipB(k, t, n, col) {
+            return '<button type="button" role="tab" class="org-cm-chip' + (cm.chip === k ? " on" : "") + '" data-cm-chip="' + k + '" aria-selected="' + (cm.chip === k) + '">' +
+                (col ? '<i style="background:' + col + '"></i>' : "") + esc(t) + (n != null ? ' <span>' + n + '</span>' : "") + '</button>';
         }
-        $(document).on("input.snorg", "#mvFind", mvRender);
-        $(document).on("click.snorg", "#mvPeople [data-mv-p]", function (e) {
-            if (e.target.closest("[data-mv-undo]")) return;
-            var id = this.getAttribute("data-mv-p"); mvActive = mvActive === id ? null : id; mvRender();
-        });
-        $(document).on("click.snorg", "[data-mv-undo]", function () { delete mvAssign[this.getAttribute("data-mv-undo")]; mvRender(); });
-        $(document).on("click.snorg", "#mvMgrs [data-mv-m]", function () {
-            var mid = this.getAttribute("data-mv-m");
-            var targets = mvActive ? [mvActive] : moveIds;   // nobody tapped: this manager for everyone who can have them
-            var ok = 0; targets.forEach(function (pid) { if (!mvBlocked(pid, mid)) { mvSet(pid, mid); ok++; } });
-            if (!ok && targets.length) mvSet(targets[0], mid);   // explains why not
-            if (mvActive) { var next = moveIds.filter(function (x) { return mvAssign[x] === undefined && x !== mvActive; })[0]; mvActive = next || null; }
-            mvRender();
-        });
-        // drag a person card onto a manager
-        $(document).on("dragstart.snorg", "#mvPeople [data-mv-p]", function (e) {
-            mvDrag = this.getAttribute("data-mv-p");
-            e.originalEvent.dataTransfer.setData("text/plain", mvDrag); e.originalEvent.dataTransfer.effectAllowed = "move";
-            var el = this; setTimeout(function () { el.classList.add("lifted"); mvRender(); $('#mvPeople [data-mv-p="' + mvDrag + '"]').addClass("lifted"); }, 0);
-        });
-        $(document).on("dragend.snorg", "#mvPeople [data-mv-p]", function () { mvDrag = null; mvRender(); });
-        $(document).on("dragover.snorg", "#mvMgrs [data-mv-m]", function (e) {
-            if (!mvDrag || this.classList.contains("bad")) return;
-            e.preventDefault(); this.classList.add("over");
-        });
-        $(document).on("dragleave.snorg", "#mvMgrs [data-mv-m]", function () { this.classList.remove("over"); });
-        $(document).on("drop.snorg", "#mvMgrs [data-mv-m]", function (e) {
-            e.preventDefault();
-            var pid = mvDrag || e.originalEvent.dataTransfer.getData("text/plain");
-            mvDrag = null;
-            if (pid && byId[pid]) mvSet(pid, this.getAttribute("data-mv-m"));
-            mvRender();
-        });
-        // the shared list: the same manager for everyone it is possible for
-        $(document).on("change.snorg", "#mvMgr input[type=hidden]", function () {
-            if (mvSilent) return;
-            var mid = String(this.value || "");
-            moveIds.forEach(function (pid) { if (!mvBlocked(pid, mid)) mvSet(pid, mid); });
-            mvRender();
+        $(document).on("input.snorg", "#cmFind", function () { cm.more = 0; if (!this.value.trim() && cm.chip === "all") cm.chip = "sug"; cmRender(); });
+        $(document).on("keydown.snorg", "#cmFind", function (e) { if (e.key === "Escape" && this.value) { e.preventDefault(); e.stopPropagation(); this.value = ""; cm.chip = "sug"; cmRender(); } });
+        $(document).on("click.snorg", "[data-cm-chip]", function () { cm.chip = this.getAttribute("data-cm-chip"); cm.more = 0; cmRender(); document.getElementById("cmList").scrollTop = 0; });
+        $(document).on("click.snorg", "[data-cm-more]", function () { cm.more++; cmRender(); });
+        $(document).on("click.snorg", "#cmList [data-cm]", function () {
+            var id = this.getAttribute("data-cm");
+            if (cmBlocked(id)) { Sahyog.toast(cmWhy(id) + ", so " + byId[cm.id].n.split(" ")[0] + " can't report to them.", { kind: "info", title: "Not possible" }); return; }
+            cm.pick = cm.pick === id ? undefined : id;
+            var top = document.getElementById("cmList").scrollTop; cmRender(); document.getElementById("cmList").scrollTop = top;
         });
         $(document).on("submit.snorg", "#orgMoveForm", function (e) {
             e.preventDefault();
             if (moveKind === "dept") {
                 var v = String($("#mvDept input[type=hidden]").val() || "");
                 document.getElementById("orgMoveDialog").close();
-                move(moveIds, { dept: v }).then(function () { picked = {}; draw(true); });
+                move(moveIds, { dept: v }).then(function () { picked = {}; cpick = {}; selMode = false; draw(true); });
                 return;
             }
-            var ids = Object.keys(mvAssign);
-            if (!ids.length) { Sahyog.toast("Drag someone onto their new manager, or pick one manager for everyone.", { kind: "info", title: "Nothing to move" }); return; }
+            if (cm.pick === undefined || cm.pick === (byId[cm.id].mgr || "")) return;
             document.getElementById("orgMoveDialog").close();
-            var before = ids.map(function (id) { return { id: id, mgr: byId[id].mgr, dept: byId[id].deptId }; });
-            var groups = {}; ids.forEach(function (id) { (groups[mvAssign[id]] = groups[mvAssign[id]] || []).push(id); });
-            Promise.all(Object.keys(groups).map(function (k) { return move(groups[k], { mgr: k }, true); })).then(function () {
-                picked = {}; draw(true);
-                var text = ids.length === 1 ? byId[ids[0]].n + (mvAssign[ids[0]] ? " now reports to " + byId[mvAssign[ids[0]]].n : " is now at the top of the chart") : ids.length + " people have a new manager";
-                Sahyog.toast(text + ".", { kind: "success", title: "Moved", ms: 10000, action: { text: "Undo", onClick: function () { undo(before, true); } } });
-            });
+            move([cm.id], { mgr: cm.pick }).then(function () { picked = {}; draw(true); });
         });
         function openGroup(ids) {
             var mine = ids.filter(function (id) { return id !== ME; });
@@ -1333,6 +1445,7 @@
             if (a.a === "dept") openDept(deptById[a.id]);
             else if (a.a === "edit") snOrgEdit(a.id);
             else if (a.a === "pick") { go("mgr", function () { select(a.id, true); }); }
+            else if (a.a === "headin") move([a.id], { dept: a.dept });
             else if (a.a === "deldept") {
                 var d = deptById[a.id];
                 SN.confirmPost("/org/departments/" + d.id + "/delete", { title: "Delete " + d.n + "?", text: "No one is in it, so nothing else changes.", confirmText: "Delete department", danger: true });
