@@ -5,17 +5,17 @@
    round fields, CANCEL / SAVE), only laid out wider:
    computer = details on the left, the people picker on the right with its list filling the height;
    phone (≤ 760 px) = full screen with two tabs, Details and People / Pick.
-   Glass: 55 % solid in every theme. Loaded after popups-glass.css, so it wins there.
+   Glass: 40 % solid in every theme. Loaded after popups-glass.css, so it wins there.
    ===================================================================== */
 
-/* ---- the glass, 55 % solid, per theme ---- */
-html body.sn-body .sn-dlg-2col { --d2-bg: rgba(248, 250, 252, .55); --d2-line: rgba(15, 23, 42, .08); --d2-dim: #64748B; }
-html[data-skin="kesari"] body.sn-body .sn-dlg-2col { --d2-bg: rgba(255, 251, 245, .55); }
+/* ---- the glass, 40 % solid, per theme ---- */
+html body.sn-body .sn-dlg-2col { --d2-bg: rgba(248, 250, 252, .4); --d2-line: rgba(15, 23, 42, .08); --d2-dim: #64748B; }
+html[data-skin="kesari"] body.sn-body .sn-dlg-2col { --d2-bg: rgba(255, 251, 245, .4); }
 html[data-theme="dark"] body.sn-body .sn-dlg-2col {
-    --d2-bg: linear-gradient(155deg, rgba(36, 44, 82, .57) 0%, rgba(20, 26, 52, .53) 55%, rgba(40, 28, 68, .55) 100%);
+    --d2-bg: linear-gradient(155deg, rgba(36, 44, 82, .42) 0%, rgba(20, 26, 52, .38) 55%, rgba(40, 28, 68, .4) 100%);
     --d2-line: rgba(255, 255, 255, .08); --d2-dim: #94A3B8;
 }
-html[data-theme="dark"].sn-carbon body.sn-body .sn-dlg-2col { --d2-bg: rgba(30, 30, 34, .57); }
+html[data-theme="dark"].sn-carbon body.sn-body .sn-dlg-2col { --d2-bg: rgba(30, 30, 34, .4); }
 
 html body.sn-body.sn-body dialog.sn-dialog.sn-dialog.sn-dlg-2col {
     background: var(--d2-bg) !important;
@@ -44,7 +44,7 @@ html body.sn-body dialog.sn-dialog.sn-dlg-2col[data-kind="meet"] .sn-dlg-body { 
 .sn-dlg-2col .sn-d2-main { min-height: 0; min-width: 0; display: flex; flex-direction: column; padding: 2px; }
 .sn-dlg-2col .sn-d2-stack { display: flex; flex-direction: column; gap: 14px; }
 .sn-dlg-2col .sn-d2-hint { font-size: 12px; color: var(--d2-dim); }
-.sn-dlg-2col .sn-d2-note { margin: 0; display: flex; gap: 8px; font-size: 12.5px; line-height: 1.45; color: var(--d2-dim); }
+.sn-dlg-2col .sn-d2-note { margin: 0; display: flex; gap: 8px; font-size: 12.5px; line-height: 1.45; color: inherit; opacity: .8; }
 .sn-dlg-2col .sn-d2-note i { margin-top: 3px; }
 .sn-dlg-2col .sn-d2-switches { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
 .sn-dlg-2col .sn-d2-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; }

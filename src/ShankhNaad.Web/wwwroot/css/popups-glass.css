@@ -11,11 +11,11 @@
 
 /* ---- the glass, per theme ---- */
 :root {
-    --pop-bg: rgba(255, 255, 255, .54);
+    --pop-bg: rgba(255, 255, 255, .4);   /* 40 % solid everywhere */
     --pop-edge: rgba(255, 255, 255, .95);
     --pop-shine: rgba(255, 255, 255, .8);
     --pop-shadow: 0 24px 60px -22px rgba(30, 41, 90, .42), 0 2px 8px rgba(30, 41, 90, .06);
-    --pop-blur: blur(30px) saturate(180%);
+    --pop-blur: blur(12px) saturate(150%);   /* light blur: what is behind stays visible, so it reads as clear glass */
     --pop-foot: rgba(255, 255, 255, .35);
     --pop-line: rgba(15, 23, 42, .08);
     /* lists you read item by item (calendar, dropdowns): much more solid, so dates and options stay crisp */
@@ -36,7 +36,7 @@ html[data-theme="dark"] {
     --pop-list-bg: rgba(16, 23, 46, .92);
 }
 html[data-theme="dark"].sn-carbon {
-    --pop-bg: rgba(30, 30, 34, .42);
+    --pop-bg: rgba(30, 30, 34, .4);
     --pop-edge: rgba(255, 255, 255, .09);
     --pop-shine: rgba(255, 255, 255, .06);
     --pop-shadow: 0 28px 70px -24px rgba(0, 0, 0, .85);
@@ -62,8 +62,8 @@ html body.sn-body.sn-body .sn-dialog.sn-dialog .sn-about-head { background: tran
 html body.sn-body.sn-body .sn-dialog.sn-dialog .sn-dlg-head { border-bottom-color: var(--pop-line) !important; }
 html body.sn-body.sn-body .sn-dialog.sn-dialog .sn-dlg-foot { background: var(--pop-foot) !important; border-top-color: var(--pop-line) !important; }
 /* the page behind a dialog dims a little less, so the glass has colour to show */
-html body.sn-body .sn-dialog::backdrop { background: rgba(15, 23, 42, .22); }
-html[data-theme="dark"] body.sn-body .sn-dialog::backdrop { background: rgba(0, 0, 0, .38); }
+html body.sn-body .sn-dialog::backdrop { background: rgba(15, 23, 42, .1); }
+html[data-theme="dark"] body.sn-body .sn-dialog::backdrop { background: rgba(0, 0, 0, .22); }
 
 /* ---- menus, lists and panels ---- */
 html body.sn-body .strip-user-dropdown[data-strip-user-dropdown][data-strip-user-dropdown],
@@ -96,7 +96,7 @@ html body.sn-body.sn-body .mt-toolbar-dd .dd-menu.dd-menu.dd-menu {
 html body.sn-body .sn-call { backdrop-filter: var(--pop-blur); -webkit-backdrop-filter: var(--pop-blur); }
 
 /* WebKit (Safari, iPhone, iPad) redraws blur slowly: a little less blur there, the same look */
-html.sn-webkit { --pop-blur: blur(18px) saturate(160%); }
+html.sn-webkit { --pop-blur: blur(10px) saturate(140%); }
 
 /* ---- the theme menu: Kesari's swatch (a tiny tricolour) ---- */
 .sn-sw-kesari { background: linear-gradient(180deg, #FF9933 0 33%, #FFFFFF 33% 67%, #138808 67% 100%); box-shadow: inset 0 0 0 1px rgba(28, 25, 23, .12); }
@@ -127,12 +127,12 @@ html[data-theme="dark"] body.sn-body .sn-month .sn-month-head { background: rgba
 
 /* ---- the profile menu (status, theme, log out) and the theme picker: a bit more see-through than other menus ---- */
 :root { --pop-menu-bg: rgba(255, 255, 255, .4); }
-html[data-skin="kesari"] { --pop-menu-bg: rgba(255, 251, 245, .42); }
-html[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .36); }
-html[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .38); }
-html.sn-webkit { --pop-menu-bg: rgba(255, 255, 255, .5); }
-html.sn-webkit[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .46); }
-html.sn-webkit[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .48); }
+html[data-skin="kesari"] { --pop-menu-bg: rgba(255, 251, 245, .4); }
+html[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .4); }
+html[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .4); }
+html.sn-webkit { --pop-menu-bg: rgba(255, 255, 255, .4); }
+html.sn-webkit[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .4); }
+html.sn-webkit[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .4); }
 html body.sn-body .strip-user-dropdown[data-strip-user-dropdown][data-strip-user-dropdown][data-strip-user-dropdown],
 html body.sn-body .sn-theme-pop.sn-theme-pop.sn-theme-pop {
     background: var(--pop-menu-bg) !important;
@@ -146,12 +146,12 @@ html.sn-webkit body.sn-body .sn-theme-pop.sn-theme-pop.sn-theme-pop { backdrop-f
 html:not(.sn-webkit)[data-theme="dark"] body.sn-body.sn-body .sn-sched.sn-sched,
 html:not(.sn-webkit)[data-theme="dark"] body.sn-body.sn-body .sn-month.sn-month,
 html:not(.sn-webkit)[data-theme="dark"] body.sn-body.sn-body .sn-agenda.sn-agenda {
-    background: linear-gradient(150deg, rgba(30, 37, 66, .52) 0%, rgba(17, 22, 44, .42) 50%, rgba(27, 31, 60, .48) 100%) !important;
+    background: linear-gradient(150deg, rgba(30, 37, 66, .46) 0%, rgba(17, 22, 44, .34) 50%, rgba(27, 31, 60, .4) 100%) !important;
 }
 html:not(.sn-webkit)[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-sched.sn-sched,
 html:not(.sn-webkit)[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-month.sn-month,
 html:not(.sn-webkit)[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-agenda.sn-agenda {
-    background: linear-gradient(150deg, rgba(42, 42, 46, .52) 0%, rgba(26, 26, 29, .42) 50%, rgba(36, 36, 40, .48) 100%) !important;
+    background: linear-gradient(150deg, rgba(42, 42, 46, .46) 0%, rgba(26, 26, 29, .34) 50%, rgba(36, 36, 40, .4) 100%) !important;
 }
 
 /* the ⋯ menus beside chats (desktop pop-up): as see-through as the profile menu */
@@ -163,13 +163,23 @@ html body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop {
 html.sn-webkit body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { backdrop-filter: blur(20px) saturate(170%) !important; -webkit-backdrop-filter: blur(20px) saturate(170%) !important; }
 
 /* the ⋯ menus: a little more glass than the other pop-ups (asked for), still readable */
-:root { --pop-menu-bg: linear-gradient(150deg, rgba(255, 255, 255, .42) 0%, rgba(255, 255, 255, .26) 55%, rgba(255, 255, 255, .36) 100%); }
-html[data-skin="kesari"] { --pop-menu-bg: linear-gradient(150deg, rgba(255, 251, 245, .46) 0%, rgba(255, 247, 237, .28) 55%, rgba(240, 250, 242, .38) 100%); }
-html[data-theme="dark"] { --pop-menu-bg: linear-gradient(150deg, rgba(36, 44, 84, .42) 0%, rgba(20, 26, 52, .3) 55%, rgba(48, 30, 72, .38) 100%); }
-html[data-theme="dark"].sn-carbon { --pop-menu-bg: linear-gradient(150deg, rgba(48, 48, 52, .44) 0%, rgba(30, 30, 34, .32) 55%, rgba(40, 40, 44, .4) 100%); }
-html.sn-webkit { --pop-menu-bg: rgba(255, 255, 255, .5); }
-html.sn-webkit[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .46); }
-html.sn-webkit[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .48); }
+:root { --pop-menu-bg: linear-gradient(150deg, rgba(255, 255, 255, .46) 0%, rgba(255, 255, 255, .34) 55%, rgba(255, 255, 255, .4) 100%); }
+html[data-skin="kesari"] { --pop-menu-bg: linear-gradient(150deg, rgba(255, 251, 245, .46) 0%, rgba(255, 247, 237, .34) 55%, rgba(240, 250, 242, .4) 100%); }
+html[data-theme="dark"] { --pop-menu-bg: linear-gradient(150deg, rgba(36, 44, 84, .46) 0%, rgba(20, 26, 52, .34) 55%, rgba(48, 30, 72, .4) 100%); }
+html[data-theme="dark"].sn-carbon { --pop-menu-bg: linear-gradient(150deg, rgba(48, 48, 52, .46) 0%, rgba(30, 30, 34, .34) 55%, rgba(40, 40, 44, .4) 100%); }
+html.sn-webkit { --pop-menu-bg: rgba(255, 255, 255, .4); }
+html.sn-webkit[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .4); }
+html.sn-webkit[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .4); }
 html body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { border: 1px solid rgba(255, 255, 255, .55) !important; }
 html[data-theme="dark"] body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { border-color: rgba(165, 180, 252, .22) !important; }
 html[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { border-color: rgba(255, 255, 255, .14) !important; }
+
+/* ---- clear glass: the section cards inside a pop-up are glass too (70 % solid), not plain white ---- */
+html body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box {
+    background: rgba(255, 255, 255, .7) !important;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, .85) !important;
+}
+html[data-skin="kesari"] body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(255, 252, 247, .7) !important; }
+html[data-theme="dark"] body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(20, 27, 46, .7) !important; border-color: rgba(255, 255, 255, .08) !important; }
+html[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(30, 30, 34, .7) !important; }
