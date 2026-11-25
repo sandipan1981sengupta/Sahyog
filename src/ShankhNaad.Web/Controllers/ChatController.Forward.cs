@@ -29,7 +29,7 @@ public sealed partial class ChatController
         if (!await _chat.IsMemberAsync(tenantId, from, Me)) return BadRequest(new { error = "You can only forward messages from your own chats." });
 
         // the message itself (only if you can see it in that chat)
-        var src = (await _chat.GetMessagesAsync(tenantId, from, messageId + 1, 1)).FirstOrDefault(m => m.Id == messageId);
+        var src = (await _chat.GetMessagesAsync(tenantId, from, messageId + 1, 1, Me)).FirstOrDefault(m => m.Id == messageId);
         if (src is null) return BadRequest(new { error = "That message was deleted." });
         var body = src.Body ?? "";
         if (body.StartsWith("[[call:", StringComparison.OrdinalIgnoreCase)) return BadRequest(new { error = "Call cards can't be forwarded." });

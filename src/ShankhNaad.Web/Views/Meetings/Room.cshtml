@@ -16,6 +16,7 @@
         maxHeight = Model.MaxVideoHeight,
         leaveUrl = Model.LeaveUrl,
         oneToOne = Model.OneToOne,
+        startCameraOff = Model.StartCameraOff,
         userId = Model.IsGuest ? null : User.UserGuid().ToString(),
         offlineNote = Model.OfflineNote,
         callWith = Model.CallWithName is null ? null : new { name = Model.CallWithName, initials = Model.CallWithInitials, tone = Model.CallWithTone },

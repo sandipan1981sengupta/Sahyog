@@ -18,7 +18,8 @@ public interface IChatService
     Task<List<Guid>> GetUserChannelIdsAsync(Guid tenantId, Guid userId);
     Task<List<MemberDto>> GetMembersAsync(Guid tenantId, Guid channelId);
     /// <summary>Newest first, up to <paramref name="take"/> messages; <paramref name="beforeId"/> for "load older".</summary>
-    Task<List<MessageDto>> GetMessagesAsync(Guid tenantId, Guid channelId, long? beforeId, int take);
+    /// <summary>A chat's messages. With <paramref name="viewerId"/>: only what that person may see (39_GroupHistoryShare.sql).</summary>
+    Task<List<MessageDto>> GetMessagesAsync(Guid tenantId, Guid channelId, long? beforeId, int take, Guid? viewerId = null);
     Task<SendResultDto> SendMessageAsync(SendMessageRequest request);
     Task<SendResultDto> SendFileAsync(SendFileRequest request);
     /// <summary>Marks a conversation read. Returns the time it was read when something new was read (tell the senders), else null.</summary>
@@ -32,7 +33,7 @@ public interface IChatService
     Task<bool> SetPinnedAsync(Guid tenantId, Guid channelId, Guid userId, bool pinned);
     /// <summary>Who has read up to when (empty until 15_ReadReceipts.sql is run).</summary>
     Task<List<ReadStateDto>> GetReadStateAsync(Guid tenantId, Guid channelId);
-    Task<List<AttachmentDto>> GetRecentFilesAsync(Guid tenantId, Guid channelId, int take = 5);
+    Task<List<AttachmentDto>> GetRecentFilesAsync(Guid tenantId, Guid channelId, int take = 5, Guid? viewerId = null);
     Task<AttachmentFileDto?> GetAttachmentAsync(Guid tenantId, Guid attachmentId, Guid userId);
     Task<CreateChannelResultDto> CreateChannelAsync(CreateChannelRequest request);
     /// <returns>The conversation id, or null if the other person isn't in this workspace.</returns>
@@ -42,12 +43,18 @@ public interface IChatService
     Task<(bool Deleted, List<string> Files)> DeleteDirectAsync(Guid tenantId, Guid channelId, Guid userId);
     /// <summary>Adds people to a group (its creator or an admin). Status 0 ok, 1 not a group you can change (or Everyone),
     /// 2 not allowed, 3 nobody new, 9 script 29 not run. Returns who was added.</summary>
-    Task<(int Status, List<Guid> Added)> AddMembersAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, IEnumerable<Guid> memberIds);
+    /// <summary>
+    /// Adds people to a group. <paramref name="historyFromUtc"/>: null = they see the whole history, otherwise from that time on;
+    /// <paramref name="shareFiles"/> false = files sent before they joined stay hidden. Status 8: added, but the database
+    /// can't limit history yet (run 39_GroupHistoryShare.sql), so they see everything.
+    /// </summary>
+    Task<(int Status, List<Guid> Added)> AddMembersAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, IEnumerable<Guid> memberIds,
+        DateTime? historyFromUtc = null, bool shareFiles = true);
     /// <summary>Removes someone from a group. Status 0 ok, 1 not a group you can change, 2 not allowed, 3 not in it,
     /// 4 yourself, 5 only an admin can remove the creator, 9 script 29 not run.</summary>
     Task<int> RemoveMemberAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, Guid memberId);
     /// <summary>Copies a one-to-one chat's messages (since a time, or all) into a group. Null when script 29 isn't run; -1 not allowed.</summary>
-    Task<int?> CopyHistoryAsync(Guid tenantId, Guid fromChannelId, Guid toChannelId, Guid userId, DateTime? sinceUtc);
+    Task<int?> CopyHistoryAsync(Guid tenantId, Guid fromChannelId, Guid toChannelId, Guid userId, DateTime? sinceUtc, bool shareFiles = true);
     /// <summary>Deletes one message. Callers pass isAdmin = false so only the sender can delete it. Status 0 ok, 1 not found, 2 not allowed.</summary>
     Task<(int Status, Guid? ChannelId, string? FilePath)> DeleteMessageAsync(Guid tenantId, long messageId, Guid userId, bool isAdmin);
     /// <summary>Edits your own text message. Status: 0 done, 1 not found, 2 not yours, 3 can't be edited, 4 the database needs 32_OutOfOfficeAndEdit.sql.</summary>
@@ -132,10 +139,27 @@ public sealed class ChatService : IChatService
         _db.QueryAsync("dbo.sahyog_Chat_GetMembers", p => p.With("@TenantId", tenantId).With("@ChannelId", channelId),
             r => new MemberDto(r.G("UserId"), r.S("DisplayName"), r.I("AvatarTone"), r.S("Email")));
 
-    public Task<List<MessageDto>> GetMessagesAsync(Guid tenantId, Guid channelId, long? beforeId, int take) =>
-        _db.QueryAsync("dbo.sahyog_Chat_GetMessages",
+    private static bool? _historyShare;   // 39_GroupHistoryShare.sql run?
+
+    public async Task<List<MessageDto>> GetMessagesAsync(Guid tenantId, Guid channelId, long? beforeId, int take, Guid? viewerId = null)
+    {
+        if (viewerId is Guid viewer && _historyShare != false)
+        {
+            try
+            {
+                var rows = await _db.QueryAsync("dbo.sahyog_Chat_GetMessagesFor",
+                    p => p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", viewer)
+                          .With("@BeforeId", beforeId).With("@Take", take),
+                    MapMessage);
+                _historyShare = true;
+                return rows;
+            }
+            catch (SqlException ex) when (ex.Number == 2812) { _historyShare = false; }
+        }
+        return await _db.QueryAsync("dbo.sahyog_Chat_GetMessages",
             p => p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@BeforeId", beforeId).With("@Take", take),
             MapMessage);
+    }
 
     public async Task<SendResultDto> SendMessageAsync(SendMessageRequest request)
     {
@@ -242,13 +266,28 @@ public sealed class ChatService : IChatService
         catch (SqlException ex) when (ex.Number == 2812) { _readReceipts = false; return new(); }
     }
 
-    public Task<List<AttachmentDto>> GetRecentFilesAsync(Guid tenantId, Guid channelId, int take = 5) =>
-        _db.QueryAsync("dbo.sahyog_Chat_GetRecentFiles", p => p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@Take", take),
-            r =>
+    public async Task<List<AttachmentDto>> GetRecentFilesAsync(Guid tenantId, Guid channelId, int take = 5, Guid? viewerId = null)
+    {
+        if (viewerId is Guid viewer && _historyShare != false)
+        {
+            try
             {
-                var id = r.G("AttachmentId");
-                return new AttachmentDto(id, r.S("FileName"), r.S("ContentType"), r.L("SizeBytes"), $"/chat/file/{id}");
-            });
+                var rows = await _db.QueryAsync("dbo.sahyog_Chat_GetRecentFilesFor",
+                    p => p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", viewer).With("@Take", take), MapRecentFile);
+                _historyShare = true;
+                return rows;
+            }
+            catch (SqlException ex) when (ex.Number == 2812) { _historyShare = false; }
+        }
+        return await _db.QueryAsync("dbo.sahyog_Chat_GetRecentFiles",
+            p => p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@Take", take), MapRecentFile);
+    }
+
+    private static AttachmentDto MapRecentFile(SqlDataReader r)
+    {
+        var id = r.G("AttachmentId");
+        return new AttachmentDto(id, r.S("FileName"), r.S("ContentType"), r.L("SizeBytes"), $"/chat/file/{id}");
+    }
 
     public Task<AttachmentFileDto?> GetAttachmentAsync(Guid tenantId, Guid attachmentId, Guid userId) =>
         _db.QueryFirstAsync("dbo.sahyog_Chat_GetAttachment",
@@ -298,20 +337,35 @@ public sealed class ChatService : IChatService
         return channel!.Value is Guid g ? g : null;
     }
 
-    public async Task<(int Status, List<Guid> Added)> AddMembersAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, IEnumerable<Guid> memberIds)
+    public async Task<(int Status, List<Guid> Added)> AddMembersAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, IEnumerable<Guid> memberIds,
+        DateTime? historyFromUtc = null, bool shareFiles = true)
     {
+        var ids = string.Join(",", memberIds);
+        var limited = historyFromUtc is not null || !shareFiles;
         try
+        {
+            return await Add(limited);
+        }
+        catch (SqlException ex) when (ex.Number == 2812) { return (9, new()); }
+        catch (SqlException ex) when (limited && ex.Number is 8144 or 201)
+        {
+            // the database doesn't take the history choice yet (39_GroupHistoryShare.sql not run): add them anyway
+            var (status, added) = await Add(false);
+            return (status == 0 ? 8 : status, added);
+        }
+
+        async Task<(int, List<Guid>)> Add(bool withChoice)
         {
             SqlParameter? result = null;
             var added = await _db.QueryAsync("dbo.sahyog_Chat_AddMembers", p =>
             {
                 p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", userId).With("@IsAdmin", isAdmin)
-                 .AddText("@MemberIds", string.Join(",", memberIds), -1);
+                 .AddText("@MemberIds", ids, -1);
+                if (withChoice) p.AddDateTime2("@HistoryFromUtc", historyFromUtc).With("@ShareFiles", shareFiles);
                 result = p.AddOutput("@Result", SqlDbType.Int);
             }, r => r.G("UserId"));
             return (result!.OutInt(), added);
         }
-        catch (SqlException ex) when (ex.Number == 2812) { return (9, new()); }
     }
 
     public async Task<int> RemoveMemberAsync(Guid tenantId, Guid channelId, Guid userId, bool isAdmin, Guid memberId)
@@ -330,20 +384,24 @@ public sealed class ChatService : IChatService
         catch (SqlException ex) when (ex.Number == 2812) { return 9; }
     }
 
-    public async Task<int?> CopyHistoryAsync(Guid tenantId, Guid fromChannelId, Guid toChannelId, Guid userId, DateTime? sinceUtc)
+    public async Task<int?> CopyHistoryAsync(Guid tenantId, Guid fromChannelId, Guid toChannelId, Guid userId, DateTime? sinceUtc, bool shareFiles = true)
     {
-        try
+        try { return await Copy(!shareFiles); }
+        catch (SqlException ex) when (ex.Number == 2812) { return null; }
+        catch (SqlException ex) when (!shareFiles && ex.Number is 8144 or 201) { return -2; }   // 39_GroupHistoryShare.sql not run yet
+
+        async Task<int?> Copy(bool textOnly)
         {
             SqlParameter? result = null;
             var rows = await _db.QueryAsync("dbo.sahyog_Chat_CopyHistory", p =>
             {
                 p.With("@TenantId", tenantId).With("@FromChannelId", fromChannelId).With("@ToChannelId", toChannelId)
                  .With("@UserId", userId).AddDateTime2("@SinceUtc", sinceUtc);
+                if (textOnly) p.With("@ShareFiles", false);
                 result = p.AddOutput("@Result", SqlDbType.Int);
             }, r => r.I("Copied"));
             return result!.OutInt() == 0 ? rows.FirstOrDefault() : -1;
         }
-        catch (SqlException ex) when (ex.Number == 2812) { return null; }
     }
 
     public async Task<(bool Deleted, List<string> Files)> DeleteDirectAsync(Guid tenantId, Guid channelId, Guid userId)

@@ -41,13 +41,15 @@
         <div hidden data-toast="Run database/23_CallsAndFiles.sql (or 99_ApplyAllUpdates.sql) to see your call history here." data-toast-kind="warn" data-toast-title="One database step left"></div>
     }
 
-    <div class="sn-grid-4">
-        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(22,163,74,.12);color:#15803d"><i class="fa fa-phone"></i></span><div><div class="sn-eyebrow">Calls · 30 days</div><div class="sn-stat-val">@recent.Count</div></div></div>
-        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(220,38,38,.12);color:#dc2626"><i class="fa fa-phone" style="transform:rotate(135deg)"></i></span><div><div class="sn-eyebrow">Missed</div><div class="sn-stat-val">@missed</div></div></div>
-        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(14,165,233,.12);color:#0284c7"><i class="fa fa-clock-o"></i></span><div><div class="sn-eyebrow">Talk time</div><div class="sn-stat-val">@Talk(talkSec)</div></div></div>
-        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(124,58,237,.12);color:#6d28d9"><i class="fa fa-users"></i></span><div><div class="sn-eyebrow">People called</div><div class="sn-stat-val">@people</div></div></div>
-    </div>
-
+    @* the four totals sit above the call list only; the Team panel runs the full height beside them *@
+    <div class="sn-calls-split">
+    <div class="sn-calls-left">
+        <div class="sn-grid-4">
+            <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(22,163,74,.12);color:#15803d"><i class="fa fa-phone"></i></span><div><div class="sn-eyebrow">Calls · 30 days</div><div class="sn-stat-val">@recent.Count</div></div></div>
+            <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(220,38,38,.12);color:#dc2626"><i class="fa fa-phone" style="transform:rotate(135deg)"></i></span><div><div class="sn-eyebrow">Missed</div><div class="sn-stat-val">@missed</div></div></div>
+            <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(14,165,233,.12);color:#0284c7"><i class="fa fa-clock-o"></i></span><div><div class="sn-eyebrow">Talk time</div><div class="sn-stat-val">@Talk(talkSec)</div></div></div>
+            <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(124,58,237,.12);color:#6d28d9"><i class="fa fa-users"></i></span><div><div class="sn-eyebrow">People called</div><div class="sn-stat-val">@people</div></div></div>
+        </div>
     <section class="sn-hist glass" id="callHist" data-delete-url="/calls/delete" data-noun="call" data-nouns="calls">
         <div class="sn-hist-bar">
             <tab-control id="callTabs" height="44px" font-size="13.5px" font-weight="600" active-font-weight="600" transition-duration=".38s"
@@ -128,6 +130,12 @@
             <div class="sn-hist-none" hidden>Nothing matches. Try another tab or name.</div>
         </div>
     </section>
+
+    </div>
+
+    @* ---- Team: everyone you can call, like the Team list in Chat. Calls start with sound only; turn video on in the call. ---- *@
+    <partial name="_TeamPanel" model="@(new TeamPanelVm { Team = Model.Team, Pinned = Model.Pinned, Titles = Model.Titles })" />
+    </div>
 </main>
 
 @section Scripts {

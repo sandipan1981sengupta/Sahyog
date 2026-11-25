@@ -257,7 +257,7 @@
                         <modern-input id="mEmail" name="NewMember.Email" label="Email" mandatory="true" value="@m.Email" max-length="200" placeholder="name@company.com" label-font-size="13.5px"></modern-input>
                         <div class="sn-email-hint" id="mEmailHint" hidden aria-live="polite"></div>
                     </div>
-                    <modern-checkbox id="mAdmin" name="NewMember.MakeAdmin" label="Workspace admin" desc-text="Can add, edit and remove people" is-toggle-button="true" checked="@m.MakeAdmin" label-font-size="13.5px"></modern-checkbox>
+                    <modern-checkbox id="mAdmin" name="NewMember.MakeAdmin" label="Make this person an admin too" desc-text="Off: a normal team member (chat, calls, meetings, files). On: they can also add, edit and remove people and manage groups, like you." is-toggle-button="true" on-text="YES" off-text="NO" checked="@m.MakeAdmin" label-font-size="13.5px"></modern-checkbox>
                     @if (Model.CanEmail)
                     {
                         <modern-checkbox id="mInvite" name="NewMember.SendInvite" label="Email them an invite" desc-text="They get a link to set their own password" is-toggle-button="true" checked="@m.SendInvite" label-font-size="13.5px"></modern-checkbox>
@@ -300,7 +300,7 @@
                         <div class="sn-email-hint" id="eEmailHint" hidden aria-live="polite"></div>
                     </div>
                     <div id="eAdminWrap">
-                        <modern-checkbox id="eAdmin" name="makeAdmin" label="Workspace admin" desc-text="Can add, edit and remove people" is-toggle-button="true" label-font-size="13.5px"></modern-checkbox>
+                        <modern-checkbox id="eAdmin" name="makeAdmin" label="Admin of this workspace" desc-text="Off: a normal team member. On: they can also add, edit and remove people and manage groups." is-toggle-button="true" on-text="YES" off-text="NO" label-font-size="13.5px"></modern-checkbox>
                     </div>
                     <span class="sn-hint" id="eSelfNote" hidden><i class="fa fa-info-circle" aria-hidden="true"></i> You're an admin. To hand over, make someone else an admin; they can then change your role.</span>
                 </div>

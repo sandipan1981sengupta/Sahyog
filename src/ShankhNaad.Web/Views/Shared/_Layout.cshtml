@@ -158,6 +158,8 @@
                     <rail-item key="files" label="Files" icon="folder-open" href="/files" active="@(section == "files")"></rail-item>
                     @* everyone in the workspace can see the team; only admins can change it (see TeamController) *@
                     <rail-item key="team" label="Team" icon="users" href="/team" active="@(section == "team")"></rail-item>
+                    @* who reports to whom, departments; admins edit it and import a CSV (OrgController) *@
+                    <rail-item key="org" label="Org" icon="sitemap" href="/org" active="@(section == "org")"></rail-item>
                 }
                 @if (isSuperAdmin)
                 {

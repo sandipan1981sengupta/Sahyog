@@ -263,6 +263,8 @@ public sealed class RoomViewModel
     public required int MaxParticipants { get; init; }
     public required string LeaveUrl { get; init; }
     /// <summary>A call between two people from Chat: it ends for both when one hangs up or declines.</summary>
+    /// <summary>Calls start with the camera off (sound only); people turn video on when they want. Scheduled meetings start with video.</summary>
+    public bool StartCameraOff { get; init; }
     public bool OneToOne { get; init; }
     /// <summary>"Sandy isn't online right now…" when nobody could be rung.</summary>
     public string? OfflineNote { get; init; }
@@ -410,6 +412,12 @@ public sealed class CallsViewModel
     /// <summary>23_CallsAndFiles.sql hasn't been run yet.</summary>
     public bool NeedsSql { get; init; }
     public required HashSet<string> Online { get; init; }
+    /// <summary>Everyone else in the workspace, for the Team panel (call or chat in one click).</summary>
+    public List<PersonVm> Team { get; init; } = new();
+    /// <summary>Ids of the people you pinned, in the order you pinned them.</summary>
+    public List<string> Pinned { get; init; } = new();
+    /// <summary>Job titles from the Org page (user id → title).</summary>
+    public Dictionary<string, string> Titles { get; init; } = new();
 }
 
 public sealed class FilesViewModel
@@ -418,6 +426,8 @@ public sealed class FilesViewModel
     /// <summary>23_CallsAndFiles.sql hasn't been run yet.</summary>
     public bool NeedsSql { get; init; }
     public required HashSet<string> Online { get; init; }
+    /// <summary>The Team panel: share a file with someone straight from here.</summary>
+    public TeamPanelVm TeamPanel { get; init; } = new();
 }
 
 /// <summary>One person on a meeting's details: the host, a team member or a guest, with their answer.</summary>
@@ -474,4 +484,19 @@ public sealed class MeetingRespondVm
     public bool Saved { get; init; }
     public string? Error { get; init; }
     public string? JoinUrl { get; init; }
+}
+
+/// <summary>
+/// The Team panel on the Calls and Files pages (Views/Shared/_TeamPanel.cshtml): search, pins,
+/// and for each person Call / Chat (Calls) or Share / Chat (Files), plus a ⋯ menu (wwwroot/js/people-actions.js).
+/// </summary>
+public sealed class TeamPanelVm
+{
+    public List<PersonVm> Team { get; init; } = new();
+    /// <summary>Ids of the people you pinned, in pin order.</summary>
+    public List<string> Pinned { get; init; } = new();
+    /// <summary>Job titles from the Org page (user id → title).</summary>
+    public Dictionary<string, string> Titles { get; init; } = new();
+    /// <summary>Files page: a Share button on each person, and files can be dropped on a name.</summary>
+    public bool Share { get; init; }
 }

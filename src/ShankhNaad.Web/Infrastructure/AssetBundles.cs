@@ -83,6 +83,7 @@ public sealed class AssetBundles
             "js/meeting-alerts.js", "js/location.js",
             "js/shankhnaad.js",
             "js/people-picker.js",
+            "js/people-actions.js",
             "js/pwa-install.js",
         },
         // _AuthLayout (sign-in, forgot / set password, guest join, setup)

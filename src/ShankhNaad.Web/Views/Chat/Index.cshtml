@@ -50,7 +50,8 @@
                        show-import="false" show-export="false" show-save="false" show-submit="false" show-print="false">
             @if (c.IsDirect)
             {
-                <action-btn text="Add people" icon-css="bi bi-person-plus-fill" icon-color="#7C3AED" tooltip="Make a group with @c.Name and more people"
+                @* a one-to-one chat never grows: adding people always makes a NEW group chat *@
+                <action-btn text="@($"Group with {c.Name}")" icon-css="bi bi-people-fill" icon-color="#7C3AED" tooltip="Start a new group chat with @c.Name and more people. This chat stays as it is."
                             on-click="snAddPeople()"></action-btn>
             }
             @if (!c.IsDirect && Model.CanManageMembers)
@@ -60,10 +61,15 @@
             }
             <action-btn text="@(c.IsPinned ? "Unpin" : "Pin")" icon-css="bi bi-pin-angle-fill" icon-color="#D97706" tooltip="Keep this chat at the top of your list"
                         on-click="snTogglePin()"></action-btn>
-            <action-btn text="Call" icon-css="bi bi-telephone-fill" icon-color="#1D4ED8" tooltip="Start a call with everyone here"
-                        on-click="document.getElementById('meetNowForm').submit()"></action-btn>
-            <action-btn text="Meet now" icon-css="bi bi-camera-video-fill" icon-color="#16A34A" tooltip="Start a video meeting here"
-                        on-click="document.getElementById('meetNowForm').submit()" has-separator-after="true"></action-btn>
+            <action-btn text="Call" icon-css="bi bi-telephone-fill" icon-color="#16A34A" tooltip="@(c.IsDirect ? "Call " + c.Name : "Call everyone here"): camera off, turn it on any time"
+                        on-click="snMeetNow(false)"></action-btn>
+            <action-btn text="Video call" icon-css="bi bi-camera-video-fill" icon-color="#16A34A" tooltip="@(c.IsDirect ? "Video call " + c.Name : "Video call everyone here"): starts with your camera on"
+                        on-click="snMeetNow(true)" has-separator-after="@(!c.IsDirect)"></action-btn>
+            @if (c.IsDirect && c.DirectWith is not null)
+            {
+                <action-btn text="Org chart" icon-css="bi bi-diagram-3-fill" icon-color="#7C3AED" tooltip="Where @c.Name sits in the organization"
+                            on-click="SN.orgCard('@c.DirectWith.Id')" has-separator-after="true"></action-btn>
+            }
             <action-btn text="Files" icon-css="bi bi-paperclip" icon-color="#1D4ED8" tooltip="Attach a file"
                         on-click="document.getElementById('attachBtn').click()"></action-btn>
             <action-btn text="Details" icon-css="bi bi-info-circle-fill" icon-color="#BE185D" tooltip="Show or hide details"
@@ -99,18 +105,21 @@
                 @if (p is not null)
                 {
                     <button type="button" class="sn-team-btn ping" data-ping="@p.Id" data-name="@p.Name" title="Ping @p.Name" aria-label="Ping @p.Name"><i class="fa fa-bell" aria-hidden="true"></i></button>
-                    <form method="post" asp-antiforgery="true" action="/meetings/instant">
-                        <input type="hidden" name="userId" value="@p.Id" />
-                        <button type="submit" class="sn-team-btn call" title="Video call @p.Name" aria-label="Video call @p.Name"><i class="fa fa-video-camera" aria-hidden="true"></i></button>
-                    </form>
+                    <button type="button" class="sn-team-btn call" data-call="@p.Id" data-label="Call" data-sub="Camera off · turn it on any time" title="Call @p.Name" aria-label="Call @p.Name"><i class="fa fa-phone" aria-hidden="true"></i></button>
+                    <button type="button" class="sn-team-btn video" data-call="@p.Id" data-video="1" data-label="Video call" data-sub="Starts with your camera on" title="Video call @p.Name" aria-label="Video call @p.Name"><i class="fa fa-video-camera" aria-hidden="true"></i></button>
+                    <button type="button" class="sn-team-btn org" data-org="@p.Id" data-label="Organization chart" data-sub="Who @p.Name reports to and works with" title="Organization chart: @p.Name" aria-label="Organization chart for @p.Name"><i class="fa fa-sitemap" aria-hidden="true"></i></button>
+                    <button type="button" class="sn-team-btn grp" data-group-from="@ch.Id" data-name="@p.Name" data-sub="A new group chat with @p.Name" title="Create a group with @p.Name" aria-label="Create a group with @p.Name"><i class="fa fa-users" aria-hidden="true"></i></button>
                     <button type="button" class="sn-team-btn del" data-del-chat="@ch.Id" data-name="@p.Name" title="Delete your chat with @p.Name" aria-label="Delete your chat with @p.Name"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
                 }
                 else
                 {
-                    <form method="post" asp-antiforgery="true" action="/meetings/instant">
-                        <input type="hidden" name="channelId" value="@ch.Id" />
-                        <button type="submit" class="sn-team-btn call" title="Video call everyone in @ch.Name" aria-label="Video call everyone in @ch.Name"><i class="fa fa-video-camera" aria-hidden="true"></i></button>
-                    </form>
+                    <button type="button" class="sn-team-btn call" data-call-channel="@ch.Id" data-label="Call everyone" data-sub="Camera off · turn it on any time" title="Call everyone in @ch.Name" aria-label="Call everyone in @ch.Name"><i class="fa fa-phone" aria-hidden="true"></i></button>
+                    <button type="button" class="sn-team-btn video" data-call-channel="@ch.Id" data-video="1" data-label="Video call everyone" data-sub="Starts with your camera on" title="Video call everyone in @ch.Name" aria-label="Video call everyone in @ch.Name"><i class="fa fa-video-camera" aria-hidden="true"></i></button>
+                    @if (User.IsInRole(AppRoles.TenantAdmin) && !ch.IsEveryone)
+                    {
+                        @* admins can delete a group (not the workspace-wide one) *@
+                        <button type="button" class="sn-team-btn del" data-del-group="@ch.Id" data-name="@ch.Name" data-label="Delete group" title="Delete the group @ch.Name" aria-label="Delete the group @ch.Name"><i class="fa fa-trash-o" aria-hidden="true"></i></button>
+                    }
                 }
             </span>
         </div>
@@ -173,10 +182,9 @@
                     <form method="post" asp-antiforgery="true" action="/chat/direct/@t.Id">
                         <button type="submit" class="sn-team-btn chat" title="Message @t.Name" aria-label="Message @t.Name"><i class="fa fa-comment" aria-hidden="true"></i></button>
                     </form>
-                    <form method="post" asp-antiforgery="true" action="/meetings/instant">
-                        <input type="hidden" name="userId" value="@t.Id" />
-                        <button type="submit" class="sn-team-btn call" title="Video call @t.Name" aria-label="Video call @t.Name"><i class="fa fa-video-camera" aria-hidden="true"></i></button>
-                    </form>
+                    <button type="button" class="sn-team-btn call" data-call="@t.Id" data-label="Call" data-sub="Camera off · turn it on any time" title="Call @t.Name" aria-label="Call @t.Name"><i class="fa fa-phone" aria-hidden="true"></i></button>
+                    <button type="button" class="sn-team-btn video" data-call="@t.Id" data-video="1" data-label="Video call" data-sub="Starts with your camera on" title="Video call @t.Name" aria-label="Video call @t.Name"><i class="fa fa-video-camera" aria-hidden="true"></i></button>
+                    <button type="button" class="sn-team-btn org" data-org="@t.Id" data-label="Organization chart" data-sub="Who @t.Name reports to and works with" title="Organization chart: @t.Name" aria-label="Organization chart for @t.Name"><i class="fa fa-sitemap" aria-hidden="true"></i></button>
                 </span>
             </div>
         }
@@ -207,6 +215,7 @@
     {
         <form method="post" asp-antiforgery="true" action="/meetings/instant" id="meetNowForm" hidden>
             <input type="hidden" name="channelId" value="@c.Id" />
+            <input type="hidden" name="video" value="false" id="meetNowVideo" />
         </form>
 
         <section class="messages" id="messages" aria-label="Messages" aria-live="polite">
@@ -321,10 +330,11 @@
 <dialog id="newChannelDialog" class="sn-dialog glass-strong">
     <form method="post" asp-antiforgery="true" action="/chat/groups" id="newChannelForm">
         <div class="sn-dlg-head">
-            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-users" aria-hidden="true"></i></span><div><h2>New group</h2><p>Only the people you pick (and you) can see it.</p></div></div>
+            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-users" aria-hidden="true"></i></span><div><h2><span id="ngTitle">New group chat</span> <span class="sn-dlg-tag new">New chat</span></h2><p id="ngSub">Only the people you pick (and you) can see it.</p></div></div>
             <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
         </div>
         <div class="sn-dlg-body">
+            <div class="sn-dlg-banner new" id="ngBanner" role="note"><i class="fa fa-info-circle" aria-hidden="true"></i><span><b>This makes a brand-new group chat.</b> It appears at the top of your Chats list.</span></div>
             <modern-group-box title="Group | details" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
                 <div style="display:flex;flex-direction:column;gap:14px">
                     <modern-input id="channelName" name="name" label="Group name" mandatory="true" placeholder="Project Alpha" max-length="60" label-font-size="13.5px"></modern-input>
@@ -338,7 +348,7 @@
                     <input type="hidden" name="fromChat" id="fromChat" value="@c.Id" disabled />
                     <div class="sn-hs-head">
                         <span class="sn-hs-ic"><i class="fa fa-history" aria-hidden="true"></i></span>
-                        <div><b>Share your chat history with @c.Name?</b><small>Copies your one-to-one messages (and files, without using more storage) into the new group, so everyone can read them. Your chat with @c.Name stays as it is.</small></div>
+                        <div><b>Share your chat history with @c.Name?</b><small>Copies your one-to-one messages (and, if you like, files, without using more storage) into the new group, so everyone can read them. Your chat with @c.Name stays as it is.</small></div>
                     </div>
                     <div class="sn-hs-opts" role="radiogroup" aria-label="Chat history to share">
                         <label><input type="radio" name="history" value="none" checked disabled /><span>Don't share</span></label>
@@ -346,6 +356,12 @@
                         <label><input type="radio" name="history" value="7" disabled /><span>Last 7 days</span></label>
                         <label><input type="radio" name="history" value="all" disabled /><span>All history</span></label>
                     </div>
+                    <label class="sn-hs-files" id="historyFiles">
+                        <input type="checkbox" name="shareFiles" value="true" checked disabled />
+                        <span class="sn-hs-sw" aria-hidden="true"></span>
+                        <span class="sn-hs-ftext"><b>Include shared files</b><small>Files sent in that history come with it. Turn off to share messages only.</small></span>
+                    </label>
+                    <input type="hidden" name="shareFiles" value="false" disabled />
                 </div>
             }
             @{
@@ -362,7 +378,7 @@
             <span></span>
             <span style="display:flex;gap:10px">
                 <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Create group</button>
+                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-plus" aria-hidden="true"></i> Create new group</button>
             </span>
         </div>
     </form>
@@ -374,18 +390,40 @@
     <dialog id="addMembersDialog" class="sn-dialog glass-strong">
         <form method="post" asp-antiforgery="true" action="/chat/@c.Id/members/add" id="addMembersForm">
             <div class="sn-dlg-head">
-                <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-user-plus" aria-hidden="true"></i></span><div><h2>Add people to @c.Name</h2><p>They'll see the group's whole history, messages and files.</p></div></div>
+                <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-user-plus" aria-hidden="true"></i></span><div><h2>Add people to @c.Name <span class="sn-dlg-tag here">This chat</span></h2><p>They join this group: same chat, same history.</p></div></div>
                 <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
             </div>
             <div class="sn-dlg-body">
+                <div class="sn-dlg-banner here" role="note"><i class="fa fa-info-circle" aria-hidden="true"></i><span><b>No new chat is made.</b> The people you pick join <b>@c.Name</b>, and everyone in it sees who was added.</span></div>
                 @{ var addPicker = new PeoplePickerVm { Id = "addPeople", People = notIn, EmptyText = "Everyone in the workspace is already in this group." }; }
                 <partial name="_PeoplePicker" model="addPicker" />
+                @if (notIn.Count > 0)
+                {
+                    <div class="sn-hs" id="addHistory">
+                        <div class="sn-hs-head">
+                            <span class="sn-hs-ic"><i class="fa fa-history" aria-hidden="true"></i></span>
+                            <div><b>Share the group's chat history?</b><small>Choose what the people you add can read from before they joined. Everyone already in the group keeps seeing everything.</small></div>
+                        </div>
+                        <div class="sn-hs-opts" role="radiogroup" aria-label="Group history to share">
+                            <label><input type="radio" name="history" value="none" /><span>Don't share</span></label>
+                            <label><input type="radio" name="history" value="1" /><span>Last day</span></label>
+                            <label><input type="radio" name="history" value="7" /><span>Last 7 days</span></label>
+                            <label><input type="radio" name="history" value="all" checked /><span>All history</span></label>
+                        </div>
+                    <label class="sn-hs-files" id="addFiles">
+                        <input type="checkbox" name="shareFiles" value="true" checked />
+                        <span class="sn-hs-sw" aria-hidden="true"></span>
+                        <span class="sn-hs-ftext"><b>Include shared files</b><small>Files sent in the group before they joined. Turn off to share messages only.</small></span>
+                    </label>
+                    <input type="hidden" name="shareFiles" value="false" />
+                    </div>
+                }
             </div>
             <div class="sn-dlg-foot">
                 <span></span>
                 <span style="display:flex;gap:10px">
                     <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                    <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-user-plus" aria-hidden="true"></i> Add</button>
+                    <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-user-plus" aria-hidden="true"></i> Add to @c.Name</button>
                 </span>
             </div>
         </form>
@@ -542,6 +580,17 @@
             });
         });
 
+        $(document).on("click", "[data-del-group]", function (e) {
+            e.preventDefault(); e.stopPropagation();
+            var name = this.getAttribute("data-name");
+            SN.confirmPost("/chat/" + this.getAttribute("data-del-group") + "/delete-channel", {
+                title: "Delete group",
+                text: "Delete \u201C" + name + "\u201D for everyone in it? All its messages and shared files are removed. This cannot be undone.",
+                confirmText: "Delete group",
+                danger: true
+            });
+        });
+
         // ---- New group ----
         var newPicker = null;
         (function () {
@@ -553,12 +602,30 @@
                 if (!share) return;
                 share.querySelectorAll(".sn-hs-opts label").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); });
             }
+            var ngFrom = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(c is { IsDirect: true } ? c.Name : ""));
+            function ngText(fromChat) {
+                var b = document.querySelector("#ngBanner span"), sub = document.getElementById("ngSub");
+                if (!b) return;
+                if (fromChat && ngFrom) {
+                    b.innerHTML = "<b>This makes a brand-new chat.</b> Your chat with " + $("<i>").text(ngFrom).html() + " stays as it is, just for the two of you.";
+                    sub.textContent = "Started from your chat with " + ngFrom;
+                } else {
+                    b.innerHTML = "<b>This makes a brand-new group chat.</b> It appears at the top of your Chats list.";
+                    sub.textContent = "Only the people you pick (and you) can see it.";
+                }
+            }
             function shareOn(on) {
+                ngText(on);
                 if (!share) return;
                 share.hidden = !on;
                 share.querySelectorAll("input").forEach(function (i) { i.disabled = !on; });
-                if (!on) share.querySelector('input[value="none"]').checked = true;
+                if (!on) {
+                    share.querySelector('input[value="none"]').checked = true;
+                    var f = share.querySelector('.sn-hs-files input[type="checkbox"]');
+                    if (f) f.checked = true;
+                }
                 paintShare();
+                snPaintHistory(share);
             }
             if (share) share.addEventListener("change", paintShare);
             form.addEventListener("submit", function (e) {
@@ -568,7 +635,37 @@
             // fresh each time: search cleared, list back to "All", history option only when opened from "Add people"
             document.getElementById("newChannelDialog").addEventListener("close", function () { if (newPicker) newPicker.reset(); shareOn(false); });
             window.snShareHistory = shareOn;
-            if (new URLSearchParams(location.search).get("new") === "group") setTimeout(function () { SN.open("newChannelDialog"); }, 350);
+            var snNew = new URLSearchParams(location.search).get("new");
+            if (snNew === "group") setTimeout(function () { SN.open("newChannelDialog"); }, 350);
+            // "Create group" from a person's ⋯ menu lands here: New group with them ticked and the history choice
+            if (snNew === "group-with") {
+                history.replaceState(null, "", location.pathname);
+                setTimeout(function () { if (typeof snAddPeople === "function") snAddPeople(); }, 350);
+            }
+        })();
+
+        // ---- history choice (new group from a chat, and Add people): chips light up; "Include files" only matters when some history is shared ----
+        function snPaintHistory(box) {
+            if (!box) return;
+            box.querySelectorAll(".sn-hs-opts label").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); });
+            var none = !!box.querySelector('.sn-hs-opts input[value="none"]:checked');
+            var files = box.querySelector(".sn-hs-files");
+            if (files) files.classList.toggle("off", none);
+        }
+        ["historyShare", "addHistory"].forEach(function (id) {
+            var box = document.getElementById(id);
+            if (!box) return;
+            box.addEventListener("change", function () { snPaintHistory(box); });
+            snPaintHistory(box);
+        });
+        (function () {
+            var dlg = document.getElementById("addMembersDialog"), box = document.getElementById("addHistory");
+            if (!dlg || !box) return;
+            dlg.addEventListener("close", function () {
+                box.querySelector('input[value="all"]').checked = true;
+                box.querySelector('.sn-hs-files input[type="checkbox"]').checked = true;
+                snPaintHistory(box);
+            });
         })();
 
         // ---- Add people to this group ----
@@ -606,7 +703,21 @@
             });
         })();
 
+        // ---- ⋯ → "Create group" on a person: in their chat now, open New group; otherwise go to their chat and open it there ----
+        $(document).on("click", "[data-group-from]", function (e) {
+            e.preventDefault(); e.stopPropagation();
+            var id = this.getAttribute("data-group-from");
+            if (id === "@(c is { IsDirect: true } ? c.Id.ToString() : "")") { snAddPeople(); return; }
+            location.href = "/chat/" + id + "?new=group-with";
+        });
+
         // ---- Add people (in a one-to-one chat): New group with this person already ticked ----
+        // header Call / Video call: same chat, camera off or on
+        function snMeetNow(video) {
+            var f = document.getElementById("meetNowForm"); if (!f) return;
+            document.getElementById("meetNowVideo").value = video ? "true" : "false";
+            f.submit();
+        }
         function snAddPeople() {
             if (newPicker) newPicker.pickOnly(["@(c?.DirectWith?.Id)"]);
             if (window.snShareHistory) window.snShareHistory(true);
@@ -663,7 +774,7 @@
     {
         <script>
             function snDeleteChannel() {
-                Sahyog.toast("\u201C@Html.Raw(Js(c.Name))\u201D is the group your whole workspace is in, so it can't be deleted. You can rename it with Edit.", { kind: "info", title: "Can't delete" });
+                Sahyog.toast("\u201C@(Html.Raw(Js(c.Name)))\u201D is the group your whole workspace is in, so it can't be deleted. You can rename it with Edit.", { kind: "info", title: "Can't delete" });
             }
         </script>
     }
@@ -673,7 +784,7 @@
             function snDeleteChannel() {
                 SN.confirmPost("/chat/@c.Id/delete-channel", {
                     title: "Delete group",
-                    text: "Delete \u201C@Html.Raw(Js(c.Name))\u201D for everyone in it? All its messages and shared files are removed. This cannot be undone.",
+                    text: "Delete \u201C@(Html.Raw(Js(c.Name)))\u201D for everyone in it? All its messages and shared files are removed. This cannot be undone.",
                     confirmText: "Delete group",
                     danger: true
                 });

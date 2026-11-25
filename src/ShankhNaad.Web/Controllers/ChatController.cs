@@ -99,7 +99,7 @@ public sealed partial class ChatController : Controller
                 .OrderByDescending(p => p.Online).ThenBy(p => p.Name)
                 .ToList();
 
-            files = await _chat.GetRecentFilesAsync(tenantId, current.Id);
+            files = await _chat.GetRecentFilesAsync(tenantId, current.Id, viewerId: Me);
 
             if (!current.IsDirect && await _chat.GetChannelAsync(tenantId, current.Id) is ChannelDto info)
             {
@@ -195,7 +195,7 @@ public sealed partial class ChatController : Controller
             other = (await _chat.GetMembersAsync(tenantId, id)).FirstOrDefault(m => m.UserId != Me)?.UserId;
         var page = other is Guid o
             ? await _chat.GetPersonTimelineAsync(tenantId, id, Me, o, null, PageSize + 1)
-            : await _chat.GetMessagesAsync(tenantId, id, null, PageSize + 1);
+            : await _chat.GetMessagesAsync(tenantId, id, null, PageSize + 1, Me);
         Response.Headers.CacheControl = "no-store";
         return Json(new { hasOlder = page.Count > PageSize, messages = page.Take(PageSize).Reverse() });
     }
@@ -211,7 +211,7 @@ public sealed partial class ChatController : Controller
             other = (await _chat.GetMembersAsync(tenantId, id)).FirstOrDefault(m => m.UserId != Me)?.UserId;
         var page = other is Guid o
             ? await _chat.GetPersonTimelineAsync(tenantId, id, Me, o, before, PageSize + 1)
-            : await _chat.GetMessagesAsync(tenantId, id, before, PageSize + 1);
+            : await _chat.GetMessagesAsync(tenantId, id, before, PageSize + 1, Me);
         return Json(new
         {
             hasOlder = page.Count > PageSize,
@@ -223,7 +223,7 @@ public sealed partial class ChatController : Controller
     private Task<List<MessageDto>> PageAsync(Guid tenantId, ChannelVm chat, long? before, int take) =>
         chat.IsDirect && chat.DirectWith is { } p && Guid.TryParse(p.Id, out var otherId)
             ? _chat.GetPersonTimelineAsync(tenantId, chat.Id, Me, otherId, before, take)
-            : _chat.GetMessagesAsync(tenantId, chat.Id, before, take);
+            : _chat.GetMessagesAsync(tenantId, chat.Id, before, take, Me);
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex Spaces();
@@ -238,7 +238,7 @@ public sealed partial class ChatController : Controller
     [HttpPost("channels")]
     [HttpPost("groups")]
     public async Task<IActionResult> CreateChannel(string name, string? description, List<Guid>? members = null,
-        Guid? fromChat = null, string? history = null)
+        Guid? fromChat = null, string? history = null, bool shareFiles = true)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var clean = CleanName(name);
@@ -275,25 +275,38 @@ public sealed partial class ChatController : Controller
         if (fromChat is Guid from && history is "1" or "7" or "all")
         {
             DateTime? since = history == "all" ? null : DateTime.UtcNow.AddDays(-int.Parse(history));
-            var copied = await _chat.CopyHistoryAsync(tenantId, from, channelId, Me, since);
+            var copied = await _chat.CopyHistoryAsync(tenantId, from, channelId, Me, since, shareFiles);
             historyNote = copied switch
             {
                 null => " Chat history wasn't copied: run database/29_GroupMembers.sql first.",
+                -2 => " Chat history wasn't copied: copying without files needs database/39_GroupHistoryShare.sql.",
                 < 0 => " Chat history wasn't copied (that chat isn't yours).",
                 0 => " There were no messages to copy for that period.",
-                _ => $" {copied} earlier message{(copied == 1 ? "" : "s")} copied in."
+                _ => $" {copied} earlier message{(copied == 1 ? "" : "s")} copied in{(shareFiles ? "" : ", without files")}."
             };
         }
         TempData["Message"] = $"\"{clean}\" is ready with {memberIds.Count} people. Only they can see it." + historyNote;
         return RedirectToAction(nameof(Index), new { id = channelId });
     }
 
-    /// <summary>Adds people to a group that already exists (its creator or a workspace admin). They see the whole history.</summary>
+    /// <summary>
+    /// Adds people to a group that already exists (its creator or a workspace admin).
+    /// history: "none" (only new messages), "1" / "7" (days back) or "all"; shareFiles: whether files sent before they joined come too.
+    /// </summary>
     [HttpPost("{id:guid}/members/add")]
-    public async Task<IActionResult> AddMembers(Guid id, List<Guid>? members)
+    public async Task<IActionResult> AddMembers(Guid id, List<Guid>? members, string? history = "all", bool shareFiles = true)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
-        var (status, added) = await _chat.AddMembersAsync(tenantId, id, Me, User.IsInRole(AppRoles.TenantAdmin), members ?? new List<Guid>());
+        DateTime? from = history switch
+        {
+            "none" => DateTime.UtcNow,
+            "1" => DateTime.UtcNow.AddDays(-1),
+            "7" => DateTime.UtcNow.AddDays(-7),
+            _ => null
+        };
+        var (status, added) = await _chat.AddMembersAsync(tenantId, id, Me, User.IsInRole(AppRoles.TenantAdmin), members ?? new List<Guid>(), from, shareFiles);
+        var olderDb = status == 8;
+        if (olderDb) status = 0;
         if (status != 0)
         {
             TempData["Error"] = status switch
@@ -309,7 +322,17 @@ public sealed partial class ChatController : Controller
         await AddConnectionsToGroupAsync(id, added.Select(a => a.ToString()));
         await _hub.Clients.Users(added.Select(a => a.ToString()).ToList())
             .SendAsync("AddedToGroup", User.DisplayName(), group?.Name ?? "a group", $"/chat/{id}");
-        TempData["Message"] = $"Added {added.Count} {(added.Count == 1 ? "person" : "people")}. They can see the group's messages and files.";
+        var who = $"Added {added.Count} {(added.Count == 1 ? "person" : "people")}.";
+        var sees = olderDb
+            ? " They can see the whole history and files: limiting it needs database/39_GroupHistoryShare.sql."
+            : history switch
+            {
+                "none" => " They see only new messages from now on.",
+                "1" => " They see the last day of messages",
+                "7" => " They see the last 7 days of messages",
+                _ => " They see the whole history"
+            } + (history == "none" ? "" : shareFiles ? " and files." : ", without earlier files.");
+        TempData["Message"] = who + sees;
         return RedirectToAction(nameof(Index), new { id });
     }
 

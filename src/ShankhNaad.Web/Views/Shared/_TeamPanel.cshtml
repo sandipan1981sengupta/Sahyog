@@ -1,0 +1,77 @@
+@model TeamPanelVm
+@*
+    The Team panel on the Calls and Files pages: search, pins (saved per person, every device),
+    and for each teammate Call + Chat (Calls) or Share + Chat (Files), plus a ⋯ menu with
+    Share a file, Chat, Call, Video call, Pin and Organization chart (wwwroot/js/people-actions.js).
+*@
+@{
+    var pinIndex = Model.Pinned.Select((id, i) => (id, i)).GroupBy(x => x.id, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => g.First().i, StringComparer.OrdinalIgnoreCase);
+    var pinnedTeam = Model.Team.Where(t => pinIndex.ContainsKey(t.Id)).OrderBy(t => pinIndex[t.Id]).ToList();
+    var restTeam = Model.Team.Where(t => !pinIndex.ContainsKey(t.Id)).ToList();
+}
+@{
+    async Task TeamRow(PersonVm t, bool pinned)
+    {
+        var title = Model.Titles.TryGetValue(t.Id, out var jt) ? jt : null;
+        <div class="@(pinned ? "sn-tp-row pinned" : "sn-tp-row")" data-filter="@t.Name @title" data-id="@t.Id" data-name="@t.Name" data-online="@(t.Online ? "1" : "0")"
+             data-drop="@(Model.Share ? "1" : null)">
+            <span class="avatar av-40 tone-@t.Tone" data-user="@t.Id" data-presence="@t.Id">@t.Initials<i class="dot @(t.Online ? "on" : "")"></i></span>
+            <span class="sn-tp-who">
+                <b class="sn-tp-name ellipsis">@t.Name</b>
+                <small class="ellipsis"><span data-tp-state>@(t.Online ? "Online" : "Offline")</span>@(title is null ? "" : " · " + title)</small>
+            </span>
+            @* pinned: a small pin like in Chat; pin / unpin is in the ⋯ menu (this hidden button does the work) *@
+            <i class="fa fa-thumb-tack sn-tp-mark" aria-hidden="true" title="Pinned"></i>
+            <button type="button" class="sn-tp-pin" data-tp-pin="@t.Id" aria-pressed="@(pinned ? "true" : "false")" hidden
+                    aria-label="@(pinned ? "Unpin " + t.Name : "Pin " + t.Name + " to the top")"></button>
+            @if (Model.Share)
+            {
+                <button type="button" class="sn-hbtn share" data-tp-share title="Share a file with @t.Name" aria-label="Share a file with @t.Name"><i class="fa fa-upload" aria-hidden="true"></i><span>Share</span></button>
+            }
+            else
+            {
+                <button type="button" class="sn-hbtn call" data-call="@t.Id" title="Call @t.Name (camera off; turn it on any time)" aria-label="Call @t.Name"><i class="fa fa-phone" aria-hidden="true"></i><span>Call</span></button>
+            }
+            <button type="button" class="sn-hbtn chat sn-tp-ic" onclick="SN.chatWith('@t.Id')" title="Chat with @t.Name" aria-label="Chat with @t.Name"><i class="fa fa-comment" aria-hidden="true"></i></button>
+            <button type="button" class="sn-tp-more" data-tp-more title="More for @t.Name" aria-label="More for @t.Name"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
+        </div>
+    }
+}
+<aside class="sn-team-pane glass" aria-label="Your team">
+    <div class="sn-tp-head">
+        <b>Team</b><span class="sn-tp-count">@Model.Team.Count</span>
+        <small><i class="sn-tp-dot" aria-hidden="true"></i> @Model.Team.Count(t => t.Online) online</small>
+    </div>
+    @if (Model.Team.Count > 0)
+    {
+        <label class="search sn-tp-search">
+            <i class="fa fa-search" aria-hidden="true"></i>
+            <input type="search" placeholder="Search people" aria-label="Search people" autocomplete="off" data-team-search />
+        </label>
+    }
+    <div class="sn-tp-list" id="tpList">
+        <span class="side-label sn-tp-sec" id="tpPinnedHead" @(pinnedTeam.Count == 0 ? "hidden" : "")><i class="fa fa-thumb-tack" aria-hidden="true"></i> Pinned</span>
+        <div id="tpPinned">
+            @foreach (var t in pinnedTeam) { await TeamRow(t, true); }
+        </div>
+        <hr class="sn-pin-divider sn-tp-divider" id="tpDivider" @(pinnedTeam.Count == 0 ? "hidden" : "") />
+        <span class="side-label sn-tp-sec" id="tpRestHead" @(pinnedTeam.Count == 0 ? "hidden" : "")>Everyone</span>
+        <div id="tpRest">
+            @foreach (var t in restTeam) { await TeamRow(t, false); }
+        </div>
+        @if (Model.Team.Count == 0)
+        {
+            <p class="sn-tp-empty">No one else is in this workspace yet. Add people on the Team page.</p>
+        }
+        <p class="sn-tp-empty" data-team-none hidden>No one matches.</p>
+    </div>
+    @if (Model.Share)
+    {
+        <p class="sn-tp-note"><i class="fa fa-upload" aria-hidden="true"></i> Drop a file on someone's name to send it to them. It goes into your chat with them.</p>
+    }
+    else
+    {
+        <p class="sn-tp-note"><i class="fa fa-microphone" aria-hidden="true"></i> Calls start with sound only. Press <b>Start video</b> in the call to turn your camera on, or pick <b>Video call</b> in the ⋯ menu.</p>
+    }
+</aside>

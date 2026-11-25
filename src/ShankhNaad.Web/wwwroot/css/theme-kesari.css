@@ -299,6 +299,7 @@ html[data-skin="kesari"] .sn-kind-opt input:focus-visible + span { outline: 2px 
 html[data-skin="kesari"] .sn-pick-tick { background: linear-gradient(135deg, #FF8A1F 0%, #F97316 46%, #15803D 54%, #138808 100%); }
 html[data-skin="kesari"] .sn-pick:has(input:checked) { border-color: #C2410C; background: rgba(194, 65, 12, .08); }
 html[data-skin="kesari"] .sn-pick:has(input:focus-visible) { outline: 2px solid #C2410C; }
+html[data-skin="kesari"] .sn-team-btn.grp { background: rgba(194, 65, 12, .1); color: #9A3412; }
 html[data-skin="kesari"] .group-avatar.everyone { background: linear-gradient(135deg, rgba(234, 88, 12, .2), rgba(22, 163, 74, .2)) !important; color: #C2410C !important; }
 html[data-skin="kesari"] .msg-from { background: rgba(194, 65, 12, .1); color: #9A3412; }
 html[data-skin="kesari"] .sn-photo-row { background: rgba(194, 65, 12, .06); border: 1px dashed rgba(194, 65, 12, .3); }
@@ -380,6 +381,9 @@ html[data-skin="kesari"] .sn-hs { border: 1px solid rgba(245, 158, 11, .3); back
 html[data-skin="kesari"] .sn-hs-ic { background: linear-gradient(135deg, #F59E0B, #EA580C); }
 html[data-skin="kesari"] .sn-hs-opts input:checked + span { background: linear-gradient(135deg, #F59E0B, #EA580C); box-shadow: 0 6px 14px -8px rgba(245, 158, 11, .9); }
 html[data-skin="kesari"] .sn-hs-opts input:focus-visible + span { outline: 2px solid #F59E0B; }
+html[data-skin="kesari"] .sn-hs-files { border: 1px solid rgba(245, 158, 11, .2); }
+html[data-skin="kesari"] .sn-hs-files input:checked + .sn-hs-sw { background: linear-gradient(135deg, #F59E0B, #EA580C); }
+html[data-skin="kesari"] .sn-hs-files input:focus-visible + .sn-hs-sw { outline: 2px solid #F59E0B; }
 html[data-skin="kesari"] .history-sep { color: #D97706; }
 html[data-skin="kesari"] .history-sep::before, html[data-skin="kesari"] .history-sep::after { background: linear-gradient(90deg, transparent, rgba(245, 158, 11, .45), transparent); }
 html[data-skin="kesari"] .history-sep span { background: rgba(245, 158, 11, .1); }
@@ -485,6 +489,33 @@ html[data-skin="kesari"] .sn-md-scope input { accent-color: #C2410C; }
 html[data-skin="kesari"] .sn-md-chips button:hover { background: rgba(194, 65, 12, .1); }
 html[data-skin="kesari"] .sn-md-chips button.on { background: rgba(194, 65, 12, .16); box-shadow: inset 0 0 0 1.5px #C2410C; }
 html[data-skin="kesari"] .sn-ag-answers .a-mine { color: #9A3412; }
+html[data-skin="kesari"] .sn-tp-count { color: #C2410C; background: rgba(234, 88, 12, .1); }
+html[data-skin="kesari"] .sn-org-page { --org-acc: #C2410C; --org-soft: rgba(234, 88, 12, .1); --org-line: rgba(234, 88, 12, .32); --org-sel: rgba(234, 88, 12, .1); --org-grad: linear-gradient(115deg, #FF8A1F 0%, #F97316 46%, #15803D 54%, #138808 100%); }
+html[data-skin="kesari"] .sn-org-steps li.on span { background: linear-gradient(115deg, #FF8A1F 0%, #F97316 46%, #15803D 54%, #138808 100%); }
+html[data-skin="kesari"] .sn-org-drop { border: 2px dashed rgba(234, 88, 12, .35); background: rgba(234, 88, 12, .05); }
+html[data-skin="kesari"] .sn-org-drop:hover, html[data-skin="kesari"] .sn-org-drop.over { background: rgba(234, 88, 12, .1); border-color: #EA580C; }
+html[data-skin="kesari"] .sn-org-drop-ic { background: linear-gradient(115deg, #FF8A1F 0%, #F97316 46%, #15803D 54%, #138808 100%); }
+html[data-skin="kesari"] .sn-org-file .sn-org-mini-btn { color: #C2410C; background: rgba(234, 88, 12, .1); }
+html[data-skin="kesari"] .org-chip.update { color: #C2410C; background: rgba(234, 88, 12, .1); }
+html[data-skin="kesari"] .sn-hbtn.share { background: linear-gradient(135deg, #F97316, #C2410C); }
+html[data-skin="kesari"] .sn-tp-more:hover, html[data-skin="kesari"] .sn-tp-more:focus-visible, html[data-skin="kesari"] .sn-tp-more.on { background: linear-gradient(135deg, #EA580C, #EA580C); }
+html[data-skin="kesari"] .sn-tp-row.drop-over { outline: 2px dashed #F97316; background: rgba(249, 115, 22, .1); }
+html[data-skin="kesari"] .sn-files-split .sn-tp-note i { color: #EA580C; }
+html[data-skin="kesari"] .sn-sheet-ic.org { background: linear-gradient(135deg, #EA580C, #EA580C); }
+html[data-skin="kesari"] .sn-dlg-tag.new { background: linear-gradient(135deg, #16A34A, #15803D); }
+html[data-skin="kesari"] .sn-dlg-banner.new { background: rgba(234, 88, 12, .1); border: 1px solid rgba(234, 88, 12, .3); }
+html[data-skin="kesari"] #newChannelDialog { border-color: rgba(21, 128, 61, .35); }
+html[data-skin="kesari"] .sn-oc-line { background: rgba(234, 88, 12, .35); }
+html[data-skin="kesari"] .sn-oc-person:hover { border-color: rgba(234, 88, 12, .4); }
+html[data-skin="kesari"] .sn-oc-person.me { border: 2px solid #EA580C; background: rgba(234, 88, 12, .08); }
+html[data-skin="kesari"] .sn-oc-contact i { color: #EA580C; }
+html[data-skin="kesari"] .sn-sh-drop { border: 2px dashed rgba(234, 88, 12, .35); background: rgba(234, 88, 12, .05); }
+html[data-skin="kesari"] .sn-sh-drop:hover, html[data-skin="kesari"] .sn-sh-drop.over { border-color: #EA580C; background: rgba(234, 88, 12, .1); }
+html[data-skin="kesari"] .sn-sh-drop-ic { background: linear-gradient(115deg, #FF8A1F 0%, #F97316 46%, #15803D 54%, #138808 100%); }
+html[data-skin="kesari"] .sn-sh-file > i { color: #EA580C; }
+html[data-skin="kesari"] .sn-sh-msg input:focus { border-color: #EA580C; box-shadow: 0 0 0 3px rgba(234, 88, 12, .15); }
+html[data-skin="kesari"] .sn-oc-more { border: 1px dashed rgba(234, 88, 12, .45); background: rgba(234, 88, 12, .06); color: #C2410C; }
+html[data-skin="kesari"] .sn-oc-more:hover { background: rgba(234, 88, 12, .12); }
 /* ---- from responsive.css ---- */
 @media (max-width: 1100px) {
 html[data-skin="kesari"] .sn-body .sn-chat-back { color: #7C2D12 !important; border: 1px solid rgba(194, 65, 12, .25) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 6px 14px -8px rgba(194, 65, 12, .6); }
@@ -496,6 +527,7 @@ html[data-skin="kesari"] .sn-body .sn-person-row .sn-row-more, html[data-skin="k
 html[data-skin="kesari"] .sn-body .sn-person-row .sn-row-more:hover, html[data-skin="kesari"] .sn-body .sn-person-row .sn-row-more.on, html[data-skin="kesari"] .sn-body .sn-team-row .sn-row-more:hover, html[data-skin="kesari"] .sn-body .sn-team-row .sn-row-more.on { background: linear-gradient(135deg, #EA580C, #EA580C); box-shadow: 0 8px 18px -8px rgba(194, 65, 12, .8); }
 html[data-skin="kesari"] .sn-sheet-item:active { background: rgba(194, 65, 12, .1); }
 html[data-skin="kesari"] .sn-sheet-ic.chat { background: linear-gradient(135deg, #F97316, #C2410C); }
+html[data-skin="kesari"] .sn-sheet-ic.grp { background: linear-gradient(135deg, #EA580C, #9A3412); }
 html[data-skin="kesari"] .sn-sheet.pop .sn-sheet-item:hover { background: rgba(194, 65, 12, .1); }
 /* ---- from shankhnaad-auth.css ---- */
 html[data-skin="kesari"] .sn-window-orbs .w1 { background: radial-gradient(circle at 35% 30%, #FDBA74 0%, #EA580C 55%, #7C2D12 100%); }

@@ -162,6 +162,8 @@
             // the browser's window opens on "Window"
             screenShareSettings: { desktopDisplaySurface: "window", desktopSelfBrowserSurface: "exclude", desktopSystemAudio: "include", desktopSurfaceSwitching: "include", desktopPreferCurrentTab: false },
             prejoinPageEnabled: false,
+            // calls start as sound only: the camera stays off until you press "Start video" (meetings start with video)
+            startWithVideoMuted: !!cfg.startCameraOff,
             disableDeepLinking: true,
             toolbarButtons: [],               // hide Jitsi's toolbar: Sahyog's dock below replaces it
             hideConferenceSubject: true,

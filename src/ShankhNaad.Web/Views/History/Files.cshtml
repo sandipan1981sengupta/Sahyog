@@ -55,6 +55,9 @@
         <div hidden data-toast="Run database/23_CallsAndFiles.sql (or 99_ApplyAllUpdates.sql) to see your shared files here." data-toast-kind="warn" data-toast-title="One database step left"></div>
     }
 
+    @* the four totals sit above the file list only; the Team panel (search, pins, Share) runs the full height beside them *@
+    <div class="sn-calls-split sn-files-split">
+    <div class="sn-calls-left">
     <div class="sn-grid-4">
         <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(245,158,11,.14);color:#d97706"><i class="fa fa-files-o"></i></span><div><div class="sn-eyebrow">Files</div><div class="sn-stat-val">@Model.Files.Count</div></div></div>
         <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(124,58,237,.12);color:#6d28d9"><i class="fa fa-upload"></i></span><div><div class="sn-eyebrow">Shared by you</div><div class="sn-stat-val">@byMe</div></div></div>
@@ -138,6 +141,10 @@
             <div class="sn-hist-none" hidden>Nothing matches. Try another tab, type or name.</div>
         </div>
     </section>
+    </div>
+
+    <partial name="_TeamPanel" model="Model.TeamPanel" />
+    </div>
 </main>
 
 @if (isAdmin)

@@ -153,3 +153,23 @@ html:not(.sn-webkit)[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-month
 html:not(.sn-webkit)[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-agenda.sn-agenda {
     background: linear-gradient(150deg, rgba(42, 42, 46, .52) 0%, rgba(26, 26, 29, .42) 50%, rgba(36, 36, 40, .48) 100%) !important;
 }
+
+/* the ⋯ menus beside chats (desktop pop-up): as see-through as the profile menu */
+html body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop {
+    background: var(--pop-menu-bg) !important;
+    backdrop-filter: blur(32px) saturate(190%) !important;
+    -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+}
+html.sn-webkit body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { backdrop-filter: blur(20px) saturate(170%) !important; -webkit-backdrop-filter: blur(20px) saturate(170%) !important; }
+
+/* the ⋯ menus: a little more glass than the other pop-ups (asked for), still readable */
+:root { --pop-menu-bg: linear-gradient(150deg, rgba(255, 255, 255, .42) 0%, rgba(255, 255, 255, .26) 55%, rgba(255, 255, 255, .36) 100%); }
+html[data-skin="kesari"] { --pop-menu-bg: linear-gradient(150deg, rgba(255, 251, 245, .46) 0%, rgba(255, 247, 237, .28) 55%, rgba(240, 250, 242, .38) 100%); }
+html[data-theme="dark"] { --pop-menu-bg: linear-gradient(150deg, rgba(36, 44, 84, .42) 0%, rgba(20, 26, 52, .3) 55%, rgba(48, 30, 72, .38) 100%); }
+html[data-theme="dark"].sn-carbon { --pop-menu-bg: linear-gradient(150deg, rgba(48, 48, 52, .44) 0%, rgba(30, 30, 34, .32) 55%, rgba(40, 40, 44, .4) 100%); }
+html.sn-webkit { --pop-menu-bg: rgba(255, 255, 255, .5); }
+html.sn-webkit[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .46); }
+html.sn-webkit[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .48); }
+html body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { border: 1px solid rgba(255, 255, 255, .55) !important; }
+html[data-theme="dark"] body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { border-color: rgba(165, 180, 252, .22) !important; }
+html[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { border-color: rgba(255, 255, 255, .14) !important; }

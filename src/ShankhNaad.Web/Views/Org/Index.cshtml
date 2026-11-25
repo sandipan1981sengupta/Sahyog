@@ -1,0 +1,717 @@
+@model OrgViewModel
+@using System.Text.Encodings.Web
+@{
+    ViewData["Title"] = "Organization";
+    ViewData["Section"] = "org";
+    var isAdmin = Model.IsAdmin && Model.Ready;
+    var me = User.UserId();
+    var html = HtmlEncoder.Default;
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+
+    // dropdown items for the tag helpers (their text isn't encoded by the control, so encode it here)
+    var deptItems = new List<(string Value, string Text)> { ("", "No department") };
+    deptItems.AddRange(Model.Departments.Select(d => (d.DepartmentId.ToString(), html.Encode(d.Name))));
+    var managerItems = new List<(string Value, string Text)> { ("", "No manager (top of the chart)") };
+    managerItems.AddRange(Model.People.Select(p => (p.Id, html.Encode(string.IsNullOrWhiteSpace(p.JobTitle) ? p.DisplayName : $"{p.DisplayName} · {p.JobTitle}"))));
+    var headItems = new List<(string Value, string Text)> { ("", "No head yet") };
+    headItems.AddRange(Model.People.Select(p => (p.Id, html.Encode(p.DisplayName))));
+
+    var people = Model.People.Select(p => new
+    {
+        id = p.Id, n = p.DisplayName, i = p.Initials, t = p.AvatarTone, title = p.JobTitle ?? "", dept = p.DepartmentName ?? "",
+        deptId = p.DepartmentId?.ToString() ?? "", mgr = p.ManagerId?.ToString() ?? "", email = p.Email, phone = p.Phone ?? "",
+        emp = p.EmployeeCode ?? "", joined = p.JoinedOn?.ToString("dd-MM-yyyy", inv) ?? "",
+        joinedText = p.JoinedOn?.ToString("d MMM yyyy", inv) ?? "", admin = p.Role == ShankhNaad.DtoLibrary.AppRoles.TenantAdmin,
+        on = Model.Online.Contains(p.Id)
+    });
+    var depts = Model.Departments.Select(d => new { id = d.DepartmentId.ToString(), n = d.Name, head = d.HeadUserId?.ToString() ?? "", count = d.People });
+    var withDept = Model.People.Count(p => p.DepartmentId is not null);
+    var subtitle = $"{Model.TenantName} · {Model.People.Count} {(Model.People.Count == 1 ? "person" : "people")} · {Model.Departments.Count} {(Model.Departments.Count == 1 ? "department" : "departments")}";
+}
+
+<main class="sn-page sn-page-fixed sn-org-page">
+    <div class="sn-head glass">
+        <action-header id="OrgHeader"
+                       heading="Organization"
+                       subtitle="@subtitle"
+                       left-icon-css="bi bi-diagram-3-fill" left-icon-size="26"
+                       left-icon-gradient-start="#2563EB" left-icon-gradient-mid="#7C3AED" left-icon-gradient-end="#DB2777"
+                       background-color="transparent" box-shadow="none"
+                       refresh-color="#1D4ED8"
+                       show-refresh="true" refresh-on-click="SN.reload()"
+                       show-add="false" show-edit="false" show-delete="false" show-import="false"
+                       show-export="false" show-save="false" show-submit="false" show-print="true" print-on-click="SN.print()">
+            @if (isAdmin)
+            {
+                <action-btn text="Edit person" icon-css="bi bi-person-gear" icon-color="#2563EB" tooltip="Job title, department, manager and contact details of the selected person" on-click="snOrgEdit()"></action-btn>
+                <action-btn text="Departments" icon-css="bi bi-briefcase-fill" icon-color="#7C3AED" tooltip="Add, rename or delete departments and choose their head" on-click="snOrgNewDept()"></action-btn>
+                <action-btn text="Import CSV" icon-css="bi bi-filetype-csv" icon-color="#15803D" tooltip="Add or update many people at once from a spreadsheet saved as CSV" on-click="snOrgImport()"></action-btn>
+            }
+        </action-header>
+    </div>
+
+    @if (Model.Message is string msg)
+    {
+        <div hidden data-toast="@msg" data-toast-kind="success"></div>
+    }
+    @if (Model.Error is string err)
+    {
+        <div hidden data-toast="@err" data-toast-kind="error" data-toast-title="Not saved"></div>
+    }
+
+    @if (!Model.Ready)
+    {
+        <div class="sn-org-notice glass" role="status">
+            <span class="sn-org-notice-ic"><i class="fa fa-database" aria-hidden="true"></i></span>
+            <div><b>The organization chart isn't switched on yet</b><p>It needs the database update <code>database/40_OrgStructure.sql</code>. Until then, everyone shows at the top of the chart without a title or department.</p></div>
+        </div>
+    }
+
+    <div class="sn-org">
+        <section class="sn-org-main glass" aria-label="Org chart">
+            <div class="sn-org-bar">
+                <div class="sn-org-bar-t"><b>@Model.TenantName</b><span>@Model.People.Count @(Model.People.Count == 1 ? "person" : "people") · @Model.Departments.Count @(Model.Departments.Count == 1 ? "department" : "departments")</span></div>
+                <div class="sn-org-seg" role="tablist" aria-label="Show the chart">
+                    <button type="button" role="tab" aria-selected="true" data-org-view="mgr"><i class="bi bi-diagram-3" aria-hidden="true"></i> By manager</button>
+                    <button type="button" role="tab" aria-selected="false" data-org-view="dept"><i class="bi bi-grid-3x2-gap" aria-hidden="true"></i> By department</button>
+                </div>
+                <label class="sn-org-search">
+                    <i class="fa fa-search" aria-hidden="true"></i>
+                    <span class="sr-only">Find a person</span>
+                    <input type="search" id="orgSearch" placeholder="Find a person, title or department" autocomplete="off" />
+                </label>
+            </div>
+            <div class="sn-org-viewport" id="orgViewport" tabindex="0" aria-label="Chart: drag to move around, Ctrl + mouse wheel to zoom">
+                <div class="sn-org-canvas" id="orgCanvas"></div>
+            </div>
+            <div class="sn-org-zoom" role="group" aria-label="Zoom">
+                <button type="button" data-org-zoom="-1" aria-label="Zoom out" title="Zoom out"><i class="fa fa-minus" aria-hidden="true"></i></button>
+                <span id="orgZoomText">100%</span>
+                <button type="button" data-org-zoom="1" aria-label="Zoom in" title="Zoom in"><i class="fa fa-plus" aria-hidden="true"></i></button>
+                <button type="button" data-org-zoom="fit" aria-label="Fit to screen" title="Fit the whole chart on screen"><i class="fa fa-expand" aria-hidden="true"></i></button>
+            </div>
+            <span class="sn-org-tip">Click a person for their card · drag to move around</span>
+        </section>
+
+        <div class="sn-org-side">
+            <aside class="sn-org-card glass" id="orgCard" aria-label="Profile card" aria-live="polite"></aside>
+
+            <aside class="sn-org-depts glass" aria-label="Departments">
+                <div class="sn-org-depts-head">
+                    <b>Departments</b>
+                    <small>@withDept of @Model.People.Count placed</small>
+                    @if (isAdmin)
+                    {
+                        <button type="button" class="sn-org-mini-btn" onclick="snOrgNewDept()"><i class="fa fa-plus" aria-hidden="true"></i> New</button>
+                    }
+                </div>
+                <div class="sn-org-dept-list">
+                    @if (Model.Departments.Count == 0)
+                    {
+                        <p class="sn-org-empty">@(isAdmin ? "No departments yet. Add one with New, or import a CSV: departments in the file are created for you." : "No departments yet.")</p>
+                    }
+                    @foreach (var d in Model.Departments)
+                    {
+                        <div class="sn-org-dept" data-dept-row="@d.DepartmentId">
+                            <button type="button" class="sn-org-dept-main" data-dept-show="@d.DepartmentId" title="Show @d.Name in the chart">
+                                <span class="sn-org-dept-ic" aria-hidden="true"><i class="bi bi-briefcase-fill"></i></span>
+                                <span class="sn-org-dept-t"><b>@d.Name</b><small>@d.People @(d.People == 1 ? "person" : "people")@(d.HeadName is null ? "" : " · Head: " + d.HeadName)</small></span>
+                            </button>
+                            @if (isAdmin)
+                            {
+                                <button type="button" class="sn-org-dept-edit" data-dept-edit="@d.DepartmentId" aria-label="Edit @d.Name" title="Rename, change head or delete"><i class="fa fa-pencil" aria-hidden="true"></i></button>
+                            }
+                        </div>
+                    }
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    @* Chat and Call from the profile card *@
+    <div id="orgForms" hidden>
+        <form method="post" asp-antiforgery="true" action="/chat" id="orgChatForm"></form>
+        <form method="post" asp-antiforgery="true" action="/meetings/instant" id="orgCallForm"><input type="hidden" name="userId" id="orgCallUser" /></form>
+    </div>
+</main>
+
+@if (isAdmin)
+{
+@* ---- edit a person: details, job and place in the organization ---- *@
+<dialog id="orgEditDialog" class="sn-dialog glass-strong sn-org-dialog">
+    <form method="post" asp-antiforgery="true" action="#" id="orgEditForm" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-user" aria-hidden="true"></i></span><div><h2 id="oTitleH">Edit person</h2><p>Details, job and where they sit in the organization</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body">
+            <modern-group-box title="Person | details" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                <div class="sn-org-grid2">
+                    <modern-input id="oName" name="displayName" label="Name" mandatory="true" max-length="100" label-font-size="13.5px"></modern-input>
+                    <modern-input id="oEmail" name="email" label="Email" mandatory="true" max-length="200" placeholder="name@company.com" label-font-size="13.5px"></modern-input>
+                </div>
+            </modern-group-box>
+            <div style="margin-top:14px">
+                <modern-group-box title="Work | details" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                    <div style="display:flex;flex-direction:column;gap:14px">
+                        <div class="sn-org-grid2">
+                            <modern-input id="oJob" name="jobTitle" label="Job title" max-length="100" placeholder="e.g. Senior Developer" label-font-size="13.5px"></modern-input>
+                            <modern-dropdown-with-label id="oDept" name="departmentId" label="Department" placeholder="No department" items="deptItems" menu-height="240px"></modern-dropdown-with-label>
+                        </div>
+                        <modern-dropdown-with-label id="oMgr" name="managerId" label="Reports to (manager)" placeholder="No manager (top of the chart)" items="managerItems" menu-height="260px"></modern-dropdown-with-label>
+                        <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> <span id="oMgrHint">The list never offers this person or anyone who reports to them, so the chart can't go round in a circle.</span></span>
+                        <div class="sn-org-grid3">
+                            <modern-input id="oPhone" name="phone" label="Phone (optional)" max-length="40" placeholder="+91 98xxx xxxxx" label-font-size="13.5px"></modern-input>
+                            <modern-input id="oEmp" name="employeeCode" label="Employee ID (optional)" max-length="40" placeholder="EMP-0042" label-font-size="13.5px"></modern-input>
+                            <modern-datepicker-with-label id="oJoined" name="joined" label="Joined (optional)" placeholder="dd-mm-yyyy"></modern-datepicker-with-label>
+                        </div>
+                        <div id="oAdminWrap">
+                            <modern-checkbox id="oAdmin" name="makeAdmin" label="Admin of this workspace" desc-text="Off: a normal team member. On: they can also add, edit and remove people and manage groups." is-toggle-button="true" on-text="YES" off-text="NO" label-font-size="13.5px"></modern-checkbox>
+                        </div>
+                    </div>
+                </modern-group-box>
+            </div>
+        </div>
+        <div class="sn-dlg-foot">
+            <span class="muted small">Changing the email or admin role signs them out once.</span>
+            <span style="display:flex;gap:10px">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Save</button>
+            </span>
+        </div>
+    </form>
+</dialog>
+
+@* ---- a department: name and head ---- *@
+<dialog id="orgDeptDialog" class="sn-dialog glass-strong">
+    <form method="post" asp-antiforgery="true" action="/org/departments" id="orgDeptForm" novalidate>
+        <input type="hidden" name="id" id="dId" />
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-briefcase" aria-hidden="true"></i></span><div><h2 id="dTitleH">New department</h2><p>A team people belong to, with the person who leads it</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body">
+            <modern-group-box title="Department | details" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                <div style="display:flex;flex-direction:column;gap:14px">
+                    <modern-input id="dName" name="name" label="Name" mandatory="true" max-length="100" placeholder="e.g. Engineering" label-font-size="13.5px"></modern-input>
+                    <modern-dropdown-with-label id="dHead" name="headUserId" label="Head of department (optional)" placeholder="No head yet" items="headItems" menu-height="240px"></modern-dropdown-with-label>
+                    <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> The head is shown first in the department. Put people in it with Edit person, or with a CSV import.</span>
+                </div>
+            </modern-group-box>
+        </div>
+        <div class="sn-dlg-foot">
+            <button type="button" class="cee-btn sn-btn-light sn-org-del" id="dDelete" hidden><i class="fa fa-trash" aria-hidden="true"></i> Delete department</button>
+            <span style="display:flex;gap:10px;margin-left:auto">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Save</button>
+            </span>
+        </div>
+    </form>
+</dialog>
+
+@* ---- import people from a CSV: Upload → Check → Import ---- *@
+<dialog id="orgImportDialog" class="sn-dialog glass-strong sn-org-import">
+    <div class="sn-dlg-head">
+        <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-file-text-o" aria-hidden="true"></i></span><div><h2>Import people from CSV</h2><p>Add a whole team at once, with titles, departments and managers</p></div></div>
+        <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+    </div>
+    <div class="sn-dlg-body">
+        <ol class="sn-org-steps" id="impSteps">
+            <li data-step="1" class="on"><span>1</span>Upload</li>
+            <li data-step="2"><span>2</span>Check</li>
+            <li data-step="3"><span>3</span>Import</li>
+        </ol>
+
+        <div data-imp-pane="1">
+            <label class="sn-org-drop" id="impDrop">
+                <input type="file" id="impFile" accept=".csv,text/csv" />
+                <span class="sn-org-drop-ic" aria-hidden="true"><i class="fa fa-cloud-upload"></i></span>
+                <b>Drop a CSV file here, or click to choose one</b>
+                <small>Columns: name, email, title, department, manager_email, phone, employee_id, joined. Only email is required; name is needed for new people.</small>
+            </label>
+            <ul class="sn-org-rules">
+                <li><i class="fa fa-check" aria-hidden="true"></i> People already in the workspace (same email) are updated. Empty cells keep what they have.</li>
+                <li><i class="fa fa-check" aria-hidden="true"></i> <b>manager_email</b> can be the manager's email or their exact name; managers can be in the same file.</li>
+                <li><i class="fa fa-check" aria-hidden="true"></i> New departments are created for you. Dates like 15-06-2024 or 2024-06-15.</li>
+                <li><i class="fa fa-check" aria-hidden="true"></i> Nothing changes until you press Import on the next step.</li>
+            </ul>
+        </div>
+
+        <div data-imp-pane="2" hidden>
+            <div class="sn-org-file">
+                <span class="sn-org-file-ic" aria-hidden="true"><i class="fa fa-file-text-o"></i></span>
+                <span class="sn-org-file-t"><b id="impName"></b><small id="impCols"></small></span>
+                <button type="button" class="sn-org-mini-btn" id="impAgain">Choose another file</button>
+            </div>
+            <div class="sn-org-chips" id="impChips"></div>
+            <div class="sn-org-table-wrap">
+                <table class="sn-org-table">
+                    <thead><tr><th>Line</th><th>Name</th><th>Email</th><th>Title</th><th>Department</th><th>Reports to</th><th>Check</th></tr></thead>
+                    <tbody id="impRows"></tbody>
+                </table>
+            </div>
+            <p class="sn-org-note">Rows marked in red or yellow are skipped. Fix them in the file and upload again, or import the rest now.</p>
+            @if (Model.CanEmail)
+            {
+                <modern-checkbox id="impInvite" name="sendInvites" label="Email new people a welcome link" desc-text="They set their own password with it (the link works for 7 days)." is-toggle-button="true" on-text="YES" off-text="NO" checked="true" label-font-size="13.5px"></modern-checkbox>
+            }
+            else
+            {
+                <p class="sn-org-note"><i class="fa fa-info-circle" aria-hidden="true"></i> Email isn't set up on this server, so new people get no welcome email. Give them a password from the Team page.</p>
+            }
+        </div>
+
+        <div data-imp-pane="3" hidden>
+            <div class="sn-org-done" id="impDone"></div>
+        </div>
+    </div>
+    <div class="sn-dlg-foot">
+        <a class="cee-btn sn-btn-light" href="/org/import/template.csv" download><i class="fa fa-download" aria-hidden="true"></i> Download template</a>
+        <span style="display:flex;gap:10px;margin-left:auto">
+            <button type="button" class="cee-btn sn-btn-light" id="impBack" hidden>Back</button>
+            <button type="button" class="cee-btn sn-btn-light" data-close id="impCancel">Cancel</button>
+            <button type="button" class="cee-btn cee-btn-gradient" id="impGo" hidden><i class="fa fa-check" aria-hidden="true"></i> <span>Import</span></button>
+        </span>
+    </div>
+</dialog>
+}
+
+@section Scripts {
+    <script>
+    (function () {
+        var people = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(people));
+        var depts = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(depts));
+        var ME = "@me", IS_ADMIN = @(isAdmin ? "true" : "false");
+        var START = "@(Model.Select ?? "")", START_VIEW = new URLSearchParams(location.search).get("view") === "dept" ? "dept" : "mgr";
+        if (location.search) history.replaceState(null, "", location.pathname);
+
+        var byId = {}, kids = {};
+        people.forEach(function (p) { byId[p.id] = p; });
+        people.forEach(function (p) {
+            if (p.mgr && !byId[p.mgr]) p.mgr = "";          // manager not active any more → top of the chart
+            if (p.mgr) (kids[p.mgr] = kids[p.mgr] || []).push(p);
+        });
+        var deptById = {}; depts.forEach(function (d) { deptById[d.id] = d; });
+
+        function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+        function av(p, size) {
+            return '<span class="avatar av-' + size + ' tone-' + (p.t % 6) + '" data-presence="' + p.id + '">' + esc(p.i) + '<i class="dot' + (p.on ? " on" : "") + '"></i></span>';
+        }
+        function sub(p) { return p.title || p.dept || (p.admin ? "Admin" : "Team member"); }
+        function node(p, cls) {
+            var n = (kids[p.id] || []).length;
+            return '<div class="org-node' + (cls ? " " + cls : "") + (p.id === ME ? " me" : "") + '" data-id="' + p.id + '" role="button" tabindex="0" aria-label="' + esc(p.n + ", " + sub(p)) + '">' +
+                av(p, 38) + '<span class="org-node-t"><b>' + esc(p.n) + '</b><small>' + esc(sub(p)) + '</small></span>' +
+                (n && view === "mgr" ? '<button type="button" class="org-badge" data-toggle="' + p.id + '" title="' + n + (n === 1 ? " person reports" : " people report") + ' to ' + esc(p.n) + '. Click to show or hide them." aria-label="' + n + (n === 1 ? " report" : " reports") + ', show or hide"><i class="fa fa-users" aria-hidden="true"></i> ' + n + '</button>' : "") +
+                '</div>';
+        }
+        function descendants(id) {
+            var out = {}, stack = [id];
+            while (stack.length) { (kids[stack.pop()] || []).forEach(function (c) { if (!out[c.id]) { out[c.id] = 1; stack.push(c.id); } }); }
+            return out;
+        }
+
+        // ---------- by manager: a tree; people whose reports have no reports of their own get a compact column ----------
+        var collapsed = {};
+        function branch(p, depth) {
+            var list = (kids[p.id] || []).slice().sort(function (a, b) { return a.n.localeCompare(b.n); });
+            if (!list.length) return '<li>' + node(p) + '</li>';
+            var leafy = list.every(function (c) { return !(kids[c.id] || []).length; });
+            var shut = collapsed[p.id] === true || (collapsed[p.id] === undefined && depth >= 4);
+            var inner = leafy
+                ? '<ul class="org-stack">' + list.map(function (c) { return '<li>' + node(c, "small") + '</li>'; }).join("") + '</ul>'
+                : '<ul>' + list.map(function (c) { return branch(c, depth + 1); }).join("") + '</ul>';
+            return '<li class="' + (leafy ? "has-stack" : "") + (shut ? " shut" : "") + '" data-li="' + p.id + '">' + node(p) + inner + '</li>';
+        }
+        function drawManagers() {
+            var roots = people.filter(function (p) { return !p.mgr; }).sort(function (a, b) {
+                return ((kids[b.id] || []).length - (kids[a.id] || []).length) || a.n.localeCompare(b.n);
+            });
+            // people with reports first (the real top), then everyone not placed yet in a tidy group
+            var tops = roots.filter(function (p) { return (kids[p.id] || []).length; });
+            var loose = roots.filter(function (p) { return !(kids[p.id] || []).length; });
+            var h = tops.length ? '<ul class="org-tree org-root">' + tops.map(function (p) { return branch(p, 1); }).join("") + '</ul>' : "";
+            if (loose.length) {
+                h += '<div class="org-loose"><div class="org-loose-h"><b>' + (tops.length ? "Not placed yet" : "Everyone") + '</b><small>' + loose.length +
+                    (loose.length === 1 ? " person" : " people") + ' without a manager' + (IS_ADMIN ? " · use Edit person or Import CSV to set who they report to" : "") + '</small></div>' +
+                    '<div class="org-loose-grid">' + loose.sort(function (a, b) { return a.n.localeCompare(b.n); }).map(function (p) { return node(p, "small"); }).join("") + '</div></div>';
+            }
+            return h;
+        }
+
+        // ---------- by department: one column per department, head first ----------
+        function drawDepartments() {
+            var cols = depts.map(function (d) { return { id: d.id, n: d.n, head: d.head, list: people.filter(function (p) { return p.deptId === d.id; }) }; });
+            var none = people.filter(function (p) { return !p.deptId || !deptById[p.deptId]; });
+            if (none.length) cols.push({ id: "", n: "No department", head: "", list: none });
+            if (!cols.length) return '<p class="org-empty-chart">No departments yet.</p>';
+            return '<div class="org-depts">' + cols.map(function (c) {
+                var head = c.head && byId[c.head] ? byId[c.head] : null;
+                var rest = c.list.filter(function (p) { return !head || p.id !== head.id; }).sort(function (a, b) { return a.n.localeCompare(b.n); });
+                return '<section class="org-dcol" data-dcol="' + c.id + '"><header><span class="org-dcol-ic" aria-hidden="true"><i class="bi bi-briefcase-fill"></i></span><span><b>' + esc(c.n) + '</b><small>' +
+                    c.list.length + (c.list.length === 1 ? " person" : " people") + (head ? " · Head: " + esc(head.n) : "") + '</small></span></header>' +
+                    (head ? node(head, "head") : "") + rest.map(function (p) { return node(p, "small"); }).join("") +
+                    (!c.list.length ? '<p class="org-dcol-empty">No one here yet.</p>' : "") + '</section>';
+            }).join("") + '</div>';
+        }
+
+        var view = START_VIEW, selected = null;
+        var vp = document.getElementById("orgViewport"), canvas = document.getElementById("orgCanvas");
+        function draw(keepPos) {
+            canvas.innerHTML = view === "dept" ? drawDepartments() : drawManagers();
+            $("[data-org-view]").each(function () { this.setAttribute("aria-selected", this.getAttribute("data-org-view") === view ? "true" : "false"); });
+            if (selected) $(canvas).find('.org-node[data-id="' + selected + '"]').addClass("sel");
+            applySearch();
+            Sahyog.paintPhotos && Sahyog.paintPhotos(canvas);
+            Sahyog.paintPresence && Sahyog.paintPresence();
+            if (!keepPos) requestAnimationFrame(function () { fit(true); });
+        }
+
+        // ---------- zoom and move ----------
+        var z = 1, x = 0, y = 0;
+        function apply() {
+            canvas.style.transform = "translate(" + x + "px," + y + "px) scale(" + z + ")";
+            document.getElementById("orgZoomText").textContent = Math.round(z * 100) + "%";
+        }
+        function zoomAt(nz, cx, cy) {
+            nz = Math.max(.3, Math.min(1.8, nz));
+            var r = vp.getBoundingClientRect();
+            if (cx == null) { cx = r.width / 2; cy = r.height / 2; }
+            x = cx - (cx - x) * nz / z; y = cy - (cy - y) * nz / z; z = nz; apply();
+        }
+        function fit(onlyShrink) {
+            settle();
+            var w = canvas.scrollWidth, h = canvas.scrollHeight, r = vp.getBoundingClientRect();
+            if (!w || !h || !r.width) return;
+            var s = Math.min((r.width - 40) / w, (r.height - 40) / h);
+            z = Math.max(.3, Math.min(onlyShrink ? 1 : 1.4, s));
+            x = (r.width - w * z) / 2; y = onlyShrink ? 16 : Math.max(16, (r.height - h * z) / 2);
+            apply();
+        }
+        // stop any glide first, so positions are read from where the chart really ends up
+        function settle() { canvas.classList.remove("glide"); apply(); void canvas.offsetWidth; }
+        function glide() { canvas.classList.add("glide"); apply(); clearTimeout(window.__snOrgGl); window.__snOrgGl = setTimeout(function () { canvas.classList.remove("glide"); }, 320); }
+        function centerOn(id) {
+            var el = canvas.querySelector('.org-node[data-id="' + id + '"]');
+            if (!el) return;
+            settle();
+            // a big chart fitted on screen is too small to read: going to someone zooms in to a readable size
+            if (z < .85) { z = .85; apply(); }
+            var r = vp.getBoundingClientRect(), e = el.getBoundingClientRect();
+            x += (r.left + r.width / 2) - (e.left + e.width / 2);
+            y += (r.top + r.height / 2) - (e.top + e.height / 2);
+            glide();
+        }
+        var drag = null;
+        vp.addEventListener("pointerdown", function (e) {
+            if (e.button !== 0 || e.target.closest(".org-node, button, a, input")) return;
+            drag = { sx: e.clientX, sy: e.clientY, x: x, y: y, id: e.pointerId };
+            vp.setPointerCapture(e.pointerId); vp.classList.add("dragging");
+        });
+        vp.addEventListener("pointermove", function (e) {
+            if (!drag || e.pointerId !== drag.id) return;
+            x = drag.x + e.clientX - drag.sx; y = drag.y + e.clientY - drag.sy; apply();
+        });
+        function endDrag() { drag = null; vp.classList.remove("dragging"); }
+        vp.addEventListener("pointerup", endDrag); vp.addEventListener("pointercancel", endDrag);
+        vp.addEventListener("wheel", function (e) {
+            var r = vp.getBoundingClientRect();
+            if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomAt(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX - r.left, e.clientY - r.top); }
+            else { e.preventDefault(); x -= e.deltaX; y -= e.deltaY; apply(); }
+        }, { passive: false });
+        $(document).off(".snorg");
+        $(document).on("click.snorg", "[data-org-zoom]", function () {
+            var v = this.getAttribute("data-org-zoom");
+            if (v === "fit") fit(false); else zoomAt(z * (v === "1" ? 1.2 : 1 / 1.2));
+        });
+        $(document).on("click.snorg", "[data-org-view]", function () {
+            var v = this.getAttribute("data-org-view");
+            if (v !== view) { view = v; draw(); if (selected) setTimeout(function () { centerOn(selected); }, 60); }
+        });
+
+        // ---------- search ----------
+        var q = "";
+        function applySearch() {
+            var nodes = canvas.querySelectorAll(".org-node");
+            nodes.forEach(function (el) {
+                var p = byId[el.getAttribute("data-id")];
+                var hit = q && p && (p.n + " " + p.title + " " + p.dept + " " + p.email).toLowerCase().indexOf(q) >= 0;
+                el.classList.toggle("hit", !!hit);
+                el.classList.toggle("dim", !!q && !hit);
+            });
+        }
+        $(document).on("input.snorg", "#orgSearch", function () {
+            q = this.value.trim().toLowerCase();
+            if (q && view === "mgr") {
+                // open the branches that lead to a match
+                people.forEach(function (p) {
+                    if ((p.n + " " + p.title + " " + p.dept + " " + p.email).toLowerCase().indexOf(q) < 0) return;
+                    for (var m = p.mgr, guard = 0; m && guard < 100; m = (byId[m] || {}).mgr, guard++) collapsed[m] = false;
+                });
+                draw(true);
+            } else applySearch();
+            var first = canvas.querySelector(".org-node.hit");
+            if (first) centerOn(first.getAttribute("data-id"));
+        });
+        $(document).on("keydown.snorg", "#orgSearch", function (e) {
+            if (e.key !== "Enter") return;
+            var first = canvas.querySelector(".org-node.hit");
+            if (first) select(first.getAttribute("data-id"), true);
+        });
+
+        // ---------- select a person → profile card ----------
+        var tab = "org";
+        function mini(p, extra) {
+            return '<button type="button" class="org-mini" data-pick="' + p.id + '">' + av(p, 32) + '<span><b>' + esc(p.n) + '</b><small>' + esc(sub(p)) + (extra || "") + '</small></span></button>';
+        }
+        function card() {
+            var el = document.getElementById("orgCard"), p = byId[selected];
+            if (!p) { el.innerHTML = '<p class="sn-org-empty">Click a person in the chart to see their card.</p>'; return; }
+            var chain = [], guard = 0;
+            for (var m = p.mgr; m && byId[m] && guard < 20; m = byId[m].mgr, guard++) chain.unshift(byId[m]);
+            var peers = p.mgr ? (kids[p.mgr] || []).filter(function (c) { return c.id !== p.id; }) : [];
+            var reports = (kids[p.id] || []).slice().sort(function (a, b) { return a.n.localeCompare(b.n); });
+            var line = [p.title, p.dept].filter(Boolean).join(" · ") || (p.admin ? "Admin" : "Team member");
+            var h = '<div class="org-card-top">' + av(p, 56) + '<div><b>' + esc(p.n) + (p.id === ME ? ' <em>(you)</em>' : "") + '</b><span>' + esc(line) + '</span>' +
+                '<small><i class="org-on-dot' + (p.on ? " on" : "") + '"></i>' + (p.on ? "Online" : "Offline") + (p.admin ? " · Workspace admin" : "") + '</small></div></div>';
+            h += '<div class="org-card-acts">';
+            if (p.id !== ME) h += '<button type="button" class="cee-btn sn-btn-light" data-org-chat="' + p.id + '"><i class="fa fa-comment" aria-hidden="true"></i> Chat</button>' +
+                '<button type="button" class="cee-btn cee-btn-gradient" data-org-call="' + p.id + '" title="Sound only; turn video on any time"><i class="fa fa-phone" aria-hidden="true"></i> Call</button>';
+            if (IS_ADMIN) h += '<button type="button" class="cee-btn sn-btn-light" data-org-edit="' + p.id + '"><i class="fa fa-pencil" aria-hidden="true"></i> Edit</button>';
+            h += '</div><div class="org-tabs" role="tablist"><button type="button" role="tab" data-org-tab="contact" aria-selected="' + (tab === "contact") + '">Contact</button>' +
+                '<button type="button" role="tab" data-org-tab="org" aria-selected="' + (tab === "org") + '">Organization</button></div><div class="org-tab-body">';
+            if (tab === "contact") {
+                var row = function (icon, label, value) { return value ? '<div class="org-kv"><i class="' + icon + '" aria-hidden="true"></i><span><small>' + label + '</small>' + value + '</span></div>' : ""; };
+                h += row("fa fa-envelope-o", "Email", '<a href="mailto:' + esc(p.email) + '">' + esc(p.email) + '</a>') +
+                    row("fa fa-phone", "Phone", p.phone ? '<a href="tel:' + esc(p.phone.replace(/\s+/g, "")) + '">' + esc(p.phone) + '</a>' : "") +
+                    row("fa fa-id-badge", "Employee ID", esc(p.emp)) +
+                    row("fa fa-calendar-check-o", "Joined", esc(p.joinedText)) +
+                    row("fa fa-briefcase", "Department", esc(p.dept));
+                if (!p.phone && !p.emp && !p.joinedText && !p.dept) h += '<p class="sn-org-empty">' + (IS_ADMIN ? "Add a phone, employee ID or joined date with Edit." : "No other details yet.") + '</p>';
+            } else {
+                h += '<div class="org-sec">Reports to</div>';
+                if (chain.length) {
+                    h += '<div class="org-chain">' + chain.map(function (c) { return mini(c); }).join('<i class="org-chain-line" aria-hidden="true"></i>') +
+                        '<i class="org-chain-line" aria-hidden="true"></i><div class="org-chain-me">' + av(p, 32) + '<b>' + esc(p.n) + '</b></div></div>';
+                } else h += '<p class="sn-org-empty">' + esc(p.n) + ' is at the top of the chart.</p>';
+                h += '<div class="org-sec">Works with · same manager</div>';
+                h += peers.length ? '<div class="org-minis">' + peers.slice(0, 6).map(function (c) { return mini(c); }).join("") + (peers.length > 6 ? '<span class="org-more">+' + (peers.length - 6) + ' more</span>' : "") + '</div>'
+                    : '<p class="sn-org-empty">' + (p.mgr ? "No one else reports to " + esc(byId[p.mgr].n) + "." : "No manager set, so no teammates to show.") + '</p>';
+                h += '<div class="org-sec">Direct reports' + (reports.length ? " · " + reports.length : "") + '</div>';
+                h += reports.length ? '<div class="org-minis">' + reports.map(function (c) { return mini(c); }).join("") + '</div>'
+                    : '<p class="sn-org-empty">No one reports to ' + esc(p.n.split(" ")[0]) + ' yet.</p>';
+            }
+            el.innerHTML = h + '</div>';
+            Sahyog.paintPhotos && Sahyog.paintPhotos(el);
+        }
+        function select(id, center) {
+            if (!byId[id]) return;
+            selected = id;
+            $(canvas).find(".org-node.sel").removeClass("sel");
+            var el = canvas.querySelector('.org-node[data-id="' + id + '"]');
+            if (!el && view === "mgr") {   // inside a closed branch: open the way to it
+                for (var m = byId[id].mgr, g = 0; m && g < 100; m = (byId[m] || {}).mgr, g++) collapsed[m] = false;
+                draw(true); el = canvas.querySelector('.org-node[data-id="' + id + '"]');
+            }
+            if (el) el.classList.add("sel");
+            card();
+            if (center) centerOn(id);
+        }
+        $(document).on("click.snorg", "#orgCanvas .org-node", function (e) {
+            if (e.target.closest(".org-badge")) return;
+            select(this.getAttribute("data-id"));
+        });
+        $(document).on("keydown.snorg", "#orgCanvas .org-node", function (e) {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(this.getAttribute("data-id")); }
+        });
+        $(document).on("dblclick.snorg", "#orgCanvas .org-node", function () { if (IS_ADMIN) snOrgEdit(this.getAttribute("data-id")); });
+        $(document).on("click.snorg", "#orgCanvas .org-badge", function (e) {
+            e.stopPropagation();
+            var id = this.getAttribute("data-toggle"), li = canvas.querySelector('li[data-li="' + id + '"]');
+            collapsed[id] = !(li && li.classList.contains("shut"));
+            // keep the clicked person where they are on screen while the branch opens or closes
+            settle();
+            var before = canvas.querySelector('.org-node[data-id="' + id + '"]').getBoundingClientRect();
+            draw(true);
+            var after = canvas.querySelector('.org-node[data-id="' + id + '"]').getBoundingClientRect();
+            x += before.left - after.left; y += before.top - after.top; apply();
+        });
+        $(document).on("click.snorg", "#orgCard [data-pick]", function () { select(this.getAttribute("data-pick"), true); });
+        $(document).on("click.snorg", "#orgCard [data-org-tab]", function () { tab = this.getAttribute("data-org-tab"); card(); });
+        $(document).on("click.snorg", "#orgCard [data-org-chat]", function () {
+            var f = document.getElementById("orgChatForm"); f.action = "/chat/direct/" + this.getAttribute("data-org-chat"); f.submit();
+        });
+        $(document).on("click.snorg", "#orgCard [data-org-call]", function () {
+            document.getElementById("orgCallUser").value = this.getAttribute("data-org-call"); document.getElementById("orgCallForm").submit();
+        });
+        $(document).on("click.snorg", "#orgCard [data-org-edit]", function () { snOrgEdit(this.getAttribute("data-org-edit")); });
+        $(document).on("click.snorg", "[data-dept-show]", function () {
+            var id = this.getAttribute("data-dept-show");
+            if (view !== "dept") { view = "dept"; draw(); }
+            setTimeout(function () {
+                var col = canvas.querySelector('[data-dcol="' + id + '"]');
+                if (!col) return;
+                $(canvas).find(".org-dcol.flash").removeClass("flash");
+                settle();
+                var r = vp.getBoundingClientRect(), e = col.getBoundingClientRect();
+                x += (r.left + r.width / 2) - (e.left + e.width / 2); y += (r.top + 24) - e.top;
+                glide(); col.classList.add("flash");
+            }, 60);
+        });
+
+        // ---------- admin: edit person ----------
+        window.snOrgEdit = function (id) {
+            if (!IS_ADMIN) return;
+            var p = byId[id || selected];
+            if (!p) { Sahyog.toast("Click a person in the chart first.", { kind: "info", title: "Select a person" }); return; }
+            var isMe = p.id === ME;
+            $("#orgEditForm").attr("action", "/org/person/" + p.id);
+            $("#oTitleH").text(isMe ? "Edit your details" : "Edit " + p.n);
+            $("#oName").val(p.n).trigger("input");
+            $("#oEmail").val(p.email).trigger("input");
+            $("#oJob").val(p.title).trigger("input");
+            $("#oPhone").val(p.phone).trigger("input");
+            $("#oEmp").val(p.emp).trigger("input");
+            setModernDropdownWithLabelValue("#oDept", p.deptId && deptById[p.deptId] ? p.deptId : "");
+            // the manager list leaves out this person and everyone below them
+            var below = descendants(p.id);
+            $("#oMgr .ddwl-option").each(function () {
+                var v = String($(this).data("value") || "");
+                $(this).toggleClass("sn-ddx", v === p.id || !!below[v]);
+            });
+            setModernDropdownWithLabelValue("#oMgr", p.mgr || "");
+            $("#oMgrHint").text("The list leaves out " + (isMe ? "you" : p.n) + (Object.keys(below).length ? " and the " + Object.keys(below).length + " " + (Object.keys(below).length === 1 ? "person" : "people") + " below" : "") + ", so the chart can't go round in a circle.");
+            var di = document.getElementById("oJoined");
+            if (di && di._flatpickr) { if (p.joined) di._flatpickr.setDate(p.joined, true, "d-m-Y"); else di._flatpickr.clear(); }
+            else if (di) di.value = p.joined;
+            $("#oAdmin").prop("checked", p.admin).trigger("change");
+            $("#oAdminWrap").prop("hidden", isMe);   // you can't take away your own admin role
+            SN.open("orgEditDialog");
+        };
+        $(document).on("submit.snorg", "#orgEditForm", function (e) {
+            if (!$("#oName").val().trim() || !$("#oEmail").val().trim()) {
+                e.preventDefault();
+                Sahyog.toast("Name and email are needed.", { kind: "error", title: "Not saved" });
+            }
+        });
+
+        // ---------- admin: departments ----------
+        window.snOrgNewDept = function () { openDept(null); };
+        function openDept(d) {
+            if (!IS_ADMIN) return;
+            $("#dId").val(d ? d.id : "");
+            $("#dTitleH").text(d ? "Edit " + d.n : "New department");
+            $("#dName").val(d ? d.n : "").trigger("input");
+            if (d && d.head) setModernDropdownWithLabelValue("#dHead", d.head); else setModernDropdownWithLabelValue("#dHead", "");
+            $("#dDelete").prop("hidden", !d).data("dept", d);
+            SN.open("orgDeptDialog");
+        }
+        $(document).on("click.snorg", "[data-dept-edit]", function () { openDept(deptById[this.getAttribute("data-dept-edit")]); });
+        $(document).on("click.snorg", "#dDelete", function () {
+            var d = $(this).data("dept"); if (!d) return;
+            document.getElementById("orgDeptDialog").close();
+            SN.confirmPost("/org/departments/" + d.id + "/delete", {
+                title: "Delete " + d.n + "?",
+                text: d.count ? "Its " + d.count + " " + (d.count === 1 ? "person stays" : "people stay") + " in the workspace, just without a department. Who reports to whom doesn't change." : "No one is in it.",
+                confirmText: "Delete department", danger: true
+            });
+        });
+
+        // ---------- admin: CSV import ----------
+        var impFile = null, impPlan = null;
+        function token() { var t = document.querySelector('#orgForms input[name="__RequestVerificationToken"]'); return t ? t.value : ""; }
+        function step(n) {
+            $("#impSteps li").each(function () {
+                var s = +this.getAttribute("data-step");
+                this.classList.toggle("on", s === n); this.classList.toggle("done", s < n);
+            });
+            $("[data-imp-pane]").each(function () { this.hidden = +this.getAttribute("data-imp-pane") !== n; });
+            $("#impBack").prop("hidden", n !== 2);
+            $("#impGo").prop("hidden", n !== 2);
+            $("#impCancel").text(n === 3 ? "Close" : "Cancel");
+        }
+        window.snOrgImport = function () {
+            if (!IS_ADMIN) return;
+            impFile = null; impPlan = null; document.getElementById("impFile").value = "";
+            step(1); SN.open("orgImportDialog");
+        };
+        function chip(kind, text) {
+            var icon = { new: "fa-check", update: "fa-refresh", warn: "fa-exclamation-triangle", bad: "fa-times" }[kind];
+            return '<span class="org-chip ' + kind + '"><i class="fa ' + icon + '" aria-hidden="true"></i>' + esc(text) + '</span>';
+        }
+        function check(file) {
+            if (!file) return;
+            if (!/\.csv$/i.test(file.name) && file.type !== "text/csv") { Sahyog.toast("Choose a .csv file. In Excel: File → Save As → CSV (comma delimited).", { kind: "error", title: "Not a CSV file" }); return; }
+            impFile = file;
+            var fd = new FormData(); fd.append("file", file); fd.append("__RequestVerificationToken", token());
+            $("#impDrop").addClass("busy");
+            fetch("/org/import/check", { method: "POST", body: fd, headers: { RequestVerificationToken: token() } })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    $("#impDrop").removeClass("busy");
+                    if (!res.ok) { Sahyog.toast(res.error || "The file couldn't be read.", { kind: "error", title: "Can't import" }); return; }
+                    impPlan = res;
+                    $("#impName").text(res.file);
+                    $("#impCols").text(res.total + (res.total === 1 ? " row" : " rows") + " · columns found: " + res.columns.join(", "));
+                    var c = res.counts, chips = "";
+                    if (c["new"]) chips += chip("new", c["new"] + (c["new"] === 1 ? " new person" : " new people"));
+                    if (c.update) chips += chip("update", c.update + (c.update === 1 ? " update" : " updates"));
+                    if (c.warn) chips += chip("warn", c.warn + " to check");
+                    if (c.bad) chips += chip("bad", c.bad + " with problems");
+                    chips += '<span class="org-seats">Seats after import: ' + res.seatsAfter + ' of ' + res.maxUsers + '</span>';
+                    $("#impChips").html(chips);
+                    $("#impRows").html(res.rows.map(function (r) {
+                        return '<tr class="' + r.kind + '"><td>' + r.line + '</td><td><b>' + esc(r.name || "—") + '</b></td><td class="' + (r.email ? "" : "bad-t") + '">' + esc(r.email || "(empty)") +
+                            '</td><td>' + esc(r.title) + '</td><td>' + esc(r.department) + '</td><td class="' + (r.kind === "warn" && /Manager/.test(r.status) ? "warn-t" : "") + '">' + esc(r.managerShown) +
+                            '</td><td>' + chip(r.kind, r.status) + '</td></tr>';
+                    }).join(""));
+                    var go = c["new"] + c.update;
+                    $("#impGo").prop("disabled", !go).find("span").text(go ? "Import " + go + (go === 1 ? " person" : " people") : "Nothing to import");
+                    step(2);
+                })
+                .catch(function () { $("#impDrop").removeClass("busy"); Sahyog.toast("The file couldn't be checked. Try again.", { kind: "error" }); });
+        }
+        $(document).on("change.snorg", "#impFile", function () { check(this.files && this.files[0]); });
+        $(document).on("dragover.snorg", "#impDrop", function (e) { e.preventDefault(); this.classList.add("over"); });
+        $(document).on("dragleave.snorg drop.snorg", "#impDrop", function () { this.classList.remove("over"); });
+        $(document).on("drop.snorg", "#impDrop", function (e) {
+            e.preventDefault();
+            var f = e.originalEvent.dataTransfer && e.originalEvent.dataTransfer.files[0];
+            check(f);
+        });
+        $(document).on("click.snorg", "#impAgain, #impBack", function () { document.getElementById("impFile").value = ""; step(1); });
+        $(document).on("click.snorg", "#impGo", function () {
+            if (!impFile || !impPlan) return;
+            var btn = this; btn.disabled = true;
+            var fd = new FormData(); fd.append("file", impFile); fd.append("__RequestVerificationToken", token());
+            var inv = document.getElementById("impInvite");
+            fd.append("sendInvites", inv ? (inv.checked ? "true" : "false") : "false");
+            fetch("/org/import/run", { method: "POST", body: fd, headers: { RequestVerificationToken: token() } })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    btn.disabled = false;
+                    if (!res.ok) { Sahyog.toast(res.error || "The import didn't run.", { kind: "error", title: "Can't import" }); return; }
+                    var h = '<span class="org-done-ic" aria-hidden="true"><i class="fa fa-check"></i></span><b>Import finished</b><p>' +
+                        res.added + ' added · ' + res.updated + ' updated' + (res.skipped ? ' · ' + res.skipped + ' skipped' : "") +
+                        (res.added ? (res.emailed ? ' · ' + res.emailed + ' welcome email' + (res.emailed === 1 ? "" : "s") + ' sent' : ' · no welcome emails sent') : "") + '</p>';
+                    if (res.problems && res.problems.length) h += '<ul class="org-problems">' + res.problems.map(function (p) { return '<li>' + esc(p) + '</li>'; }).join("") + '</ul>';
+                    $("#impDone").html(h);
+                    step(3);
+                    $("#orgImportDialog").one("close", function () { SN.reload(); });
+                })
+                .catch(function () { btn.disabled = false; Sahyog.toast("The import couldn't finish. Refresh and check what was added.", { kind: "error" }); });
+        });
+
+        // ---------- start ----------
+        draw();
+        var startId = byId[START] ? START : byId[ME] ? ME : (people[0] || {}).id;
+        if (startId) setTimeout(function () {
+            // on a phone the whole chart would be tiny: start readable, around the person instead
+            if (z < .6) { z = .75; apply(); select(startId, true); }
+            else select(startId, !!byId[START]);
+        }, 40);
+        else card();
+        $(window).off("resize.snorg").on("resize.snorg", function () { clearTimeout(window.__snOrgRz); window.__snOrgRz = setTimeout(function () { fit(true); }, 150); });
+    })();
+    </script>
+}

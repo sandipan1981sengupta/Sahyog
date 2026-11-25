@@ -487,6 +487,7 @@ html[data-theme="dark"] .sn-sheet { color: #F1F5F9; background: linear-gradient(
 .sn-sheet-ic.chat { background: linear-gradient(135deg, #3B82F6, #1D4ED8); }
 .sn-sheet-ic.call { background: linear-gradient(135deg, #22C55E, #15803D); }
 .sn-sheet-ic.del { background: linear-gradient(135deg, #EF4444, #B91C1C); }
+.sn-sheet-ic.grp { background: linear-gradient(135deg, #8B5CF6, #6D28D9); }
 .sn-sheet-item.del { color: #DC2626; }
 html[data-theme="dark"] .sn-sheet-item.del { color: #F87171; }
 .sn-sheet-cancel { display: block; width: 100%; margin-top: 6px; height: 44px; border: 0; border-radius: 16px; cursor: pointer;

@@ -21,9 +21,14 @@ public sealed class HistoryController : Controller
     private readonly IChatService _chat;
     private readonly IFileStorage _files;
     private readonly IHubContext<ChatHub> _hub;
+    private readonly IUserService _users;
+    private readonly IOrgService _org;
 
-    public HistoryController(ICallLogService calls, PresenceTracker presence, IChatService chat, IFileStorage files, IHubContext<ChatHub> hub)
+    public HistoryController(ICallLogService calls, PresenceTracker presence, IChatService chat, IFileStorage files, IHubContext<ChatHub> hub,
+        IUserService users, IOrgService org)
     {
+        _users = users;
+        _org = org;
         _calls = calls;
         _presence = presence;
         _chat = chat;
@@ -141,12 +146,49 @@ public sealed class HistoryController : Controller
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var list = await _calls.ListForUserAsync(tenantId, User.UserGuid());
+        var online = _presence.OnlineUsers(tenantId);
+        var panel = await TeamPanelAsync(tenantId, online, share: false);
         return View(new CallsViewModel
         {
             Calls = list ?? new(),
             NeedsSql = list is null,
-            Online = _presence.OnlineUsers(tenantId)
+            Online = online,
+            Team = panel.Team,
+            Pinned = panel.Pinned,
+            Titles = panel.Titles
         });
+    }
+
+    /// <summary>
+    /// Everyone you can call, chat with or share with (online first, by name), your pins
+    /// (41_PeoplePins.sql) and job titles (40_OrgStructure.sql); empty extras until those scripts are run.
+    /// </summary>
+    private async Task<TeamPanelVm> TeamPanelAsync(Guid tenantId, HashSet<string> online, bool share)
+    {
+        var me = User.UserGuid().ToString();
+        var team = (await _users.ListByTenantAsync(tenantId))
+            .Where(u => u.IsActive && !string.Equals(u.Id, me, StringComparison.OrdinalIgnoreCase))
+            .Select(u => new PersonVm(u.Id, u.DisplayName, u.Initials, u.AvatarTone, online.Contains(u.Id)))
+            .OrderByDescending(p => p.Online).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var pins = (await _org.ListPinsAsync(User.UserGuid())).Select(g => g.ToString()).ToList();
+        var org = await _org.GetAsync(tenantId);
+        return new TeamPanelVm
+        {
+            Team = team,
+            Pinned = pins,
+            Titles = org.People.Where(p => !string.IsNullOrWhiteSpace(p.JobTitle)).ToDictionary(p => p.Id, p => p.JobTitle!),
+            Share = share
+        };
+    }
+
+    /// <summary>Calls page → Team panel: pin someone to the top of your list, or unpin them. Saved for you on every device.</summary>
+    [HttpPost("/calls/pin/{id:guid}")]
+    public async Task<IActionResult> Pin(Guid id, bool pinned)
+    {
+        if (User.TenantId() is not Guid tenantId) return Forbid();
+        var problem = await _org.SetPinAsync(tenantId, User.UserGuid(), id, pinned);
+        return Json(new { ok = problem is null, error = problem });
     }
 
     [HttpGet("/files")]
@@ -154,11 +196,13 @@ public sealed class HistoryController : Controller
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var list = await _calls.ListFilesForUserAsync(tenantId, User.UserGuid());
+        var online = _presence.OnlineUsers(tenantId);
         return View(new FilesViewModel
         {
             Files = list ?? new(),
             NeedsSql = list is null,
-            Online = _presence.OnlineUsers(tenantId)
+            Online = online,
+            TeamPanel = await TeamPanelAsync(tenantId, online, share: true)
         });
     }
 }

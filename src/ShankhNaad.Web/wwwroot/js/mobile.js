@@ -67,63 +67,31 @@
         addMore();
         new MutationObserver(addMore).observe(side, { childList: true, subtree: true });
 
-        const esc = (t) => String(t || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-        let open = null;
-        const close = () => {
-            if (!open) return;
-            const { scrim, sheet, btn } = open; open = null;
-            btn?.classList.remove("on");
-            scrim.classList.remove("show"); sheet.classList.remove("show");
-            setTimeout(() => { scrim.remove(); sheet.remove(); }, 320);
-        };
         side.addEventListener("click", (e) => {
             const more = e.target.closest(".sn-row-more");
             if (!more) return;
             e.preventDefault(); e.stopPropagation();
             const row = more.closest(".sn-person-row, .sn-team-row");
             const name = row.querySelector(".sn-person-open .grow, .sn-team-open .grow")?.textContent.trim() || "";
-            const avatar = row.querySelector(".sn-person-open .avatar, .sn-team-open .avatar")?.cloneNode(true);
-            const scrim = document.createElement("div"); scrim.className = "sn-sheet-scrim";
-            const sheet = document.createElement("div"); sheet.className = "sn-sheet"; sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-label", name);
-            sheet.innerHTML = '<div class="sn-sheet-grip"></div><div class="sn-sheet-head"><b>' + esc(name) + "</b></div>";
-            if (avatar) { avatar.querySelector(".dot")?.remove(); sheet.querySelector(".sn-sheet-head").prepend(avatar); }
+            const avatar = row.querySelector(".sn-person-open .avatar, .sn-team-open .avatar");
+            // one item per row button; data-label / data-sub give the wording ("Call" · "Camera off · turn it on any time")
+            const KINDS = ["pin", "ping", "chat", "video", "call", "org", "grp", "del"];
+            const DEFAULTS = { pin: "Pin", ping: "Ping", chat: "Message", call: "Call", video: "Video call", org: "Organization chart", grp: "Create group", del: "Delete chat" };
+            const items = [];
+            let last = "";
             row.querySelectorAll(".sn-team-actions .sn-team-btn").forEach((src) => {
-                const kind = ["pin", "ping", "chat", "call", "del"].find((k) => src.classList.contains(k)) || "";
-                const label = kind === "pin" ? (src.getAttribute("aria-label") || "Pin") : kind === "ping" ? "Ping" : kind === "chat" ? "Message" : kind === "call" ? "Video call" : kind === "del" ? "Delete chat" : (src.getAttribute("aria-label") || "");
-                const icon = src.querySelector("i")?.className || "fa fa-circle";
-                const item = document.createElement("button");
-                item.type = "button";
-                item.className = "sn-sheet-item " + kind;
-                item.innerHTML = '<span class="sn-sheet-ic ' + kind + '"><i class="' + esc(icon) + '" aria-hidden="true"></i></span><span>' + esc(label) + "</span>";
-                item.addEventListener("click", () => { close(); setTimeout(() => src.click(), 60); });
-                sheet.appendChild(item);
+                const kind = KINDS.find((k) => src.classList.contains(k)) || "";
+                // a thin line between groups of actions: pin/ping · calls · org/group · delete
+                const group = { pin: 1, ping: 1, chat: 1, call: 2, video: 2, org: 3, grp: 3, del: 4 }[kind] || 0;
+                if (last && group !== last) items.push("sep");
+                last = group;
+                const label = kind === "pin" ? (src.getAttribute("aria-label") || "Pin") : (src.getAttribute("data-label") || DEFAULTS[kind] || src.getAttribute("aria-label") || "");
+                items.push({ kind: kind === "video" ? "call" : kind, label, sub: src.getAttribute("data-sub") || (kind === "ping" ? "A gentle nudge to look at the chat" : ""),
+                    icon: src.querySelector("i")?.className || "fa fa-circle", run: () => src.click() });
             });
-            const cancel = document.createElement("button");
-            cancel.type = "button"; cancel.className = "sn-sheet-cancel"; cancel.textContent = "Cancel";
-            cancel.addEventListener("click", close);
-            sheet.appendChild(cancel);
-            scrim.addEventListener("click", close);
-            const asPop = !phone();
-            if (asPop) {
-                sheet.classList.add("pop"); scrim.classList.add("pop");
-                more.classList.add("on");
-            }
-            body.append(scrim, sheet);
-            if (asPop) {
-                // just below the ⋯ button, its right edge lined up with the button; above it when there's no room below
-                const r = more.getBoundingClientRect(), h = sheet.offsetHeight, w = sheet.offsetWidth;
-                const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w));
-                let top = r.bottom + 6;
-                if (top + h > window.innerHeight - 8) { top = Math.max(8, r.top - h - 6); sheet.classList.add("up"); }
-                sheet.style.left = left + "px"; sheet.style.top = top + "px";
-            }
-            open = { scrim, sheet, btn: more };
-            requestAnimationFrame(() => { scrim.classList.add("show"); sheet.classList.add("show"); });
-            sheet.querySelector(".sn-sheet-item")?.focus({ preventScroll: true });
+            if (window.SN && SN.openMenu) SN.openMenu(more, { name, avatar }, items);
         }, true);
-        document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
-        window.addEventListener("resize", close);
-        side.addEventListener("scroll", () => { if (open?.sheet.classList.contains("pop")) close(); }, true);
+        side.addEventListener("scroll", () => { if (window.SN && SN.closeMenu && !window.matchMedia("(max-width: 760px)").matches) SN.closeMenu(); }, true);
     }
 
     };

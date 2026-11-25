@@ -186,7 +186,7 @@ public sealed class MeetingsController : Controller
 
     /// <summary>"Meet now" from a channel or DM: creates the meeting and rings everyone in it.</summary>
     [HttpPost("instant")]
-    public async Task<IActionResult> Instant(Guid? channelId, Guid? userId)
+    public async Task<IActionResult> Instant(Guid? channelId, Guid? userId, bool video = false)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         // "Call" next to a person in Chat: use (or create) your one-to-one chat with them
@@ -219,7 +219,7 @@ public sealed class MeetingsController : Controller
             && (open.Outcome == 0 || _rooms.Count(open.MeetingId) > 0))
         {
             if (open.Outcome == 0) await RingAsync(open.MeetingId, title, others);
-            return RedirectToAction(nameof(Room), new { id = open.MeetingId });
+            return RedirectToAction(nameof(Room), new { id = open.MeetingId, video = video ? 1 : (int?)null });
         }
 
         var meeting = new CreateMeetingRequest
@@ -250,7 +250,8 @@ public sealed class MeetingsController : Controller
         }
 
         await RingAsync(meeting.MeetingId, title, others);
-        return RedirectToAction(nameof(Room), new { id = meeting.MeetingId });
+        // "Video call" starts with your camera on; "Call" with it off (turn it on any time in the call)
+        return RedirectToAction(nameof(Room), new { id = meeting.MeetingId, video = video ? 1 : (int?)null });
     }
 
     /// <summary>Shows the ringing card (with the ringtone) on every device of the people being called.</summary>
@@ -318,7 +319,7 @@ public sealed class MeetingsController : Controller
     }
 
     [HttpGet("room/{id:guid}")]
-    public async Task<IActionResult> Room(Guid id)
+    public async Task<IActionResult> Room(Guid id, int? video = null)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var meeting = await _meetings.GetAsync(tenantId, id);
@@ -359,6 +360,7 @@ public sealed class MeetingsController : Controller
             MaxVideoHeight = limits.MaxVideoHeight,
             MaxParticipants = limits.MaxMeetingParticipants,
             OneToOne = oneToOne,
+            StartCameraOff = meeting.IsInstant && video != 1,     // calls: sound first (camera on any time); "Video call" starts with it on
             OfflineNote = TempData["CallOffline"] as string,
             LeaveUrl = meeting.ChannelId is Guid ch ? Url.Action("Index", "Chat", new { id = ch })! : Url.Action(nameof(Index))!,
             GuestUrl = meeting.GuestLinkEnabled ? _meetings.GuestUrl(meeting.GuestCode) : null,
