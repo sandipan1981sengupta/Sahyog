@@ -4172,10 +4172,6 @@ html[data-theme="dark"] .sn-tp-note { color: #CBD5E1; background: rgba(255, 255,
 }
 
 /* Team: the "admin too?" switch is a choice, not an error: grey when off (other switches stay red/green) */
-.sn-body #mAdmin:not(:checked) ~ .mc-indicator,
-.sn-body #eAdmin:not(:checked) ~ .mc-indicator { background: #94A3B8; }
-html[data-theme="dark"] .sn-body #mAdmin:not(:checked) ~ .mc-indicator,
-html[data-theme="dark"] .sn-body #eAdmin:not(:checked) ~ .mc-indicator { background: #475569; }
 
 /* ===================== Org page (Views/Org/Index.cshtml) ===================== */
 .sn-org-page { --org-acc: #1D4ED8; --org-soft: rgba(37, 99, 235, .1); --org-line: rgba(37, 99, 235, .32); --org-card: rgba(255, 255, 255, .72);

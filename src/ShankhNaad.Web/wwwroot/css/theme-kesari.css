@@ -535,6 +535,11 @@ html[data-skin="kesari"] .sn-sheet-item:active { background: rgba(194, 65, 12, .
 html[data-skin="kesari"] .sn-sheet-ic.chat { background: linear-gradient(135deg, #F97316, #C2410C); }
 html[data-skin="kesari"] .sn-sheet-ic.grp { background: linear-gradient(135deg, #EA580C, #9A3412); }
 html[data-skin="kesari"] .sn-sheet.pop .sn-sheet-item:hover { background: rgba(194, 65, 12, .1); }
+/* ---- from dialog-wide.css ---- */
+@media (max-width: 760px) {
+html[data-skin="kesari"]:not([data-skin="kesari"]) .sn-dlg-2col .sn-dlg-tabs button.on { border-image: linear-gradient(90deg, #EA580C, #EA580C) 1; }
+html[data-skin="kesari"] .sn-dlg-2col .sn-dlg-n { background: linear-gradient(135deg, #EA580C, #EA580C); }
+}
 /* ---- from shankhnaad-auth.css ---- */
 html[data-skin="kesari"] .sn-window-orbs .w1 { background: radial-gradient(circle at 35% 30%, #FDBA74 0%, #EA580C 55%, #7C2D12 100%); }
 html[data-skin="kesari"] .sn-window-orbs .w2 { background: radial-gradient(circle at 35% 30%, #BBF7D0 0%, #15803D 55%, #831843 100%); }

@@ -12,10 +12,10 @@
 html body.sn-body .sn-dlg-2col { --d2-bg: rgba(248, 250, 252, .4); --d2-line: rgba(15, 23, 42, .08); --d2-dim: #64748B; }
 html[data-skin="kesari"] body.sn-body .sn-dlg-2col { --d2-bg: rgba(255, 251, 245, .4); }
 html[data-theme="dark"] body.sn-body .sn-dlg-2col {
-    --d2-bg: linear-gradient(155deg, rgba(36, 44, 82, .42) 0%, rgba(20, 26, 52, .38) 55%, rgba(40, 28, 68, .4) 100%);
+    --d2-bg: linear-gradient(155deg, rgba(36, 44, 82, .72) 0%, rgba(20, 26, 52, .68) 55%, rgba(40, 28, 68, .7) 100%);
     --d2-line: rgba(255, 255, 255, .08); --d2-dim: #94A3B8;
 }
-html[data-theme="dark"].sn-carbon body.sn-body .sn-dlg-2col { --d2-bg: rgba(30, 30, 34, .4); }
+html[data-theme="dark"].sn-carbon body.sn-body .sn-dlg-2col { --d2-bg: rgba(30, 30, 34, .7); }
 
 html body.sn-body.sn-body dialog.sn-dialog.sn-dialog.sn-dlg-2col {
     background: var(--d2-bg) !important;

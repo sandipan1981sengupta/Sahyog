@@ -27,7 +27,7 @@ html[data-skin="kesari"] {
     --pop-list-bg: rgba(255, 252, 247, .95);
 }
 html[data-theme="dark"] {
-    --pop-bg: rgba(18, 26, 52, .4);
+    --pop-bg: rgba(18, 26, 52, .7);
     --pop-edge: rgba(148, 163, 255, .18);
     --pop-shine: rgba(199, 210, 254, .08);
     --pop-shadow: 0 28px 70px -24px rgba(2, 6, 23, .9);
@@ -36,7 +36,7 @@ html[data-theme="dark"] {
     --pop-list-bg: rgba(16, 23, 46, .92);
 }
 html[data-theme="dark"].sn-carbon {
-    --pop-bg: rgba(30, 30, 34, .4);
+    --pop-bg: rgba(30, 30, 34, .7);
     --pop-edge: rgba(255, 255, 255, .09);
     --pop-shine: rgba(255, 255, 255, .06);
     --pop-shadow: 0 28px 70px -24px rgba(0, 0, 0, .85);
@@ -128,11 +128,11 @@ html[data-theme="dark"] body.sn-body .sn-month .sn-month-head { background: rgba
 /* ---- the profile menu (status, theme, log out) and the theme picker: a bit more see-through than other menus ---- */
 :root { --pop-menu-bg: rgba(255, 255, 255, .4); }
 html[data-skin="kesari"] { --pop-menu-bg: rgba(255, 251, 245, .4); }
-html[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .4); }
-html[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .4); }
+html[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .68); }
+html[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .68); }
 html.sn-webkit { --pop-menu-bg: rgba(255, 255, 255, .4); }
-html.sn-webkit[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .4); }
-html.sn-webkit[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .4); }
+html.sn-webkit[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .68); }
+html.sn-webkit[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .68); }
 html body.sn-body .strip-user-dropdown[data-strip-user-dropdown][data-strip-user-dropdown][data-strip-user-dropdown],
 html body.sn-body .sn-theme-pop.sn-theme-pop.sn-theme-pop {
     background: var(--pop-menu-bg) !important;
@@ -146,12 +146,12 @@ html.sn-webkit body.sn-body .sn-theme-pop.sn-theme-pop.sn-theme-pop { backdrop-f
 html:not(.sn-webkit)[data-theme="dark"] body.sn-body.sn-body .sn-sched.sn-sched,
 html:not(.sn-webkit)[data-theme="dark"] body.sn-body.sn-body .sn-month.sn-month,
 html:not(.sn-webkit)[data-theme="dark"] body.sn-body.sn-body .sn-agenda.sn-agenda {
-    background: linear-gradient(150deg, rgba(30, 37, 66, .46) 0%, rgba(17, 22, 44, .34) 50%, rgba(27, 31, 60, .4) 100%) !important;
+    background: linear-gradient(150deg, rgba(30, 37, 66, .72) 0%, rgba(17, 22, 44, .62) 50%, rgba(27, 31, 60, .68) 100%) !important;
 }
 html:not(.sn-webkit)[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-sched.sn-sched,
 html:not(.sn-webkit)[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-month.sn-month,
 html:not(.sn-webkit)[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-agenda.sn-agenda {
-    background: linear-gradient(150deg, rgba(42, 42, 46, .46) 0%, rgba(26, 26, 29, .34) 50%, rgba(36, 36, 40, .4) 100%) !important;
+    background: linear-gradient(150deg, rgba(42, 42, 46, .72) 0%, rgba(26, 26, 29, .62) 50%, rgba(36, 36, 40, .68) 100%) !important;
 }
 
 /* the ⋯ menus beside chats (desktop pop-up): as see-through as the profile menu */
@@ -165,11 +165,11 @@ html.sn-webkit body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { backdrop-filter
 /* the ⋯ menus: a little more glass than the other pop-ups (asked for), still readable */
 :root { --pop-menu-bg: linear-gradient(150deg, rgba(255, 255, 255, .46) 0%, rgba(255, 255, 255, .34) 55%, rgba(255, 255, 255, .4) 100%); }
 html[data-skin="kesari"] { --pop-menu-bg: linear-gradient(150deg, rgba(255, 251, 245, .46) 0%, rgba(255, 247, 237, .34) 55%, rgba(240, 250, 242, .4) 100%); }
-html[data-theme="dark"] { --pop-menu-bg: linear-gradient(150deg, rgba(36, 44, 84, .46) 0%, rgba(20, 26, 52, .34) 55%, rgba(48, 30, 72, .4) 100%); }
-html[data-theme="dark"].sn-carbon { --pop-menu-bg: linear-gradient(150deg, rgba(48, 48, 52, .46) 0%, rgba(30, 30, 34, .34) 55%, rgba(40, 40, 44, .4) 100%); }
+html[data-theme="dark"] { --pop-menu-bg: linear-gradient(150deg, rgba(36, 44, 84, .72) 0%, rgba(20, 26, 52, .62) 55%, rgba(48, 30, 72, .68) 100%); }
+html[data-theme="dark"].sn-carbon { --pop-menu-bg: linear-gradient(150deg, rgba(48, 48, 52, .72) 0%, rgba(30, 30, 34, .62) 55%, rgba(40, 40, 44, .68) 100%); }
 html.sn-webkit { --pop-menu-bg: rgba(255, 255, 255, .4); }
-html.sn-webkit[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .4); }
-html.sn-webkit[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .4); }
+html.sn-webkit[data-theme="dark"] { --pop-menu-bg: rgba(18, 26, 52, .68); }
+html.sn-webkit[data-theme="dark"].sn-carbon { --pop-menu-bg: rgba(30, 30, 34, .68); }
 html body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { border: 1px solid rgba(255, 255, 255, .55) !important; }
 html[data-theme="dark"] body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { border-color: rgba(165, 180, 252, .22) !important; }
 html[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-sheet.pop.sn-sheet.pop { border-color: rgba(255, 255, 255, .14) !important; }
@@ -181,5 +181,21 @@ html body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box {
     border: 1px solid rgba(255, 255, 255, .85) !important;
 }
 html[data-skin="kesari"] body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(255, 252, 247, .7) !important; }
-html[data-theme="dark"] body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(20, 27, 46, .7) !important; border-color: rgba(255, 255, 255, .08) !important; }
-html[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(30, 30, 34, .7) !important; }
+html[data-theme="dark"] body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(20, 27, 46, .9) !important; border-color: rgba(255, 255, 255, .08) !important; }
+html[data-theme="dark"].sn-carbon body.sn-body.sn-body .sn-dialog .cee-group-box.cee-group-box { background: rgba(30, 30, 34, .9) !important; }
+
+/* Dark and CloudWheel: less glass than Light / Kesari (70 % solid, cards 90 %, a bit more blur) */
+html[data-theme="dark"] { --pop-blur: blur(18px) saturate(150%); }
+html.sn-webkit[data-theme="dark"] { --pop-blur: blur(14px) saturate(140%); }
+
+/* ---- every on/off switch in the app looks the same, in every theme: red = off, the theme colour = on ---- */
+html body.sn-body .mc-toggle .mc-cbx input:not(:checked) ~ .mc-indicator,
+html body.sn-body .mt-switch input:not(:checked) + .mt-switch-slider,
+html body.sn-body .sn-hs-files input:not(:checked) + .sn-hs-sw,
+html body.sn-body .sn-switch:not(.on),
+html body.sn-body .sn-loc-menu:not(.on) .sn-loc-menu-sw { background: #DC2626 !important; }
+html body.sn-body .mc-toggle .mc-cbx input:checked ~ .mc-indicator,
+html body.sn-body .mt-switch input:checked + .mt-switch-slider,
+html body.sn-body .sn-hs-files input:checked + .sn-hs-sw,
+html body.sn-body .sn-switch.on,
+html body.sn-body .sn-loc-menu.on .sn-loc-menu-sw { background: var(--sn-grad) !important; }

@@ -166,7 +166,7 @@
                             <modern-datepicker-with-label id="oJoined" name="joined" label="Joined (optional)" placeholder="dd-mm-yyyy"></modern-datepicker-with-label>
                         </div>
                         <div id="oAdminWrap">
-                            <modern-checkbox id="oAdmin" name="makeAdmin" label="Admin of this workspace" desc-text="Off: a normal team member. On: they can also add, edit and remove people and manage groups." is-toggle-button="true" on-text="YES" off-text="NO" label-font-size="13.5px"></modern-checkbox>
+                            <modern-checkbox id="oAdmin" name="makeAdmin" label="Admin of this workspace" desc-text="Off: a normal team member. On: they can also add, edit and remove people and manage groups." is-toggle-button="true" on-text="ON" off-text="OFF" label-font-size="13.5px"></modern-checkbox>
                         </div>
                     </div>
                 </modern-group-box>
@@ -253,7 +253,7 @@
             <p class="sn-org-note">Rows marked in red or yellow are skipped. Fix them in the file and upload again, or import the rest now.</p>
             @if (Model.CanEmail)
             {
-                <modern-checkbox id="impInvite" name="sendInvites" label="Email new people a welcome link" desc-text="They set their own password with it (the link works for 7 days)." is-toggle-button="true" on-text="YES" off-text="NO" checked="true" label-font-size="13.5px"></modern-checkbox>
+                <modern-checkbox id="impInvite" name="sendInvites" label="Email new people a welcome link" desc-text="They set their own password with it (the link works for 7 days)." is-toggle-button="true" on-text="ON" off-text="OFF" checked="true" label-font-size="13.5px"></modern-checkbox>
             }
             else
             {
