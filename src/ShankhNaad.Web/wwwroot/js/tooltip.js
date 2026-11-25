@@ -24,12 +24,14 @@
             if (t) el.setAttribute("data-tip", t);   // a script may change the title later: the newest one wins
             if (t && !el.hasAttribute("aria-label") && !el.textContent.trim()) el.setAttribute("aria-label", t);
         }
+        // a person's picture: their status ("Available", "In a call"…) set by the presence script
+        if (!el.hasAttribute("data-tip") && el.matches(".avatar[data-status]")) return el.getAttribute("data-status") || "";
         return el.getAttribute("data-tip") || "";
     };
     const find = (node) => {
         for (let el = node; el && el !== document.body; el = el.parentElement) {
             if (el.nodeType !== 1 || el.matches(SKIP)) continue;
-            if (el.hasAttribute("title") || el.hasAttribute("data-tip")) return el;
+            if (el.hasAttribute("title") || el.hasAttribute("data-tip") || el.matches(".avatar[data-status]")) return el;
         }
         return null;
     };

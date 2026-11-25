@@ -110,3 +110,10 @@ public enum CancelMeetingStatus { Ok = 0, NotFound = 1, NotAllowed = 2, AlreadyC
 public enum HideMeetingStatus { Ok = 0, NotFound = 1, NotCancelled = 2, NeedsDatabase = 9 }
 
 public sealed record DeleteMeetingResultDto(DeleteMeetingStatus Status, DateTime? StartUtc);
+
+/// <summary>One line of a call's attendance sheet (database/42_MeetingAttendance.sql).</summary>
+public sealed record AttendanceRowDto(Guid? UserId, string Name, string? Email, int AvatarTone, bool IsGuest,
+    string? JobTitle, string? DepartmentName, DateTime FirstJoinUtc, DateTime? LeftUtc, int Joins, int Seconds, bool InCall);
+
+/// <summary>The attendance sheet of the latest sitting of a call or meeting. Ready = false before 42_MeetingAttendance.sql.</summary>
+public sealed record AttendanceSheetDto(bool Ready, DateTime? StartedUtc, DateTime? EndedUtc, List<AttendanceRowDto> Rows);

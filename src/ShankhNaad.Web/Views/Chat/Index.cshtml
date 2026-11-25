@@ -378,7 +378,7 @@
             <span></span>
             <span style="display:flex;gap:10px">
                 <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-plus" aria-hidden="true"></i> Create new group</button>
+                <button type="submit" class="cee-btn cee-btn-gradient" data-pp-count-for="groupPeople" data-none="Create new group" data-one="Create group with 1 person" data-many="Create group with {n} people"><i class="fa fa-plus" aria-hidden="true"></i> <span data-pp-label>Create new group</span></button>
             </span>
         </div>
     </form>
@@ -395,7 +395,8 @@
             </div>
             <div class="sn-dlg-body">
                 <div class="sn-dlg-banner here" role="note"><i class="fa fa-info-circle" aria-hidden="true"></i><span><b>No new chat is made.</b> The people you pick join <b>@c.Name</b>, and everyone in it sees who was added.</span></div>
-                @{ var addPicker = new PeoplePickerVm { Id = "addPeople", People = notIn, EmptyText = "Everyone in the workspace is already in this group." }; }
+                @{ var addPicker = new PeoplePickerVm { Id = "addPeople", People = notIn, Title = "Pick who to add", EmptyText = "Everyone in the workspace is already in this group.",
+                       Already = Model.Members.ToList(), AlreadyIn = c.Name }; }
                 <partial name="_PeoplePicker" model="addPicker" />
                 @if (notIn.Count > 0)
                 {
@@ -423,7 +424,7 @@
                 <span></span>
                 <span style="display:flex;gap:10px">
                     <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                    <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-user-plus" aria-hidden="true"></i> Add to @c.Name</button>
+                    <button type="submit" class="cee-btn cee-btn-gradient" data-pp-count-for="addPeople" data-none="Add to @c.Name" data-one="Add 1 person to @c.Name" data-many="Add {n} people to @c.Name"><i class="fa fa-user-plus" aria-hidden="true"></i> <span data-pp-label>Add to @c.Name</span></button>
                 </span>
             </div>
         </form>

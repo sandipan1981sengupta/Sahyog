@@ -235,6 +235,19 @@ html[data-theme="light"] body.room-body .st-head { color: #6D28D9; }
 html[data-theme="light"] body.room-body .st-head b { color: #0F172A; }
 html[data-theme="light"] body.room-body .share-tip p { color: #334155; }
 html[data-theme="light"] body.room-body .share-tip p b { color: #0F172A; }
+html[data-theme="light"] body.room-body .att-chip { color: #334155; background: rgba(15, 23, 42, .05); }
+html[data-theme="light"] body.room-body .att-chip b { color: #0F172A; }
+html[data-theme="light"] body.room-body .att-chip.live { color: #15803D; }
+html[data-theme="light"] body.room-body .att-chip.live b { color: #129B42; }
+html[data-theme="light"] body.room-body .att-chip.guest { color: #AB8303; }
+html[data-theme="light"] body.room-body .att-row { color: #1E293B; }
+html[data-theme="light"] body.room-body .att-row + .att-row { border-top: 1px solid rgba(15, 23, 42, .07); }
+html[data-theme="light"] body.room-body .att-row.att-hd { color: #64748B; background: rgba(255, 255, 255, .94); }
+html[data-theme="light"] body.room-body .att-who b { color: #0F172A; }
+html[data-theme="light"] body.room-body .att-who small, html[data-theme="light"] body.room-body .att-row > span > small { color: #64748B; }
+html[data-theme="light"] body.room-body .att-n { color: #6D28D9; }
+html[data-theme="light"] body.room-body .att-live { color: #15803D; }
+html[data-theme="light"] body.room-body .att-act:hover { background: rgba(15, 23, 42, .06); }
 /* ---- Kesari: saffron and green ---- */
 html[data-skin="kesari"] body.room-body { color: #2A1A0F; }
 html[data-skin="kesari"] body.room-body .glass-dark-btn { background: rgba(42, 26, 15, .07); color: #2A1A0F; box-shadow: inset 0 0 0 1px rgba(42, 26, 15, .13); }
@@ -459,6 +472,14 @@ html[data-skin="kesari"] body.room-body .st-head { color: #9A3412; }
 html[data-skin="kesari"] body.room-body .st-head b { color: #2A1A0F; }
 html[data-skin="kesari"] body.room-body .share-tip p b { color: #2A1A0F; }
 html[data-skin="kesari"] body.room-body .share-tip button { background: #9A3412; }
+html[data-skin="kesari"] body.room-body .att-ic { background: linear-gradient(135deg, #16A34A, #90420E); }
+html[data-skin="kesari"] body.room-body .att-chip { background: rgba(42, 26, 15, .05); }
+html[data-skin="kesari"] body.room-body .att-chip b { color: #2A1A0F; }
+html[data-skin="kesari"] body.room-body .att-row { color: #3B2A1E; }
+html[data-skin="kesari"] body.room-body .att-row + .att-row { border-top: 1px solid rgba(42, 26, 15, .07); }
+html[data-skin="kesari"] body.room-body .att-who b { color: #2A1A0F; }
+html[data-skin="kesari"] body.room-body .att-n { color: #9A3412; background: rgba(251, 146, 60, .14); }
+html[data-skin="kesari"] body.room-body .att-act:hover { background: rgba(42, 26, 15, .06); }
 /* ---- Dark: neutral greys ---- */
 html[data-theme="dark"].sn-carbon body.room-body { background: #0F0F0F; color: #FAFAFA; }
 html[data-theme="dark"].sn-carbon body.room-body .room-sub { color: #D4D4D8; }
@@ -638,6 +659,11 @@ html[data-theme="dark"].sn-carbon body.room-body .sp-change { color: #F4F4F5; }
 html[data-theme="dark"].sn-carbon body.room-body .share-tip { background: #1F1F1F; border: 1px solid rgba(212, 212, 216, .4); color: #F4F4F5; }
 html[data-theme="dark"].sn-carbon body.room-body .st-head { color: #D4D4D8; }
 html[data-theme="dark"].sn-carbon body.room-body .share-tip p { color: #D4D4D8; }
+html[data-theme="dark"].sn-carbon body.room-body .att-chip { color: #D4D4D8; }
+html[data-theme="dark"].sn-carbon body.room-body .att-row { color: #E4E4E7; }
+html[data-theme="dark"].sn-carbon body.room-body .att-row.att-hd { color: #A1A1AA; background: rgba(25, 25, 25, .92); }
+html[data-theme="dark"].sn-carbon body.room-body .att-who small, html[data-theme="dark"].sn-carbon body.room-body .att-row > span > small { color: #A1A1AA; }
+html[data-theme="dark"].sn-carbon body.room-body .att-n { color: #D4D4D8; background: rgba(212, 212, 216, .14); }
 /* ---- hand-written (tools/room_themes_extra.css) ---- */
 /* the studio behind the call: light glass grounds for Light / Kesari, neutral black for Dark */
 html[data-theme="light"] body.room-body { background: #E6ECFB; color: #0F172A; }

@@ -1,15 +1,58 @@
 @model PeoplePickerVm
+@inject IOrgService Org
 @*
-    Shared people picker: slim rows A–Z with letter headings, search (Enter picks the first match),
-    All / Online, "Select shown" / "Clear", picked people as chips. Same for 2 or 500 people.
+    Shared people picker: slim rows A–Z with letter headings, search (name, job title or team; Enter picks the first match),
+    All / Online / Picked, "Select shown" / "Clear", picked people as one row of chips with "+N more",
+    "Add a whole team" (departments from the Org page) and an A–Z bar for long lists. Same for 2 or 500 people.
     The script is wwwroot/js/people-picker.js:  snPicker(document.getElementById(Model.Id))
 *@
 @{
     var people = Model.People.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
     var picked = new HashSet<string>(Model.Picked, StringComparer.OrdinalIgnoreCase);
     string? last = null;
+
+    // job titles and departments (40_OrgStructure.sql), fetched once per page however many pickers it has
+    var org = Context.Items["sn-org"] as OrgDataDto;
+    if (org is null)
+    {
+        org = User.TenantId() is Guid tid ? await Org.GetAsync(tid) : new OrgDataDto(false, new(), new());
+        Context.Items["sn-org"] = org;
+    }
+    var byId = org.People.ToDictionary(x => x.Id, StringComparer.OrdinalIgnoreCase);
+    string? TitleOf(string id) => byId.TryGetValue(id, out var o) ? o.JobTitle : null;
+    string? DeptOf(string id) => byId.TryGetValue(id, out var o) ? o.DepartmentName : null;
+    var teams = people.Select(x => DeptOf(x.Id)).Where(d => !string.IsNullOrWhiteSpace(d))
+                      .GroupBy(d => d!).Where(g => g.Count() >= 2).OrderByDescending(g => g.Count()).ThenBy(g => g.Key).Take(6).ToList();
+    var letters = people.Select(x => string.IsNullOrEmpty(x.Name) || !char.IsLetter(x.Name[0]) ? "#" : char.ToUpperInvariant(x.Name[0]).ToString()).Distinct().ToList();
+    var showIndex = people.Count >= 15 && letters.Count >= 4;
 }
 <div id="@Model.Id" class="sn-pp @Model.CssClass" data-pp>
+    @if (Model.Already is { Count: > 0 } already)
+    {
+        @* a big group: the people already in it as faces, "See who" opens the names *@
+        <div class="sn-pp-already">
+            <span class="sn-pp-faces" aria-hidden="true">
+                @foreach (var a in already.Take(8))
+                {
+                    <span class="avatar av-30 tone-@(a.Tone)" data-user="@a.Id">@a.Initials</span>
+                }
+                @if (already.Count > 8)
+                {
+                    <span class="sn-pp-more-faces">+@(already.Count - 8)</span>
+                }
+            </span>
+            <span class="sn-pp-already-t">
+                <b>@already.Count @(already.Count == 1 ? "person" : "people") already in @(Model.AlreadyIn ?? "this group")</b>
+                <button type="button" class="sn-link" data-pp-already-toggle aria-expanded="false">See who</button>
+            </span>
+            <div class="sn-pp-already-list" data-pp-already-list hidden>
+                @foreach (var a in already.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    <span class="sn-pp-already-name">@a.Name</span>
+                }
+            </div>
+        </div>
+    }
     <div class="sn-pp-head">
         <span class="sn-pp-title"><b>@Model.Title</b> <span class="sn-pp-count" data-pp-count>0 picked</span></span>
         <span class="sn-pp-total muted tiny">@people.Count to pick from · @people.Count(x => x.Online) online</span>
@@ -20,14 +63,25 @@
     <div class="sn-pp-tools">
         <label class="sn-pp-search">
             <i class="fa fa-search" aria-hidden="true"></i>
-            <input type="search" data-pp-search placeholder="Search by name, then press Enter to pick" aria-label="Search people" autocomplete="off" />
+            <input type="search" data-pp-search placeholder="@(teams.Count > 0 || byId.Count > 0 ? "Search by name, title or team" : "Search by name, then press Enter to pick")" aria-label="Search people" autocomplete="off" />
         </label>
         <span class="sn-pp-seg" role="group" aria-label="Show">
             <i class="sn-pp-pill" aria-hidden="true"></i>
             <button type="button" class="on" data-pp-show="all">All</button>
             <button type="button" data-pp-show="online"><i class="dot-on" aria-hidden="true"></i> Online</button>
+            <button type="button" data-pp-show="picked" title="Only the people you picked, to check or remove them">Picked <span data-pp-picked-n>0</span></button>
         </span>
     </div>
+    @if (teams.Count > 0)
+    {
+        <div class="sn-pp-teams">
+            <span class="muted tiny">Add a whole team:</span>
+            @foreach (var t in teams)
+            {
+                <button type="button" class="sn-pp-team" data-pp-team="@t.Key" title="Tick everyone in @t.Key"><i class="fa fa-plus" aria-hidden="true"></i> @t.Key · @t.Count()</button>
+            }
+        </div>
+    }
     <div class="sn-pp-bar">
         <span class="muted tiny" data-pp-shown></span>
         <span class="sn-pp-acts">
@@ -35,29 +89,43 @@
             <button type="button" class="sn-link sn-pp-clear" data-pp-clear>Clear</button>
         </span>
     </div>
-    <div class="sn-pp-list" data-pp-list>
-        @foreach (var person in people)
-        {
-            var letter = string.IsNullOrEmpty(person.Name) || !char.IsLetter(person.Name[0]) ? "#" : char.ToUpperInvariant(person.Name[0]).ToString();
-            if (letter != last)
+    <div class="sn-pp-listwrap@(showIndex ? " has-index" : "")">
+        <div class="sn-pp-list" data-pp-list>
+            @foreach (var person in people)
             {
-                last = letter;
-                <div class="sn-pp-letter" data-letter="@letter">@letter</div>
+                var letter = string.IsNullOrEmpty(person.Name) || !char.IsLetter(person.Name[0]) ? "#" : char.ToUpperInvariant(person.Name[0]).ToString();
+                var job = TitleOf(person.Id);
+                var dept = DeptOf(person.Id);
+                if (letter != last)
+                {
+                    last = letter;
+                    <div class="sn-pp-letter" data-letter="@letter">@letter</div>
+                }
+                <label class="sn-pp-row" data-name="@person.Name.ToLowerInvariant()" data-find="@($"{person.Name} {job} {dept}".ToLowerInvariant())" data-dept="@dept"
+                       data-letter="@letter" data-online="@(person.Online ? "1" : "0")" data-state="@(person.Online ? "available" : "offline")">
+                    <input type="checkbox" name="@Model.FieldName" value="@person.Id" checked="@picked.Contains(person.Id)" />
+                    <span class="avatar av-34 tone-@(person.Tone)" data-presence="@person.Id" data-user="@person.Id">@person.Initials<i class="dot @(person.Online ? "on" : "")"></i></span>
+                    <span class="sn-pp-who">
+                        <span class="sn-pp-name">@person.Name</span>
+                        <span class="sn-pp-sub"><span class="sn-pp-state">@(person.Online ? "Available" : "Offline")</span>@(string.IsNullOrWhiteSpace(job) ? "" : " · " + job)</span>
+                    </span>
+                    <span class="sn-pp-tick" aria-hidden="true"><i class="fa fa-check"></i></span>
+                </label>
             }
-            <label class="sn-pp-row" data-name="@person.Name.ToLowerInvariant()" data-letter="@letter" data-online="@(person.Online ? "1" : "0")" data-state="@(person.Online ? "available" : "offline")">
-                <input type="checkbox" name="@Model.FieldName" value="@person.Id" checked="@picked.Contains(person.Id)" />
-                <span class="avatar av-34 tone-@(person.Tone)" data-presence="@person.Id" data-user="@person.Id">@person.Initials<i class="dot @(person.Online ? "on" : "")"></i></span>
-                <span class="sn-pp-who">
-                    <span class="sn-pp-name">@person.Name</span>
-                    <span class="sn-pp-state">@(person.Online ? "Available" : "Offline")</span>
-                </span>
-                <span class="sn-pp-tick" aria-hidden="true"><i class="fa fa-check"></i></span>
-            </label>
-        }
-        <div class="sn-pp-none" data-pp-none hidden>No one matches “<span></span>”.</div>
-        @if (people.Count == 0)
+            <div class="sn-pp-none" data-pp-none hidden>No one matches “<span></span>”.</div>
+            @if (people.Count == 0)
+            {
+                <p class="muted small" style="padding:10px">@Model.EmptyText</p>
+            }
+        </div>
+        @if (showIndex)
         {
-            <p class="muted small" style="padding:10px">@Model.EmptyText</p>
+            <nav class="sn-pp-index" aria-label="Jump to a letter">
+                @foreach (var l in letters)
+                {
+                    <button type="button" data-pp-jump="@l" aria-label="Jump to @l">@l</button>
+                }
+            </nav>
         }
     </div>
     @if (Model.Hint is string hint)

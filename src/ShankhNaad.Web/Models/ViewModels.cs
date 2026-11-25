@@ -78,6 +78,10 @@ public sealed class PeoplePickerVm
     public string? Hint { get; init; }
     /// <summary>Extra class on the picker, e.g. "sn-pp-compact" for a shorter list.</summary>
     public string? CssClass { get; init; }
+    /// <summary>People already in the group (Add people): shown as a row of faces with "+N" and "See who".</summary>
+    public IReadOnlyList<PersonVm>? Already { get; init; }
+    /// <summary>Name of the group they're already in ("18 people already in Project Alpha").</summary>
+    public string? AlreadyIn { get; init; }
 }
 
 public sealed class ChatViewModel

@@ -972,7 +972,21 @@ window.addEventListener("pageshow", () => {
         from = null;
     };
     place();
-    window.addEventListener("resize", () => { const a = active(); if (a) put(rectOf(a), false); });
+    // After a hard refresh the icons and fonts arrive a moment later and the tabs change size and move,
+    // so put the highlight (and the side bar) back on the active tab whenever the tabs' layout settles.
+    const resettle = () => {
+        const a = active();
+        if (a) put(rectOf(a), false);
+        const bar = window.jQuery && jQuery(rail).data("rr-reposition");
+        if (typeof bar === "function") bar(false);
+    };
+    window.addEventListener("resize", resettle);
+    window.addEventListener("load", resettle);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(resettle);
+    if ("ResizeObserver" in window) {
+        let raf = 0;
+        new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(resettle); }).observe(items);
+    }
 
     // Partial page loads: the rail stays, so take the active tab from the new page and move the highlight
     // (animate = slide it here; with view transitions the transition itself carries it over).

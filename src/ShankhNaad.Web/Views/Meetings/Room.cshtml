@@ -198,6 +198,11 @@
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M19 8v6M16 11h6" /></svg>
                         <span>Add people</span>
                     </button>
+                    @* who joined, when, for how long: print it, download it, attach it to the chat (AttendanceController) *@
+                    <button type="button" class="add-people-btn att-open-btn" id="attOpenBtn" title="Attendance sheet: who joined this call, when and for how long">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 3v3h6V3M9 11l1.5 1.5L13 10M9 16h6" /></svg>
+                        <span>Attendance sheet</span>
+                    </button>
                 }
                 @if (Model.LobbyEnabled && Model.IsModerator)
                 {
@@ -373,6 +378,30 @@
             </button>
         </div>
     </dialog>
+
+    @if (!Model.IsGuest)
+    {
+    @* ---- Attendance sheet: who joined this call, when and for how long ---- *@
+    <dialog class="add-dlg att-dlg" id="attDlg" aria-labelledby="attDlgTitle">
+        <div class="add-dlg-head">
+            <span class="add-dlg-ic att-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 3v3h6V3M9 11l1.5 1.5L13 10M9 16h6" /></svg></span>
+            <div><h2 id="attDlgTitle">Attendance sheet</h2><p id="attSub">Who joined this call, when and for how long. It updates while the call goes on.</p></div>
+            <button type="button" class="add-dlg-x" data-close aria-label="Close">&times;</button>
+        </div>
+        <div class="att-chips" id="attChips"></div>
+        <div class="att-list" id="attList"><p class="add-dlg-empty">Loading…</p></div>
+        <div class="add-dlg-foot att-foot">
+            <button type="button" class="add-dlg-cancel att-act" id="attPrint" title="Open a page made for printing (or Save as PDF)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></svg>Print</button>
+            <a class="add-dlg-cancel att-act" id="attDownload" href="#" title="Download as an Excel file">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16" /></svg>Download Excel</a>
+            <button type="button" class="add-dlg-ring" id="attShare" title="Attach the Excel sheet to the call chat and to the chat this call was started from">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.5l-8.5 8.5a6 6 0 0 1-8.5-8.5l9-9a4 4 0 0 1 5.7 5.7l-9 9a2 2 0 0 1-2.8-2.8l8.3-8.3" /></svg>
+                <span>Attach to chat</span>
+            </button>
+        </div>
+    </dialog>
+    }
 
     <script id="roomConfig" type="application/json">@Html.Raw(JsonSerializer.Serialize(config))</script>
     @if (!Model.IsGuest)

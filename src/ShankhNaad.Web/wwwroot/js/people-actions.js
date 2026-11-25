@@ -309,6 +309,8 @@
         const pin = btn.getAttribute("aria-pressed") !== "true";
         tpPlace(row, pin);
         const fd = new FormData(); fd.append("pinned", pin ? "true" : "false");
+        // Calls and Files keep their own pins
+        fd.append("scope", (btn.closest("[data-pin-scope]") || {}).getAttribute?.("data-pin-scope") || "calls");
         fetch("/calls/pin/" + id, { method: "POST", body: fd, headers: { RequestVerificationToken: token() } })
             .then((r) => r.json())
             .then((x) => { if (x.ok) return; tpPlace(row, !pin); toast(x.error || "The pin wasn't saved.", { kind: "warn", title: "Pin" }); })

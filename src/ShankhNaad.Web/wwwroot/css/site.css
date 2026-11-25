@@ -571,6 +571,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0 !important; height: 
     background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .12); color: #94A3B8; }
 .add-dlg-search:focus-within { border-color: #A78BFA; }
 .add-dlg-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: #fff; font: 14px Roboto, sans-serif; }
+.add-dlg-search { flex-shrink: 0; min-height: 42px; box-sizing: border-box; }   /* never squeezed in a short window */
 .add-dlg-list { flex: 1 1 auto; overflow-y: auto; padding: 4px 12px 8px; display: flex; flex-direction: column; gap: 4px; }
 .add-dlg-empty { margin: 24px 8px; text-align: center; color: #94A3B8; font-size: 13.5px; }
 .add-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 16px; cursor: pointer; border: 1px solid transparent;
@@ -1592,3 +1593,33 @@ body:not(.panel-max):not(.sn-popout) .mx-head .mx-hst { display: none; }
 .share-tip p b { color: #fff; }
 .share-tip button { align-self: flex-end; height: 32px; padding: 0 14px; border-radius: 10px; border: 0; background: #6D28D9; color: #fff; font: 700 12.5px Inter, sans-serif; cursor: pointer; }
 .panel-max .share-tip { display: none; }
+
+/* ---- call room: Attendance sheet (button in People, dialog) ---- */
+.att-open-btn { margin-top: 8px; }
+.att-dlg { width: min(720px, calc(100vw - 32px)); }
+.att-ic { background: linear-gradient(135deg, #16A34A, #0E7490); }
+.att-chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 20px 10px; flex-shrink: 0; }
+.att-chip { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border-radius: 999px; font-size: 12.5px; color: #CBD5E1; background: rgba(255, 255, 255, .07); }
+.att-chip b { color: #fff; }
+.att-chip.live { color: #86EFAC; background: rgba(34, 197, 94, .14); }
+.att-chip.live b { color: #BBF7D0; }
+.att-chip.guest { color: #FCD34D; background: rgba(245, 158, 11, .14); }
+.att-list { flex: 1 1 auto; overflow-y: auto; padding: 0 12px 10px; min-height: 120px; }
+.att-row { display: grid; grid-template-columns: minmax(0, 1fr) 84px 92px 96px; gap: 10px; align-items: center; padding: 9px 10px; border-radius: 12px; font-size: 13px; color: #E2E8F0; }
+.att-row + .att-row { border-top: 1px solid rgba(255, 255, 255, .06); }
+.att-row.att-hd { position: sticky; top: 0; z-index: 1; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #94A3B8; background: rgba(15, 20, 40, .92); border-radius: 10px; }
+.att-row.on { background: rgba(34, 197, 94, .06); }
+.att-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.att-who > span { display: flex; flex-direction: column; min-width: 0; }
+.att-who b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
+.att-who small, .att-row > span > small { display: block; font-size: 11.5px; color: #94A3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att-n { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 11px; font-weight: 700; color: #C4B5FD; background: rgba(167, 139, 250, .14); }
+.att-live { font-style: normal; font-weight: 600; color: #86EFAC; }
+.att-foot { flex-wrap: wrap; justify-content: flex-end; }
+.att-act { display: inline-flex; align-items: center; gap: 7px; text-decoration: none; font-size: 13.5px; }
+.att-act:hover { background: rgba(255, 255, 255, .08); }
+@media (max-width: 560px) {
+    .att-row { grid-template-columns: minmax(0, 1fr) 70px 80px; }
+    .att-row > span:nth-child(3) { display: none; }
+    .att-foot .att-act, .att-foot .add-dlg-ring { flex: 1 1 auto; justify-content: center; }
+}

@@ -24,8 +24,11 @@ public sealed class ChatHub : Hub
     private readonly IReactionService _reactions;
     private readonly IOutOfOfficeService _ooo;
 
-    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls, IUserService users, ICallChatService callChat, IReactionService reactions, IOutOfOfficeService ooo)
+    private readonly IAttendanceService _attendance;   // attendance sheet (42_MeetingAttendance.sql)
+
+    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls, IUserService users, ICallChatService callChat, IReactionService reactions, IOutOfOfficeService ooo, IAttendanceService attendance)
     {
+        _attendance = attendance;
         _ooo = ooo;
         _reactions = reactions;
         _callChat = callChat;
@@ -64,6 +67,9 @@ public sealed class ChatHub : Hub
         await Clients.Group(ChannelGroup(ch)).SendAsync("MessageReceived", message);
     }
 
+    private Task AttendanceLeaveAsync(Guid tenantId, Guid meetingId, bool roomEmpty) =>
+        _attendance.LeaveAsync(tenantId, meetingId, Context.User!.UserGuid(), roomEmpty);
+
     private (Guid TenantId, Guid UserId) Caller()
     {
         var tenantId = Context.User?.TenantId() ?? throw new HubException("No workspace.");
@@ -98,7 +104,10 @@ public sealed class ChatHub : Hub
         // closed the meeting tab: tell the others in the call
         if (userId is not null)
             foreach (var meetingId in inMeetings.Where(m => !_rooms.Contains(m, userId)))
+            {
                 await Clients.Group(MeetingGroup(meetingId)).SendAsync("ParticipantLeft", meetingId, userId, Context.User?.DisplayName() ?? "Someone", null);
+                if (Context.User?.TenantId() is Guid leftTenant) await AttendanceLeaveAsync(leftTenant, meetingId, emptied.Contains(meetingId));
+            }
         // closing the call tab: a call whose room is now empty is over
         if (Context.User?.TenantId() is Guid callTenant && userId is not null)
             foreach (var meetingId in emptied)
@@ -438,8 +447,10 @@ public sealed class ChatHub : Hub
         var me = Context.UserIdentifier!;
         var wasBusy = _rooms.IsBusy(me);
         var firstIn = _rooms.Count(meetingId) == 0;
+        var alreadyIn = _rooms.Contains(meetingId, me);
         _rooms.Join(meetingId, me, Context.ConnectionId);
         await Groups.AddToGroupAsync(Context.ConnectionId, MeetingGroup(meetingId));
+        if (!alreadyIn) await _attendance.JoinAsync(tenantId, meetingId, Context.User!.UserGuid());   // attendance sheet
         if (!wasBusy) await Clients.Group(TenantGroup(tenantId)).SendAsync("BusyChanged", me, true);   // red "on a call" dot
         // "In a call" (started from a chat) or "In a meeting" (scheduled)
         _presence.SetCall(me, joined.IsInstant ? "call" : "meeting");
@@ -522,7 +533,10 @@ public sealed class ChatHub : Hub
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, MeetingGroup(meetingId));
         // "Sandy left the call" for the others (only once, when this person has no other tab in the call)
         if (wasIn && !_rooms.Contains(meetingId, me))
+        {
             await Clients.Group(MeetingGroup(meetingId)).SendAsync("ParticipantLeft", meetingId, me, Context.User!.DisplayName(), note);
+            await AttendanceLeaveAsync(tenantId, meetingId, emptied);
+        }
         if (emptied)
             await CallEvent(tenantId, meetingId, Context.User!.UserGuid(), 2);   // last one out: the call has ended
         if (!_rooms.IsBusy(me))

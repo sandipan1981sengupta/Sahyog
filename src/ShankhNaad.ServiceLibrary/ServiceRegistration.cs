@@ -38,6 +38,7 @@ public static class ServiceRegistration
         services.AddScoped<ILocationService, LocationService>();
         services.AddScoped<IOutOfOfficeService, OutOfOfficeService>();
         services.AddScoped<IOrgService, OrgService>();
+        services.AddScoped<IAttendanceService, AttendanceService>();
         services.AddScoped<IAppEmailSender, SmtpEmailSender>();
         services.AddScoped<IAccountEmailService, AccountEmailService>();
 

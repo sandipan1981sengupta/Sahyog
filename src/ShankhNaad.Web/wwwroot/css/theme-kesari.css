@@ -155,6 +155,7 @@ html[data-skin="kesari"] .mx-callchat:hover { background: rgba(194, 65, 12, .32)
 html[data-skin="kesari"] .share-tip { border: 1px solid rgba(251, 146, 60, .4); }
 html[data-skin="kesari"] .st-head { color: #FDBA74; }
 html[data-skin="kesari"] .share-tip button { background: #9A3412; }
+html[data-skin="kesari"] .att-n { color: #FDBA74; background: rgba(251, 146, 60, .14); }
 /* ---- from shankhnaad.css ---- */
 html[data-skin="kesari"] { --sn-blue: #EA580C; --sn-blue-dark: #C2410C; --sn-pink: #15803D; --sn-pink-dark: #166534; --blue: #EA580C; --pink: #15803D; }
 html[data-skin="kesari"] body.sn-body { background: linear-gradient(150deg, #FFF4E8 0%, #FFFDF9 50%, #EEF8EE 100%); }
@@ -516,6 +517,11 @@ html[data-skin="kesari"] .sn-sh-file > i { color: #EA580C; }
 html[data-skin="kesari"] .sn-sh-msg input:focus { border-color: #EA580C; box-shadow: 0 0 0 3px rgba(234, 88, 12, .15); }
 html[data-skin="kesari"] .sn-oc-more { border: 1px dashed rgba(234, 88, 12, .45); background: rgba(234, 88, 12, .06); color: #C2410C; }
 html[data-skin="kesari"] .sn-oc-more:hover { background: rgba(234, 88, 12, .12); }
+html[data-skin="kesari"] .sn-pp-more { background: linear-gradient(135deg, #EA580C, #EA580C); }
+html[data-skin="kesari"] .sn-pp-more.less { color: #9A3412; background: rgba(194, 65, 12, .12); }
+html[data-skin="kesari"] .sn-pp-team i { color: #C2410C; }
+html[data-skin="kesari"] .sn-pp-team:hover { border-color: #C2410C; background: rgba(194, 65, 12, .08); }
+html[data-skin="kesari"] .sn-pp-index button:hover { background: #C2410C; }
 /* ---- from responsive.css ---- */
 @media (max-width: 1100px) {
 html[data-skin="kesari"] .sn-body .sn-chat-back { color: #7C2D12 !important; border: 1px solid rgba(194, 65, 12, .25) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 6px 14px -8px rgba(194, 65, 12, .6); }

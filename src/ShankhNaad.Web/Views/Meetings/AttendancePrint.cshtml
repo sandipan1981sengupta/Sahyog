@@ -1,0 +1,117 @@
+@model ShankhNaad.Web.Controllers.AttendancePrintVm
+@using System.Globalization
+@{
+    Layout = null;
+    var z = Model.Zone;
+    var d = Model.Data;
+    string L(DateTime utc, string f) => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), z).ToString(f, CultureInfo.InvariantCulture);
+    var n = 0;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Attendance · @Model.Meeting.Title</title>
+    <style>
+        :root { --ink: #0F172A; --dim: #475569; --line: #CBD5E1; --acc: #1E3A8A; }
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 32px; font: 13px/1.45 Roboto, "Segoe UI", Arial, sans-serif; color: var(--ink); background: #F1F5F9; }
+        .sheet { max-width: 1000px; margin: 0 auto; padding: 32px 36px; background: #fff; border-radius: 14px; box-shadow: 0 10px 30px -18px rgba(15, 23, 42, .4); }
+        .bar { display: flex; gap: 10px; justify-content: flex-end; max-width: 1000px; margin: 0 auto 14px; }
+        .bar button, .bar a { height: 38px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: #fff; color: var(--ink); font-weight: 600; font-size: 13px; font-family: inherit; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+        .bar .main { color: #fff; border-color: transparent; background: linear-gradient(115deg, #2563EB, #7C3AED 55%, #DB2777); }
+        header { display: flex; justify-content: space-between; gap: 20px; padding-bottom: 16px; border-bottom: 2px solid var(--acc); }
+        h1 { margin: 0 0 4px; font-size: 22px; color: var(--acc); }
+        .sub { color: var(--dim); }
+        .facts { display: grid; grid-template-columns: repeat(4, auto); gap: 4px 22px; margin: 16px 0 18px; }
+        .facts b { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); padding: 8px 8px; border-bottom: 1px solid var(--line); background: #EEF2FF; }
+        td { padding: 8px 8px; border-bottom: 1px solid #E2E8F0; vertical-align: top; }
+        td.num, th.num { text-align: right; }
+        .guest { display: inline-block; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 600; color: #92400E; background: #FEF3C7; }
+        .live { color: #15803D; font-weight: 600; }
+        .sign { width: 120px; }
+        footer { margin-top: 18px; color: var(--dim); font-size: 11.5px; display: flex; justify-content: space-between; gap: 12px; }
+        .empty { padding: 30px 0; text-align: center; color: var(--dim); }
+        @@media print {
+            body { padding: 0; background: #fff; }
+            .bar { display: none; }
+            .sheet { box-shadow: none; border-radius: 0; padding: 0; max-width: none; }
+            tr { page-break-inside: avoid; }
+            @@page { size: A4 landscape; margin: 14mm; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bar">
+        <a href="@($"/meetings/{Model.Meeting.MeetingId}/attendance/xlsx")">Download Excel</a>
+        <button type="button" class="main" onclick="window.print()">Print or save as PDF</button>
+    </div>
+    <main class="sheet">
+        <header>
+            <div>
+                <h1>Attendance sheet</h1>
+                <div style="font-size:16px;font-weight:700">@Model.Meeting.Title</div>
+                <div class="sub">@Model.Workspace</div>
+            </div>
+            <div class="sub" style="text-align:right">
+                @(d.StartedUtc is DateTime day ? L(day, "dddd, d MMMM yyyy") : "")<br />
+                Host: @Model.Meeting.HostName
+            </div>
+        </header>
+
+        @if (!d.Ready)
+        {
+            <p class="empty">The attendance sheet needs the database update database/42_MeetingAttendance.sql.</p>
+        }
+        else
+        {
+            <div class="facts">
+                <div><b>Started</b>@(d.StartedUtc is DateTime s ? L(s, "h:mm tt") : "–")</div>
+                <div><b>Ended</b>@(d.EndedUtc is DateTime e ? L(e, "h:mm tt") : "Still going on")</div>
+                <div><b>People</b>@d.Rows.Count (@d.Rows.Count(r => !r.IsGuest) team · @d.Rows.Count(r => r.IsGuest) guests)</div>
+                <div><b>In the call now</b>@d.Rows.Count(r => r.InCall)</div>
+            </div>
+            @if (d.Rows.Count == 0)
+            {
+                <p class="empty">No one has joined yet.</p>
+            }
+            else
+            {
+                <table>
+                    <thead>
+                        <tr><th class="num">#</th><th>Name</th><th>Email</th><th>Job title · Department</th><th>Joined</th><th>Left</th><th>Time in call</th><th class="num">Joins</th><th class="sign">Signature</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in d.Rows)
+                        {
+                            n++;
+                            <tr>
+                                <td class="num">@n</td>
+                                <td><b>@r.Name</b></td>
+                                <td>@if (r.IsGuest) { <span class="guest">Guest</span> } else { @r.Email }</td>
+                                <td>@string.Join(" · ", new[] { r.JobTitle, r.DepartmentName }.Where(v => !string.IsNullOrWhiteSpace(v)))</td>
+                                <td>@L(r.FirstJoinUtc, "h:mm tt")</td>
+                                <td>@if (r.InCall) { <span class="live">In the call</span> } else if (r.LeftUtc is DateTime l) { @L(l, "h:mm tt") }</td>
+                                <td>@ShankhNaad.Web.Controllers.AttendanceController.Duration(r.Seconds)</td>
+                                <td class="num">@r.Joins</td>
+                                <td class="sign"></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+        <footer>
+            <span>Made with ShankhNaad by @Model.MadeBy · @L(Model.MadeUtc, "d MMM yyyy, h:mm tt")</span>
+            <span>Times in @z.DisplayName</span>
+        </footer>
+    </main>
+    @if (ViewData["AutoPrint"] is true)
+    {
+        <script>window.addEventListener("load", function () { setTimeout(function () { window.print(); }, 300); });</script>
+    }
+</body>
+</html>

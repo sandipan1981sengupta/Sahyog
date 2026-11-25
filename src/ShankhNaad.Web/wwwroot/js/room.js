@@ -844,6 +844,78 @@
 
     if (cfg.offlineNote) setTimeout(() => notice("Not online", cfg.offlineNote, "declined"), 1200);
 
+    // ---------- Attendance sheet: who joined, when, for how long (AttendanceController) ----------
+    (function () {
+        if (cfg.isGuest) return;
+        const base = `/meetings/${cfg.meetingId}/attendance`;
+        const xsrf = () => document.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
+
+        // guests can't report themselves: people in the call send the guests' names every minute
+        let guestTimer = 0;
+        const sendGuests = () => {
+            clearTimeout(guestTimer);
+            guestTimer = setTimeout(() => {
+                const fd = new FormData();
+                (api.getParticipantsInfo?.() || []).forEach((p) => {
+                    const n = p.displayName || p.formattedDisplayName || "";
+                    if (/\(guest\)/i.test(n)) fd.append("names", n.replace(/\s*\(guest\)/i, "").trim() || "Guest");
+                });
+                fd.append("__RequestVerificationToken", xsrf());
+                fetch(`${base}/guests`, { method: "POST", body: fd, headers: { RequestVerificationToken: xsrf() }, credentials: "same-origin" }).catch(() => { });
+            }, 2500);
+        };
+        api.addListener("videoConferenceJoined", sendGuests);
+        api.addListener("participantJoined", sendGuests);
+        api.addListener("participantLeft", sendGuests);
+        setInterval(sendGuests, 60000);
+
+        const dlg = $("attDlg"), openBtn = $("attOpenBtn");
+        if (!dlg || !openBtn) return;
+        const list = $("attList"), chips = $("attChips"), sub = $("attSub"), share = $("attShare");
+        $("attDownload").href = `${base}/xlsx`;
+        let refresh = 0;
+        const paint = async () => {
+            try {
+                const r = await fetch(base, { headers: { Accept: "application/json" }, credentials: "same-origin" });
+                const x = await r.json();
+                if (!x.ready) { list.innerHTML = `<p class="add-dlg-empty">${esc(x.error || "Not available yet.")}</p>`; share.disabled = true; return; }
+                sub.textContent = `${x.title}${x.day ? " · " + x.day : ""}${x.started ? " · started " + x.started : ""}${x.ended ? " · ended " + x.ended : ""}`;
+                const guests = x.rows.filter((p) => p.guest).length;
+                chips.innerHTML = `<span class="att-chip"><b>${x.count}</b> joined</span><span class="att-chip live"><b>${x.inCall}</b> in the call now</span>` +
+                    (guests ? `<span class="att-chip guest"><b>${guests}</b> ${guests === 1 ? "guest" : "guests"}</span>` : "");
+                list.innerHTML = x.rows.length ? `<div class="att-row att-hd"><span>Name</span><span>Joined</span><span>Left</span><span>Time</span></div>` + x.rows.map((p, i) =>
+                    `<div class="att-row${p.inCall ? " on" : ""}"><span class="att-who"><i class="att-n">${i + 1}</i><span><b>${esc(p.name)}</b><small>${p.guest ? "Guest" : esc(p.title || p.email)}</small></span></span>` +
+                    `<span>${esc(p.joined)}</span><span>${p.inCall ? '<em class="att-live">In the call</em>' : esc(p.left)}</span>` +
+                    `<span>${esc(p.time)}${p.joins > 1 ? `<small>${p.joins} times</small>` : ""}</span></div>`).join("")
+                    : `<p class="add-dlg-empty">No one on the sheet yet.</p>`;
+                share.disabled = !x.rows.length;
+            } catch { list.innerHTML = `<p class="add-dlg-empty">The sheet couldn't be loaded. Try again.</p>`; }
+        };
+        const close = () => { clearInterval(refresh); dlg.classList.remove("open"); setTimeout(() => dlg.open && dlg.close(), 220); };
+        openBtn.onclick = () => {
+            sendGuests();
+            dlg.showModal(); requestAnimationFrame(() => dlg.classList.add("open"));
+            paint(); clearInterval(refresh); refresh = setInterval(paint, 15000);
+        };
+        dlg.addEventListener("click", (e) => { if (e.target === dlg || e.target.closest("[data-close]")) close(); });
+        dlg.addEventListener("cancel", (e) => { e.preventDefault(); close(); });
+        $("attPrint").onclick = () => window.open(`${base}/print?print=1`, "_blank", "noopener");
+        share.onclick = async () => {
+            share.disabled = true;
+            const label = share.querySelector("span"), was = label.textContent;
+            label.textContent = "Attaching…";
+            try {
+                const fd = new FormData(); fd.append("__RequestVerificationToken", xsrf());
+                const r = await fetch(`${base}/share`, { method: "POST", body: fd, headers: { RequestVerificationToken: xsrf(), Accept: "application/json" }, credentials: "same-origin" });
+                const x = await r.json();
+                if (!r.ok) { toast(x.error || "The sheet couldn't be attached."); return; }
+                notice("Attendance sheet attached", "Sent to " + x.sentTo.join(" and ") + ".", "chat");
+                close();
+            } catch { toast("The sheet couldn't be attached. Try again."); }
+            finally { label.textContent = was; share.disabled = false; }
+        };
+    })();
+
     // ---------- Add people: ring team members into this call ----------
     const addDlg = $("addDlg");
     if (addDlg && hub) {
@@ -2135,8 +2207,46 @@
             $("chkCam").textContent = cam ? "Camera on" : "Camera off";
             $("chkCam").classList.toggle("bad", !cam);
         }
+        // the caller hears the same ringtone the other person hears ("Harp rise"), softer, while it rings
+        // (30 s, like their ringing card; "Ring again" starts it once more). Stops as soon as someone joins.
+        const RING_FOR_MS = 30000, RING_EVERY_MS = 2800;
+        let ringCtx = null, ringTimer = 0;
+        const ringOnce = () => {
+            try {
+                ringCtx = ringCtx || new (window.AudioContext || window.webkitAudioContext)();
+                if (ringCtx.state === "suspended") ringCtx.resume();
+                if (ringCtx.state !== "running") return;
+                const now = ringCtx.currentTime + 0.03;
+                const note = (f, at, len, vol, type) => {
+                    const o = ringCtx.createOscillator(), g = ringCtx.createGain();
+                    o.type = type; o.frequency.setValueAtTime(f, at);
+                    g.gain.setValueAtTime(0.0001, at);
+                    g.gain.exponentialRampToValueAtTime(vol, at + 0.004);
+                    g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+                    o.connect(g).connect(ringCtx.destination);
+                    o.start(at); o.stop(at + len + 0.05);
+                };
+                [392, 493.88, 587.33, 739.99, 783.99, 987.77, 1174.66].forEach((f, i) => {
+                    const at = now + i * 0.09;
+                    note(f, at, 1.1, 0.11, "triangle");
+                    note(f * 2, at, 0.6, 0.028, "sine");
+                });
+            } catch { /* no sound: the "Ringing…" card still shows */ }
+        };
+        const ringback = (on) => {
+            if (on && !ringTimer) { ringOnce(); ringTimer = setInterval(ringOnce, RING_EVERY_MS); }
+            else if (!on && ringTimer) { clearInterval(ringTimer); ringTimer = 0; }
+        };
+        // browsers may hold sound back until the page is touched once
+        ["pointerdown", "keydown"].forEach((t) => document.addEventListener(t, () => { try { ringCtx && ringCtx.state === "suspended" && ringCtx.resume(); } catch { } }, { capture: true }));
+        const ringTick = () => ringback(!!other && maxPeople <= 1 && !box.hidden && !leaving && !ended && Date.now() - ringStart < RING_FOR_MS);
         setInterval(paint, 1000);
-        ["videoConferenceJoined", "participantJoined", "participantLeft"].forEach((ev) => api.addListener(ev, () => setTimeout(paint, 250)));
+        setInterval(ringTick, 500);
+        ["videoConferenceJoined", "participantJoined", "participantLeft"].forEach((ev) => api.addListener(ev, () => setTimeout(() => { paint(); ringTick(); }, 250)));
+        if (hub) hub.on("CallDeclined", (meetingId) => {
+            if (String(meetingId).toLowerCase() === String(cfg.meetingId).toLowerCase() && cfg.oneToOne) { ringStart = 0; ringback(false); }
+        });
+        window.addEventListener("pagehide", () => ringback(false));
     })();
 
     window.addEventListener("beforeunload", () => report("MeetingLeft"));

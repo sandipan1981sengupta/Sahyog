@@ -171,7 +171,8 @@ public sealed class HistoryController : Controller
             .Select(u => new PersonVm(u.Id, u.DisplayName, u.Initials, u.AvatarTone, online.Contains(u.Id)))
             .OrderByDescending(p => p.Online).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var pins = (await _org.ListPinsAsync(User.UserGuid())).Select(g => g.ToString()).ToList();
+        // each page keeps its own pins (43_PeoplePinsPerPage.sql)
+        var pins = (await _org.ListPinsAsync(User.UserGuid(), share ? "files" : "calls")).Select(g => g.ToString()).ToList();
         var org = await _org.GetAsync(tenantId);
         return new TeamPanelVm
         {
@@ -184,10 +185,10 @@ public sealed class HistoryController : Controller
 
     /// <summary>Calls page → Team panel: pin someone to the top of your list, or unpin them. Saved for you on every device.</summary>
     [HttpPost("/calls/pin/{id:guid}")]
-    public async Task<IActionResult> Pin(Guid id, bool pinned)
+    public async Task<IActionResult> Pin(Guid id, bool pinned, string? scope)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
-        var problem = await _org.SetPinAsync(tenantId, User.UserGuid(), id, pinned);
+        var problem = await _org.SetPinAsync(tenantId, User.UserGuid(), id, pinned, scope == "files" ? "files" : "calls");
         return Json(new { ok = problem is null, error = problem });
     }
 

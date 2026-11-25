@@ -4569,3 +4569,68 @@ html[data-theme="dark"].sn-carbon .sn-sh-drop-ic { background: linear-gradient(1
 html[data-theme="dark"] .sn-oc-more { color: #C4B5FD; border-color: rgba(167, 139, 250, .45); background: rgba(167, 139, 250, .08); }
 html[data-theme="dark"].sn-carbon .sn-oc-more { color: #E4E4E7; border-color: rgba(255, 255, 255, .25); background: rgba(255, 255, 255, .05); }
 .sn-oc-morewrap { display: flex; flex-direction: column; align-items: flex-start; }
+
+/* Team panel (Calls, Files): the search box, header and note keep their size; only the list scrolls */
+.sn-team-pane > .sn-tp-head, .sn-team-pane > .sn-tp-search, .sn-team-pane > .sn-tp-note { flex: none; }
+.sn-body .sn-team-pane .sn-tp-search { height: 42px; min-height: 42px; margin: 0 2px; box-sizing: border-box; }
+.sn-body .sn-team-pane .sn-tp-search input { height: 100%; font-size: 14px; }
+.sn-team-pane .sn-tp-list { min-height: 132px; }
+/* a short window: a slimmer tip so the people get the room */
+@media (max-height: 760px) {
+    .sn-team-pane .sn-tp-note { padding: 7px 10px; font-size: 11.5px; }
+}
+
+/* Every search box (Chat, Calls, Files, Team panels, Org, people pickers, Members, dialogs):
+   a fixed height that never gets squeezed when a panel or window is short */
+.sn-body .search, .sn-body .sn-hist-search, .sn-body .sn-pp-search, .sn-body .sn-mem-search,
+.sn-body .sn-md-search, .sn-body .sn-org-search, .add-dlg-search {
+    flex-shrink: 0; min-height: 40px; box-sizing: border-box;
+}
+.sn-body .search input, .sn-body .sn-hist-search input, .sn-body .sn-pp-search input, .sn-body .sn-mem-search input,
+.sn-body .sn-md-search input, .sn-body .sn-org-search input, .add-dlg-search input { min-height: 0; height: 100%; align-self: stretch; }
+
+/* the status under a picture now shows as a normal tooltip (wwwroot/js/tooltip.js), which floats above everything:
+   the old label drawn inside the picture was cut off in scrolling lists (Team panel, Chats) */
+@media (hover: hover) { .sn-body .avatar[data-status]:hover::after { content: none; display: none; } }
+
+/* ===== people picker with 20+ people: one row of chips + "+N more", Picked filter, whole teams, A–Z bar, people already in ===== */
+.sn-pp-head { align-items: center; }
+.sn-pp-clear-top { margin-left: 4px; font-size: 12.5px; }
+.sn-pp-clear-top[hidden] { display: none; }
+.sn-pp-chips.one-row { flex-wrap: nowrap; overflow: hidden; max-height: none; }
+.sn-pp-chips.open { max-height: 132px; }
+.sn-pp-chip[hidden] { display: none; }
+.sn-pp-more { flex: none; height: 28px; padding: 0 12px; border-radius: 999px; border: 0; cursor: pointer; white-space: nowrap;
+    font: 700 12px Roboto, sans-serif; color: #fff; background: linear-gradient(135deg, #6366F1, #A855F7); }
+.sn-pp-more.less { color: #6D28D9; background: rgba(124, 58, 237, .12); }
+.sn-pp-seg [data-pp-picked-n]:empty { display: none; }
+.sn-pp-teams { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sn-pp-team { height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid rgba(100, 116, 139, .3); background: transparent; color: inherit; cursor: pointer;
+    font: 600 12px Roboto, sans-serif; display: inline-flex; align-items: center; gap: 5px; }
+.sn-pp-team i { font-size: 10px; color: #7C3AED; }
+.sn-pp-team:hover { border-color: #7C3AED; background: rgba(124, 58, 237, .08); }
+.sn-pp-sub { font-size: 11.5px; color: #94A3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sn-pp-sub .sn-pp-state { font-size: inherit; }
+.sn-pp-listwrap { position: relative; }
+.sn-pp-listwrap.has-index .sn-pp-list { padding-right: 26px; }
+.sn-pp-index { position: absolute; right: 4px; top: 6px; bottom: 6px; width: 20px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; z-index: 2; }
+.sn-pp-index button { flex: 1; width: 20px; min-height: 0; max-height: 18px; padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: pointer;
+    font: 700 9.5px Roboto, sans-serif; color: #94A3B8; }
+.sn-pp-index button:hover { color: #fff; background: #7C3AED; }
+.sn-pp-already { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 16px; background: rgba(255, 255, 255, .5); border: 1px solid rgba(15, 23, 42, .08); }
+.sn-pp-faces { display: flex; align-items: center; }
+.sn-pp-faces .avatar { margin-left: -9px; box-shadow: 0 0 0 2px #fff; }
+.sn-pp-faces .avatar:first-child { margin-left: 0; }
+.sn-pp-more-faces { margin-left: 6px; height: 26px; padding: 0 9px; border-radius: 999px; display: inline-flex; align-items: center; font: 700 12px Roboto, sans-serif; background: rgba(100, 116, 139, .14); }
+.sn-pp-already-t { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
+.sn-pp-already-t b { font-size: 13.5px; }
+.sn-pp-already-list { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; max-height: 96px; overflow-y: auto; }
+.sn-pp-already-list[hidden] { display: none; }
+.sn-pp-already-name { padding: 3px 10px; border-radius: 999px; font-size: 12px; background: rgba(100, 116, 139, .12); }
+html[data-theme="dark"] .sn-pp-more.less { color: #DDD6FE; background: rgba(167, 139, 250, .16); }
+html[data-theme="dark"] .sn-pp-team { border-color: rgba(148, 163, 184, .25); }
+html[data-theme="dark"] .sn-pp-team i { color: #C4B5FD; }
+html[data-theme="dark"] .sn-pp-already { background: rgba(255, 255, 255, .04); border-color: rgba(255, 255, 255, .09); }
+html[data-theme="dark"] .sn-pp-faces .avatar { box-shadow: 0 0 0 2px #151a33; }
+html[data-theme="dark"] .sn-pp-more-faces, html[data-theme="dark"] .sn-pp-already-name { background: rgba(255, 255, 255, .08); }
+@media (max-width: 560px) { .sn-pp-index { display: none; } .sn-pp-listwrap.has-index .sn-pp-list { padding-right: 4px; } }

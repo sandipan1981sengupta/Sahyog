@@ -177,8 +177,9 @@
         <div class="sn-col">
             @* ---------- top bar: Template 1 strip-header with the user menu ---------- *@
             <div class="sn-topbar glass">
-                <strip-header heading="@workspace"
-                              subheading="@(isSuperAdmin ? "ShankhNaad · all client workspaces" : "ShankhNaad workspace")"
+                @* the product name on top; the company's own name stays in the profile menu (Workspace) *@
+                <strip-header heading="SHANKHNAAD"
+                              subheading="@(isSuperAdmin ? "All client workspaces" : "Smart office workspace")"
                               icon-src="/images/logo.svg"
                               icon-size="42"
                               icon-image-size="80%"

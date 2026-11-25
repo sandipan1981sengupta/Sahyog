@@ -38,7 +38,7 @@
         </div>
     }
 }
-<aside class="sn-team-pane glass" aria-label="Your team">
+<aside class="sn-team-pane glass" aria-label="Your team" data-pin-scope="@(Model.Share ? "files" : "calls")">
     <div class="sn-tp-head">
         <b>Team</b><span class="sn-tp-count">@Model.Team.Count</span>
         <small><i class="sn-tp-dot" aria-hidden="true"></i> @Model.Team.Count(t => t.Online) online</small>

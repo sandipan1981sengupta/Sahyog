@@ -15,10 +15,10 @@ public interface IOrgService
     Task<bool> DeleteDepartmentAsync(Guid tenantId, Guid departmentId);
     /// <summary>The department with this name, created when missing. Null for an empty name.</summary>
     Task<Guid?> EnsureDepartmentAsync(Guid tenantId, string? name);
-    /// <summary>People this person pinned on the Calls page (empty before 41_PeoplePins.sql is run).</summary>
-    Task<List<Guid>> ListPinsAsync(Guid userId);
-    /// <summary>Pin or unpin someone. Null when it worked, else the reason.</summary>
-    Task<string?> SetPinAsync(Guid tenantId, Guid userId, Guid pinnedUserId, bool pinned);
+    /// <summary>People this person pinned on one page: scope "calls" or "files" (empty before 41_PeoplePins.sql is run).</summary>
+    Task<List<Guid>> ListPinsAsync(Guid userId, string scope = "calls");
+    /// <summary>Pin or unpin someone on one page ("calls" or "files"). Null when it worked, else the reason.</summary>
+    Task<string?> SetPinAsync(Guid tenantId, Guid userId, Guid pinnedUserId, bool pinned, string scope = "calls");
 }
 
 public sealed class OrgService : IOrgService
@@ -122,23 +122,39 @@ public sealed class OrgService : IOrgService
         return t.Length == 0 ? null : t.Length > max ? t[..max] : t;
     }
 
-    public async Task<List<Guid>> ListPinsAsync(Guid userId)
+    private const int TooManyArguments = 8144;   // 43_PeoplePinsPerPage.sql not run yet: pins are shared by both pages
+    private static string Scope(string? scope) => scope == "files" ? "files" : "calls";
+
+    public async Task<List<Guid>> ListPinsAsync(Guid userId, string scope = "calls")
     {
-        try { return await _db.QueryAsync("dbo.sahyog_PeoplePins_List", p => p.With("@UserId", userId), r => r.G("PinnedUserId")); }
+        try
+        {
+            return await _db.QueryAsync("dbo.sahyog_PeoplePins_List", p => p.With("@UserId", userId).AddText("@Scope", Scope(scope), 10), r => r.G("PinnedUserId"));
+        }
+        catch (SqlException ex) when (ex.Number == TooManyArguments)
+        {
+            return await _db.QueryAsync("dbo.sahyog_PeoplePins_List", p => p.With("@UserId", userId), r => r.G("PinnedUserId"));
+        }
         catch (SqlException ex) when (ex.Number == MissingProcedure) { return new(); }
     }
 
-    public async Task<string?> SetPinAsync(Guid tenantId, Guid userId, Guid pinnedUserId, bool pinned)
+    public async Task<string?> SetPinAsync(Guid tenantId, Guid userId, Guid pinnedUserId, bool pinned, string scope = "calls")
     {
-        try
+        async Task<string?> Run(bool withScope)
         {
             SqlParameter? result = null;
             await _db.ExecAsync("dbo.sahyog_PeoplePins_Set", p =>
             {
                 p.With("@TenantId", tenantId).With("@UserId", userId).With("@PinnedUserId", pinnedUserId).With("@Pinned", pinned);
+                if (withScope) p.AddText("@Scope", Scope(scope), 10);
                 result = p.AddOutput("@Result", SqlDbType.Int);
             });
             return result!.OutInt() == 0 ? null : "That person isn't in your workspace.";
+        }
+        try
+        {
+            try { return await Run(true); }
+            catch (SqlException ex) when (ex.Number == TooManyArguments) { return await Run(false); }
         }
         catch (SqlException ex) when (ex.Number == MissingProcedure)
         {
