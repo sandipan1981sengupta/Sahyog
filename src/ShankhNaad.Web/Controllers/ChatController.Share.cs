@@ -54,4 +54,15 @@ public sealed partial class ChatController
             _ => "not sent"
         };
     }
+
+    /// <summary>Chat → Team list → "Pin to the top" for someone you have no chat with yet: starts the chat and pins it.</summary>
+    [HttpPost("direct/{userId:guid}/pin")]
+    public async Task<IActionResult> PinPerson(Guid userId)
+    {
+        if (User.TenantId() is not Guid tenantId || userId == Me) return NotFound();
+        var channelId = await _chat.GetOrCreateDirectAsync(tenantId, Me, userId);
+        if (channelId is not Guid cid) return NotFound(new { error = "That person isn't in your workspace." });
+        await AddConnectionsToGroupAsync(cid, new[] { Me.ToString(), userId.ToString() });
+        return await Pin(cid, true);
+    }
 }

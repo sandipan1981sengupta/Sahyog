@@ -82,6 +82,8 @@ public sealed class PeoplePickerVm
     public IReadOnlyList<PersonVm>? Already { get; init; }
     /// <summary>Name of the group they're already in ("18 people already in Project Alpha").</summary>
     public string? AlreadyIn { get; init; }
+    /// <summary>Word in front of the picked names in the wide pop-ups ("To", "Add", "Invite").</summary>
+    public string ToLabel { get; init; } = "To";
 }
 
 public sealed class ChatViewModel

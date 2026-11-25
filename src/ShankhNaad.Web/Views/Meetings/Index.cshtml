@@ -696,20 +696,25 @@
 </main>
 
 @* ---------- Schedule a meeting (glass pop-up, Template 1 inputs) ---------- *@
-<dialog id="scheduleDialog" class="sn-dialog wide glass-strong" data-open-on-load="@(hasFormErrors ? "true" : "false")">
+<dialog id="scheduleDialog" class="sn-dialog wide sn-dlg-2col glass-strong" data-kind="meet" data-tab="details" data-open-on-load="@(hasFormErrors ? "true" : "false")">
     <form method="post" asp-antiforgery="true" action="/meetings/schedule" id="scheduleForm" novalidate>
         <div class="sn-dlg-head">
             <div class="sn-dlg-title">
                 <span class="sn-dlg-icon"><i class="fa fa-calendar-plus-o" aria-hidden="true"></i></span>
-                <div><h2>Schedule a meeting</h2><p>Invites go out by email with a calendar file.</p></div>
+                <div><h2>Schedule a meeting</h2><p>Invites go to their calendar and chat</p></div>
             </div>
             <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
         </div>
+        <div class="sn-dlg-tabs" role="tablist" aria-label="Parts of this window">
+            <button type="button" class="on" role="tab" aria-selected="true" data-dlg-tab="details">Details</button>
+            <button type="button" role="tab" aria-selected="false" data-dlg-tab="people">People <span class="sn-dlg-n" data-pp-n-for="invitePeople" hidden></span></button>
+        </div>
 
         <div class="sn-dlg-body">
+          <div class="sn-d2-side" data-dlg-panel="details">
             <div asp-validation-summary="All" class="sn-errors"></div>
-            <div class="sn-form-grid">
-                <modern-group-box title="Meeting | details" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                <section class="sn-d2-sec" aria-labelledby="mWhenLbl">
+                    <h3 class="sn-d2-label" id="mWhenLbl">When</h3>
                     <div class="sn-form-grid">
                         <div class="full">
                             <modern-input id="mTitle" name="Form.Title" label="Title" mandatory="true" value="@f.Title" max-length="150"
@@ -796,21 +801,35 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="full">
-                            <modern-input id="mAgenda" name="Form.Agenda" label="Agenda" multiline="true" rows="3" value="@f.Agenda"
-                                          max-length="2000" placeholder="What will you cover?" label-font-size="13.5px"></modern-input>
-                        </div>
                     </div>
-                </modern-group-box>
+                </section>
 
-                <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
-                    <modern-group-box title="People | invited" css-class="sn-fill" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
+                <section class="sn-d2-sec" aria-labelledby="mOptLbl">
+                    <h3 class="sn-d2-label" id="mOptLbl">Options</h3>
+                    <div class="sn-d2-switches">
+                        <modern-checkbox id="mLobby" name="Form.LobbyEnabled" label="Lobby" desc-text="Host admits guests" is-toggle-button="true" checked="@f.LobbyEnabled" label-font-size="13px"></modern-checkbox>
+                        <modern-checkbox id="mEmail" name="Form.SendEmail" label="Email invites" desc-text="With .ics calendar file" is-toggle-button="true" checked="@f.SendEmail" label-font-size="13px"></modern-checkbox>
+                        <modern-checkbox id="mGuestLink" name="Form.GuestLinkEnabled" label="Guest link" desc-text="Outside people can join" is-toggle-button="true" checked="@f.GuestLinkEnabled" label-font-size="13px"></modern-checkbox>
+                        <modern-checkbox id="mCaptions" name="Form.CaptionsOn" label="Captions" desc-text="Live subtitles" is-toggle-button="true" checked="@f.CaptionsOn" label-font-size="13px"></modern-checkbox>
+                    </div>
+                    <span class="sn-d2-hint"><i class="fa fa-shield" aria-hidden="true"></i> @Model.Limits.PlanName plan: up to @Model.Limits.MaxMeetingParticipants people, @Model.Limits.MaxMeetingMinutes min per meeting</span>
+                </section>
+
+                @* Agenda: behind "+ Add agenda" unless there is one already *@
+                <button type="button" class="sn-link sn-d2-add" data-d2-toggle="mAgendaBox" data-d2-once="1" aria-expanded="false" hidden="@(!string.IsNullOrWhiteSpace(f.Agenda))"><i class="fa fa-plus" aria-hidden="true"></i> Add agenda</button>
+                <div id="mAgendaBox" hidden="@string.IsNullOrWhiteSpace(f.Agenda)">
+                    <modern-input id="mAgenda" name="Form.Agenda" label="Agenda" multiline="true" rows="3" value="@f.Agenda"
+                                  max-length="2000" placeholder="What will you cover?" label-font-size="12.5px"></modern-input>
+                </div>
+          </div>
+
+          <div class="sn-d2-main" data-dlg-panel="people">
                         @if (Model.Team.Count > 0)
                         {
                             var invitePicker = new PeoplePickerVm
                             {
                                 Id = "invitePeople", People = Model.Team, FieldName = "Form.InviteeIds",
-                                Picked = f.InviteeIds, Title = "Invite", CssClass = "sn-pp-compact"
+                                Picked = f.InviteeIds, Title = "Invite", ToLabel = "Invite"
                             };
                             <partial name="_PeoplePicker" model="invitePicker" />
                         }
@@ -827,32 +846,21 @@
                             </div>
                         }
                         <div class="sn-guests">
-                            <span class="mi-label" style="display:block;font-size:13.5px;font-weight:600;margin-bottom:8px">Guests from outside</span>
+                            <span class="mi-label">Guests from outside</span>
                             <div class="sn-chipbox" id="guestBox">
                                 <input type="email" id="guestEntry" placeholder="Type an email and press Enter" autocomplete="off" aria-label="Guest email" />
                             </div>
                             <input type="hidden" id="mGuests" name="Form.GuestEmails" value="@f.GuestEmails" />
                             <span class="sn-hint" id="guestHint">They get the guest link by email. Press Enter or comma after each address.</span>
                         </div>
-                    </modern-group-box>
-
-                    <modern-group-box title="Meeting | options" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
-                        <div class="sn-form-grid">
-                            <modern-checkbox id="mLobby" name="Form.LobbyEnabled" label="Lobby" desc-text="Host admits guests" is-toggle-button="true" checked="@f.LobbyEnabled" label-font-size="13.5px"></modern-checkbox>
-                            <modern-checkbox id="mGuestLink" name="Form.GuestLinkEnabled" label="Guest link" desc-text="Outside people can join" is-toggle-button="true" checked="@f.GuestLinkEnabled" label-font-size="13.5px"></modern-checkbox>
-                            <modern-checkbox id="mCaptions" name="Form.CaptionsOn" label="Captions" desc-text="Live subtitles" is-toggle-button="true" checked="@f.CaptionsOn" label-font-size="13.5px"></modern-checkbox>
-                            <modern-checkbox id="mEmail" name="Form.SendEmail" label="Email invites" desc-text="With .ics calendar file" is-toggle-button="true" checked="@f.SendEmail" label-font-size="13.5px"></modern-checkbox>
-                        </div>
-                    </modern-group-box>
-                </div>
-            </div>
+          </div>
         </div>
 
         <div class="sn-dlg-foot">
-            <span class="muted small"><i class="fa fa-shield"></i> @Model.Limits.PlanName plan: up to @Model.Limits.MaxMeetingParticipants people, @Model.Limits.MaxMeetingMinutes min per meeting</span>
+            <span class="sn-d2-sum" data-pp-sum-for="invitePeople" data-none="Just you so far" data-one="You + 1 invited" data-many="You + {n} invited">@(Model.Team.Count == 0 ? "Invite guests by email" : "")</span>
             <span style="display:flex;gap:10px">
                 <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                <button type="submit" class="cee-btn cee-btn-gradient"><i class="fa fa-check" aria-hidden="true"></i> Save &amp; send invites</button>
+                <button type="submit" class="cee-btn cee-btn-gradient">Schedule</button>
             </span>
         </div>
     </form>

@@ -57,8 +57,9 @@
         <span class="sn-pp-title"><b>@Model.Title</b> <span class="sn-pp-count" data-pp-count>0 picked</span></span>
         <span class="sn-pp-total muted tiny">@people.Count to pick from · @people.Count(x => x.Online) online</span>
     </div>
-    <div class="sn-pp-chips" data-pp-chips aria-live="polite">
+    <div class="sn-pp-chips" data-pp-chips data-label="@Model.ToLabel" aria-live="polite">
         <span class="sn-pp-chips-empty">No one picked yet. Search or tick people below.</span>
+        <button type="button" class="sn-link sn-pp-clear-top" data-pp-clear hidden>Clear</button>
     </div>
     <div class="sn-pp-tools">
         <label class="sn-pp-search">
@@ -109,6 +110,7 @@
                         <span class="sn-pp-name">@person.Name</span>
                         <span class="sn-pp-sub"><span class="sn-pp-state">@(person.Online ? "Available" : "Offline")</span>@(string.IsNullOrWhiteSpace(job) ? "" : " · " + job)</span>
                     </span>
+                    <span class="sn-pp-side">@dept</span>
                     <span class="sn-pp-tick" aria-hidden="true"><i class="fa fa-check"></i></span>
                 </label>
             }

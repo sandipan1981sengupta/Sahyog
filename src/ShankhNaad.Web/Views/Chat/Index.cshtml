@@ -178,6 +178,8 @@
                     </button>
                 </form>
                 <span class="sn-team-actions">
+                    @* no chat with them yet: "Pin to the top" starts it and pins it *@
+                    <button type="button" class="sn-team-btn pin" data-pin-person="@t.Id" title="Pin to the top" aria-label="Pin to the top"><i class="fa fa-thumb-tack" aria-hidden="true"></i></button>
                     <button type="button" class="sn-team-btn ping" data-ping="@t.Id" data-name="@t.Name" title="Ping @t.Name" aria-label="Ping @t.Name"><i class="fa fa-bell" aria-hidden="true"></i></button>
                     <form method="post" asp-antiforgery="true" action="/chat/direct/@t.Id">
                         <button type="submit" class="sn-team-btn chat" title="Message @t.Name" aria-label="Message @t.Name"><i class="fa fa-comment" aria-hidden="true"></i></button>
@@ -185,6 +187,7 @@
                     <button type="button" class="sn-team-btn call" data-call="@t.Id" data-label="Call" data-sub="Camera off · turn it on any time" title="Call @t.Name" aria-label="Call @t.Name"><i class="fa fa-phone" aria-hidden="true"></i></button>
                     <button type="button" class="sn-team-btn video" data-call="@t.Id" data-video="1" data-label="Video call" data-sub="Starts with your camera on" title="Video call @t.Name" aria-label="Video call @t.Name"><i class="fa fa-video-camera" aria-hidden="true"></i></button>
                     <button type="button" class="sn-team-btn org" data-org="@t.Id" data-label="Organization chart" data-sub="Who @t.Name reports to and works with" title="Organization chart: @t.Name" aria-label="Organization chart for @t.Name"><i class="fa fa-sitemap" aria-hidden="true"></i></button>
+                    <button type="button" class="sn-team-btn grp" data-group-with="@t.Id" data-sub="A new group chat with @t.Name" title="Create a group with @t.Name" aria-label="Create a group with @t.Name"><i class="fa fa-users" aria-hidden="true"></i></button>
                 </span>
             </div>
         }
@@ -327,20 +330,25 @@
 </div>
 
 @* ---------- pop-up forms ---------- *@
-<dialog id="newChannelDialog" class="sn-dialog glass-strong">
+<dialog id="newChannelDialog" class="sn-dialog sn-dlg-2col glass-strong" data-kind="new" data-tab="details">
     <form method="post" asp-antiforgery="true" action="/chat/groups" id="newChannelForm">
         <div class="sn-dlg-head">
             <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-users" aria-hidden="true"></i></span><div><h2><span id="ngTitle">New group chat</span> <span class="sn-dlg-tag new">New chat</span></h2><p id="ngSub">Only the people you pick (and you) can see it.</p></div></div>
             <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
         </div>
+        <div class="sn-dlg-tabs" role="tablist" aria-label="Parts of this window">
+            <button type="button" class="on" role="tab" aria-selected="true" data-dlg-tab="details">Details</button>
+            <button type="button" role="tab" aria-selected="false" data-dlg-tab="people">People <span class="sn-dlg-n" data-pp-n-for="groupPeople" hidden></span></button>
+        </div>
         <div class="sn-dlg-body">
+          <div class="sn-d2-side" data-dlg-panel="details">
             <div class="sn-dlg-banner new" id="ngBanner" role="note"><i class="fa fa-info-circle" aria-hidden="true"></i><span><b>This makes a brand-new group chat.</b> It appears at the top of your Chats list.</span></div>
-            <modern-group-box title="Group | details" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="22px" content-layout="block">
-                <div style="display:flex;flex-direction:column;gap:14px">
-                    <modern-input id="channelName" name="name" label="Group name" mandatory="true" placeholder="Project Alpha" max-length="60" label-font-size="13.5px"></modern-input>
-                    <modern-input id="channelDesc" name="description" label="Description" placeholder="What is this group for?" max-length="300" label-font-size="13.5px"></modern-input>
-                </div>
-            </modern-group-box>
+            <section class="sn-d2-sec" aria-labelledby="ngGroupLbl">
+                <h3 class="sn-d2-label" id="ngGroupLbl">Group</h3>
+                <modern-input id="channelName" name="name" label="Name" mandatory="true" placeholder="Project Alpha" max-length="60" label-font-size="12.5px"></modern-input>
+                <modern-input id="channelDesc" name="description" label="Description" placeholder="What is this group for?" max-length="300" label-font-size="12.5px"></modern-input>
+                <span class="sn-d2-hint">Optional · shown at the top of the chat</span>
+            </section>
             @* "Add people" from a one-to-one chat: copy that chat's history into the new group *@
             @if (c is { IsDirect: true })
             {
@@ -348,18 +356,18 @@
                     <input type="hidden" name="fromChat" id="fromChat" value="@c.Id" disabled />
                     <div class="sn-hs-head">
                         <span class="sn-hs-ic"><i class="fa fa-history" aria-hidden="true"></i></span>
-                        <div><b>Share your chat history with @c.Name?</b><small>Copies your one-to-one messages (and, if you like, files, without using more storage) into the new group, so everyone can read them. Your chat with @c.Name stays as it is.</small></div>
+                        <div><b>History from your chat with @c.Name</b><small>Copy earlier one-to-one messages into the group, so everyone can read them.</small></div>
                     </div>
                     <div class="sn-hs-opts" role="radiogroup" aria-label="Chat history to share">
-                        <label><input type="radio" name="history" value="none" checked disabled /><span>Don't share</span></label>
-                        <label><input type="radio" name="history" value="1" disabled /><span>Last day</span></label>
-                        <label><input type="radio" name="history" value="7" disabled /><span>Last 7 days</span></label>
-                        <label><input type="radio" name="history" value="all" disabled /><span>All history</span></label>
+                        <label><input type="radio" name="history" value="none" checked disabled /><span>None</span></label>
+                        <label><input type="radio" name="history" value="1" disabled /><span>1 day</span></label>
+                        <label><input type="radio" name="history" value="7" disabled /><span>7 days</span></label>
+                        <label><input type="radio" name="history" value="all" disabled /><span>All</span></label>
                     </div>
                     <label class="sn-hs-files" id="historyFiles">
                         <input type="checkbox" name="shareFiles" value="true" checked disabled />
                         <span class="sn-hs-sw" aria-hidden="true"></span>
-                        <span class="sn-hs-ftext"><b>Include shared files</b><small>Files sent in that history come with it. Turn off to share messages only.</small></span>
+                        <span class="sn-hs-ftext"><b>Include shared files</b><small>No extra storage. Turn off to share messages only.</small></span>
                     </label>
                     <input type="hidden" name="shareFiles" value="false" disabled />
                 </div>
@@ -368,17 +376,20 @@
                 var groupPicker = new PeoplePickerVm
                 {
                     Id = "groupPeople", People = Model.Team,
-                    EmptyText = "No one else is in this workspace yet. Add people on the Team page first.",
-                    Hint = "New teammates aren't added automatically. Everybody is always in \"Everyone\"."
+                    EmptyText = "No one else is in this workspace yet. Add people on the Team page first."
                 };
             }
+            <p class="sn-d2-note"><i class="fa fa-lock" aria-hidden="true"></i> Only the people you pick can see this group. New teammates aren't added automatically; everybody is always in "Everyone".</p>
+          </div>
+          <div class="sn-d2-main" data-dlg-panel="people">
             <partial name="_PeoplePicker" model="groupPicker" />
+          </div>
         </div>
         <div class="sn-dlg-foot">
-            <span></span>
+            <span class="sn-d2-sum" data-pp-sum-for="groupPeople" data-none="Nobody picked yet" data-one="You + 1 person" data-many="You + {n} people"></span>
             <span style="display:flex;gap:10px">
                 <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                <button type="submit" class="cee-btn cee-btn-gradient" data-pp-count-for="groupPeople" data-none="Create new group" data-one="Create group with 1 person" data-many="Create group with {n} people"><i class="fa fa-plus" aria-hidden="true"></i> <span data-pp-label>Create new group</span></button>
+                <button type="submit" class="cee-btn cee-btn-gradient" data-pp-count-for="groupPeople" data-none="Create group" data-one="Create group" data-many="Create group"><span data-pp-label>Create group</span></button>
             </span>
         </div>
     </form>
@@ -387,44 +398,75 @@
 @if (c is { IsDirect: false } && Model.CanManageMembers)
 {
     var notIn = Model.Team.Where(t => !Model.Members.Any(m => m.Id == t.Id)).ToList();
-    <dialog id="addMembersDialog" class="sn-dialog glass-strong">
+    <dialog id="addMembersDialog" class="sn-dialog sn-dlg-2col glass-strong" data-kind="here" data-tab="details">
         <form method="post" asp-antiforgery="true" action="/chat/@c.Id/members/add" id="addMembersForm">
             <div class="sn-dlg-head">
-                <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-user-plus" aria-hidden="true"></i></span><div><h2>Add people to @c.Name <span class="sn-dlg-tag here">This chat</span></h2><p>They join this group: same chat, same history.</p></div></div>
+                <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="fa fa-user-plus" aria-hidden="true"></i></span><div><h2>Add people <span class="sn-dlg-tag here">This chat</span></h2><p>to @c.Name · same chat, same history</p></div></div>
                 <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
             </div>
+            <div class="sn-dlg-tabs" role="tablist" aria-label="Parts of this window">
+            <button type="button" class="on" role="tab" aria-selected="true" data-dlg-tab="details">Details</button>
+            <button type="button" role="tab" aria-selected="false" data-dlg-tab="people">Pick <span class="sn-dlg-n" data-pp-n-for="addPeople" hidden></span></button>
+        </div>
             <div class="sn-dlg-body">
-                <div class="sn-dlg-banner here" role="note"><i class="fa fa-info-circle" aria-hidden="true"></i><span><b>No new chat is made.</b> The people you pick join <b>@c.Name</b>, and everyone in it sees who was added.</span></div>
-                @{ var addPicker = new PeoplePickerVm { Id = "addPeople", People = notIn, Title = "Pick who to add", EmptyText = "Everyone in the workspace is already in this group.",
-                       Already = Model.Members.ToList(), AlreadyIn = c.Name }; }
-                <partial name="_PeoplePicker" model="addPicker" />
+              <div class="sn-d2-side" data-dlg-panel="details">
+                <div class="sn-dlg-banner here" role="note"><i class="fa fa-info-circle" aria-hidden="true"></i><span><b>No new chat is made.</b> The people you pick join <b>@c.Name</b>.</span></div>
+                @{
+                    var members = Model.Members.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+                    var firstNames = members.Take(3).Select(x => x.Name.Split(' ')[0]).ToList();
+                }
+                <section class="sn-d2-sec" aria-labelledby="addInLbl">
+                    <h3 class="sn-d2-label" id="addInLbl">Already in · @members.Count</h3>
+                    <span class="sn-d2-hint">Everyone in the group will see who you add.</span>
+                    <div class="sn-d2-in">
+                        <span class="sn-d2-faces big" aria-hidden="true">
+                            @foreach (var m in members.Take(5))
+                            {
+                                <span class="avatar av-30 tone-@(m.Tone)" data-user="@m.Id">@m.Initials</span>
+                            }
+                        </span>
+                        <span class="sn-d2-in-t">@string.Join(", ", firstNames)@(members.Count > 3 ? $" and {members.Count - 3} more" : "")</span>
+                        <button type="button" class="sn-link" data-d2-toggle="addInList" aria-expanded="false">See all</button>
+                    </div>
+                    <div class="sn-d2-in-list" id="addInList" hidden>
+                        @foreach (var m in members)
+                        {
+                            <span>@m.Name</span>
+                        }
+                    </div>
+                </section>
                 @if (notIn.Count > 0)
                 {
                     <div class="sn-hs" id="addHistory">
                         <div class="sn-hs-head">
                             <span class="sn-hs-ic"><i class="fa fa-history" aria-hidden="true"></i></span>
-                            <div><b>Share the group's chat history?</b><small>Choose what the people you add can read from before they joined. Everyone already in the group keeps seeing everything.</small></div>
+                            <div><b>What can they see from before?</b><small>People already in the group keep seeing everything.</small></div>
                         </div>
                         <div class="sn-hs-opts" role="radiogroup" aria-label="Group history to share">
-                            <label><input type="radio" name="history" value="none" /><span>Don't share</span></label>
-                            <label><input type="radio" name="history" value="1" /><span>Last day</span></label>
-                            <label><input type="radio" name="history" value="7" /><span>Last 7 days</span></label>
-                            <label><input type="radio" name="history" value="all" checked /><span>All history</span></label>
+                            <label><input type="radio" name="history" value="none" /><span>None</span></label>
+                            <label><input type="radio" name="history" value="1" /><span>1 day</span></label>
+                            <label><input type="radio" name="history" value="7" /><span>7 days</span></label>
+                            <label><input type="radio" name="history" value="all" checked /><span>All</span></label>
                         </div>
                     <label class="sn-hs-files" id="addFiles">
                         <input type="checkbox" name="shareFiles" value="true" checked />
                         <span class="sn-hs-sw" aria-hidden="true"></span>
-                        <span class="sn-hs-ftext"><b>Include shared files</b><small>Files sent in the group before they joined. Turn off to share messages only.</small></span>
+                        <span class="sn-hs-ftext"><b>Include shared files</b><small>Sent in the group before they joined.</small></span>
                     </label>
                     <input type="hidden" name="shareFiles" value="false" />
                     </div>
                 }
+              </div>
+              <div class="sn-d2-main" data-dlg-panel="people">
+                @{ var addPicker = new PeoplePickerVm { Id = "addPeople", People = notIn, Title = "Pick who to add", ToLabel = "Add", EmptyText = "Everyone in the workspace is already in this group." }; }
+                <partial name="_PeoplePicker" model="addPicker" />
+              </div>
             </div>
             <div class="sn-dlg-foot">
-                <span></span>
+                <span class="sn-d2-sum" data-pp-sum-for="addPeople" data-none="@members.Count in the group · pick who to add" data-one="@members.Count in the group + 1 new" data-many="@members.Count in the group + {n} new"></span>
                 <span style="display:flex;gap:10px">
                     <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                    <button type="submit" class="cee-btn cee-btn-gradient" data-pp-count-for="addPeople" data-none="Add to @c.Name" data-one="Add 1 person to @c.Name" data-many="Add {n} people to @c.Name"><i class="fa fa-user-plus" aria-hidden="true"></i> <span data-pp-label>Add to @c.Name</span></button>
+                    <button type="submit" class="cee-btn cee-btn-gradient" data-pp-count-for="addPeople" data-none="Add people" data-one="Add 1 person" data-many="Add {n} people"><span data-pp-label>Add people</span></button>
                 </span>
             </div>
         </form>
@@ -630,8 +672,8 @@
             }
             if (share) share.addEventListener("change", paintShare);
             form.addEventListener("submit", function (e) {
-                if (!$.trim($("#channelName").val())) { e.preventDefault(); Sahyog.toast("Give the group a name, for example Project Alpha.", { kind: "warn", title: "Name needed" }); return; }
-                if (newPicker && newPicker.count() === 0) { e.preventDefault(); Sahyog.toast("Pick at least one person for the group.", { kind: "warn", title: "Who's in it?" }); newPicker.focus(); }
+                if (!$.trim($("#channelName").val())) { e.preventDefault(); snDlgTab(form, "details"); $("#channelName").trigger("focus"); Sahyog.toast("Give the group a name, for example Project Alpha.", { kind: "warn", title: "Name needed" }); return; }
+                if (newPicker && newPicker.count() === 0) { e.preventDefault(); snDlgTab(form, "people"); Sahyog.toast("Pick at least one person for the group.", { kind: "warn", title: "Who's in it?" }); newPicker.focus(); }
             });
             // fresh each time: search cleared, list back to "All", history option only when opened from "Add people"
             document.getElementById("newChannelDialog").addEventListener("close", function () { if (newPicker) newPicker.reset(); shareOn(false); });
@@ -675,7 +717,7 @@
             if (!form) return;
             var picker = snPicker(document.getElementById("addPeople"));
             form.addEventListener("submit", function (e) {
-                if (picker && picker.count() === 0) { e.preventDefault(); Sahyog.toast("Pick at least one person to add.", { kind: "warn", title: "Who should join?" }); picker.focus(); }
+                if (picker && picker.count() === 0) { e.preventDefault(); snDlgTab(form, "people"); Sahyog.toast("Pick at least one person to add.", { kind: "warn", title: "Who should join?" }); picker.focus(); }
             });
             document.getElementById("addMembersDialog").addEventListener("close", function () { if (picker) picker.reset(); });
         })();
@@ -710,6 +752,29 @@
             var id = this.getAttribute("data-group-from");
             if (id === "@(c is { IsDirect: true } ? c.Id.ToString() : "")") { snAddPeople(); return; }
             location.href = "/chat/" + id + "?new=group-with";
+        });
+
+        // ---- Team list (no chat yet): "Create group" opens New group with them ticked; "Pin to the top" starts the chat and pins it ----
+        $(document).off(".snteam");
+        $(document).on("click.snteam", "[data-group-with]", function (e) {
+            e.preventDefault(); e.stopPropagation();
+            if (newPicker) newPicker.pickOnly([this.getAttribute("data-group-with")]);
+            if (window.snShareHistory) window.snShareHistory(false);
+            SN.open("newChannelDialog");
+            setTimeout(function () { $("#channelName").trigger("focus"); }, 250);
+        });
+        $(document).on("click.snteam", "[data-pin-person]", function (e) {
+            e.preventDefault(); e.stopPropagation();
+            var id = this.getAttribute("data-pin-person");
+            var fd = new FormData();
+            fd.append("__RequestVerificationToken", Sahyog.antiforgery());
+            fetch("/chat/direct/" + id + "/pin", { method: "POST", body: fd, headers: { RequestVerificationToken: Sahyog.antiforgery() } })
+                .then(function (r) { return r.json().then(function (x) { return { ok: r.ok, x: x }; }); })
+                .then(function (res) {
+                    if (!res.ok) { Sahyog.toast(res.x.error || "Couldn't pin.", { kind: "error" }); return; }
+                    SN.reload();   // they move up to "Pinned"
+                })
+                .catch(function () { Sahyog.toast("Couldn't pin. Check your connection.", { kind: "error" }); });
         });
 
         // ---- Add people (in a one-to-one chat): New group with this person already ticked ----

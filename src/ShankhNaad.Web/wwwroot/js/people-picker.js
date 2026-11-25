@@ -16,10 +16,11 @@
         var search = q("[data-pp-search]"), chips = q("[data-pp-chips]"), none = q("[data-pp-none]"), counter = q("[data-pp-count]");
         var show = "all";
         var esc = function (t) { return String(t).replace(/[&<>"]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]; }); };
+        var wide = !!root.closest(".sn-dlg-2col");     // the two-column pop-ups: the list fills the column, no locking
         var listBox = q("[data-pp-list]"), seg = q(".sn-pp-seg"), pill = q(".sn-pp-pill");
         // the list keeps the height it had with everyone in it, so the dialog doesn't jump while you filter
         function lockHeight() {
-            if (listBox.dataset.locked || !listBox.offsetHeight) return;
+            if (wide || listBox.dataset.locked || !listBox.offsetHeight) return;
             listBox.style.minHeight = listBox.offsetHeight + "px";
             listBox.dataset.locked = "1";
         }
@@ -65,7 +66,7 @@
             }
             chips.classList.add("one-row");
             if (!chips.offsetWidth) return;           // dialog not open yet: measured again when it opens
-            var limit = chips.getBoundingClientRect().right - 96;   // room for "+N more"
+            var limit = chips.getBoundingClientRect().right - (wide ? 150 : 96);   // room for "+N more" (and Clear)
             var hidden = 0;
             all.forEach(function (x) {
                 if (hidden || x.getBoundingClientRect().right > limit) { x.hidden = true; hidden++; }
@@ -89,7 +90,7 @@
             counter.textContent = picked.length + " picked";
             counter.classList.toggle("has", picked.length > 0);
             var pn = q("[data-pp-picked-n]"); if (pn) pn.textContent = picked.length ? "· " + picked.length : "";
-            var topClear = q(".sn-pp-clear-top"); if (topClear) topClear.hidden = picked.length < 2;
+            var topClear = q(".sn-pp-clear-top"); if (topClear) topClear.hidden = picked.length < 1;
             if (!picked.length) expanded = false;
             label(picked.length);
             chips.querySelectorAll(".sn-pp-chip").forEach(function (x) { x.remove(); });
@@ -107,7 +108,33 @@
             });
             fitChips();
             if (show === "picked") filter();
+            summary(picked);
             return picked.length;
+        }
+        // the footer of the wide pop-ups: a few faces and "You + 12 people"; the People tab on a phone shows the count
+        //   <span data-pp-sum-for="<picker id>" data-none="…" data-one="…" data-many="… {n} …"></span>   <span data-pp-n-for="<picker id>"></span>
+        function summary(picked) {
+            var n = picked.length;
+            document.querySelectorAll('[data-pp-n-for="' + root.id + '"]').forEach(function (b) { b.textContent = n; b.hidden = n === 0; });
+            document.querySelectorAll('[data-pp-sum-for="' + root.id + '"]').forEach(function (el) {
+                var t = n === 0 ? el.dataset.none : n === 1 ? el.dataset.one : (el.dataset.many || "").replace("{n}", n);
+                el.innerHTML = "";
+                if (n) {
+                    var faces = document.createElement("span");
+                    faces.className = "sn-d2-faces"; faces.setAttribute("aria-hidden", "true");
+                    picked.slice(0, 4).forEach(function (r) {
+                        var av = r.querySelector(".avatar").cloneNode(true);
+                        av.className = av.className.replace("av-34", "av-22");
+                        av.removeAttribute("data-presence");
+                        if (av.querySelector(".dot")) av.querySelector(".dot").remove();
+                        faces.appendChild(av);
+                    });
+                    el.appendChild(faces);
+                }
+                var txt = document.createElement("span");
+                txt.textContent = t || "";
+                el.appendChild(txt);
+            });
         }
         root.addEventListener("change", function (e) { if (e.target.closest(".sn-pp-row")) render(); });
         search.addEventListener("input", filter);
@@ -200,4 +227,42 @@
         };
     }
     window.snPicker = snPicker;
+
+    // ---- the wide pop-ups (New group, Add people, Schedule a meeting): two columns; on a phone two tabs, Details and People ----
+    function snDlgTab(el, tab) {
+        var dlg = el && el.closest ? el.closest(".sn-dlg-2col") : null;
+        if (!dlg) return;
+        dlg.dataset.tab = tab;
+        dlg.querySelectorAll("[data-dlg-tab]").forEach(function (b) {
+            var on = b.dataset.dlgTab === tab;
+            b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false");
+        });
+        var body = dlg.querySelector(".sn-dlg-body"); if (body) body.scrollTop = 0;
+        if (tab === "people") { var pp = dlg.querySelector("[data-pp]"); if (pp) window.dispatchEvent(new Event("resize")); }
+    }
+    window.snDlgTab = snDlgTab;
+    document.addEventListener("click", function (e) {
+        var b = e.target.closest && e.target.closest("[data-dlg-tab]");
+        if (b) snDlgTab(b, b.dataset.dlgTab);
+        // "See all" names (people already in the group) and "+ Add agenda"
+        var t = e.target.closest && e.target.closest("[data-d2-toggle]");
+        if (t) {
+            var box = document.getElementById(t.dataset.d2Toggle);
+            if (!box) return;
+            var open = box.hidden;
+            box.hidden = !open;
+            t.setAttribute("aria-expanded", open ? "true" : "false");
+            if (t.dataset.d2Once) { t.hidden = true; var f = box.querySelector("textarea, input"); if (f) f.focus(); }
+            else t.textContent = open ? "Hide" : "See all";
+        }
+    });
+    // a field that needs filling sits on the other tab: go there, so the browser can show it
+    document.addEventListener("invalid", function (e) {
+        var panel = e.target.closest && e.target.closest(".sn-dlg-2col [data-dlg-panel]");
+        if (panel && panel.closest(".sn-dlg-2col").dataset.tab !== panel.dataset.dlgPanel) snDlgTab(panel, panel.dataset.dlgPanel);
+    }, true);
+    // each time it opens: back on Details
+    document.addEventListener("close", function (e) {
+        if (e.target.classList && e.target.classList.contains("sn-dlg-2col")) snDlgTab(e.target.querySelector("[data-dlg-tab]") || e.target, "details");
+    }, true);
 })();
