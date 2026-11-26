@@ -1,0 +1,6 @@
+@{
+    // The JSON the Work page scripts start from (me, admin, departments). Used by every Work page.
+    var depts = (ViewData["Departments"] as List<(string Value, string Text)> ?? new())
+        .Select(d => new { id = d.Value, name = System.Net.WebUtility.HtmlDecode(d.Text) }).ToList();
+}
+<script type="application/json" id="wkData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { me = User.UserGuid().ToString(), isAdmin = User.IsInRole(AppRoles.TenantAdmin), depts }))</script>

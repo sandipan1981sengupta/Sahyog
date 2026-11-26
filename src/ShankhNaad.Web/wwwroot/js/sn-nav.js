@@ -193,8 +193,8 @@
     // =====================================================================
     // 3. Which addresses load partially
     // =====================================================================
-    const PAGE_RE = /^\/(?:|chat(?:\/[0-9a-f-]{36})?|calls|files|meetings|team|org|admin)\/?$/i;
-    const PREFETCH_RE = /^\/(?:chat|calls|files|meetings|team|org|admin)\/?$/i;
+    const PAGE_RE = /^\/(?:|chat(?:\/[0-9a-f-]{36})?|calls|files|meetings|team|org|admin|work(?:\/(?:decisions|standup|approvals|roles|visitors))?)\/?$/i;
+    const PREFETCH_RE = /^\/(?:chat|calls|files|meetings|team|org|admin|work(?:\/(?:decisions|standup|approvals|roles|visitors))?)\/?$/i;
     const hasShell = () => !!document.querySelector(".sn-body-row") && !!document.getElementById("sn-page-scripts");
     const toUrl = (u) => (u instanceof URL ? u : new URL(u, location.href));
     nav.canGo = (u) => {
@@ -529,6 +529,8 @@
     addEL.call(window, "popstate", () => {
         const here = location.pathname + location.search;
         if (here === shown) return;                       // only the #part changed
+        // a page that switches its own parts (the Work tabs) may handle it without a page change
+        if (nav.onPop) { let done = false; try { done = !!nav.onPop(new URL(location.href)); } catch (e) { console.error(e); } if (done) { shown = here; return; } }
         if (!nav.canGo(location.href)) { location.reload(); return; }
         navigate(location.href, { push: false, dir: "prev" });
     });
@@ -546,6 +548,53 @@
         hoverTimer = sT(() => prefetch(u), 70);
     });
     addEL.call(document, "pointerout", () => cT(hoverTimer));
+    /** Fetch a page ahead of a click that isn't a link (e.g. the Work tabs). */
+    nav.prefetch = (href) => { const u = toUrl(href); if (PREFETCH_RE.test(u.pathname) && !u.search && nav.canGo(u) && u.pathname !== location.pathname) prefetch(u); };
+
+    /**
+     * For pages that switch their own parts (the Work tabs, js/work-kit.js):
+     * nav.paneUrl(url, push) changes the address without a page change; nav.onPop(url) → true when such a page handled Back/Forward;
+     * nav.mount(nodes, srcs) sets up markup fetched for part of this page: its inline scripts, then the script files (in order),
+     * then its controls — all tied to this page, so they are cleaned up when the page is left.
+     */
+    nav.onPop = null;
+    nav.paneUrl = (href, push) => {
+        const u = toUrl(href);
+        const st = Object.assign({}, history.state || {}, { sn: 1 });
+        if (push) history.pushState(st, "", u.href); else history.replaceState(st, "", u.href);
+        shown = u.pathname + u.search;
+    };
+    nav.mount = async (nodes, srcs) => {
+        const codes = [];
+        for (const src of srcs || []) {
+            const u = toUrl(src);
+            if (u.origin !== location.origin) continue;
+            codes.push({ code: await getText(u.href), label: u.pathname });
+        }
+        const mine = page;
+        if (!mine || mine.dead) return false;
+        const prev = cur; cur = mine;
+        const els = nodes.filter((n) => n.nodeType === 1);
+        try {
+            els.forEach((el) => {
+                [...(el.matches("script") ? [el] : []), ...el.querySelectorAll("script")].forEach((old) => {
+                    if (old.hasAttribute("data-sn-skip") || !isCode(old) || old.src || !old.parentNode) return;
+                    runInline(old.textContent, old.parentNode, null, old); old.remove();
+                });
+            });
+            const holder = document.getElementById("sn-page-scripts") || document.body;
+            codes.forEach((c) => { if (c.code) runInline(c.code, holder, c.label); });
+            const $ = window.jQuery;
+            ["ModernTable", "ModernInput", "ModernDropdownWithLabel", "ModernDatePickerWithLabel",
+             "ModernRadio", "ModernCheckbox", "TabControl", "ModernDonutChart"].forEach((name) => {
+                const c = window[name];
+                if (c && typeof c.init === "function") els.forEach((el) => { try { c.init($ ? $(el) : el); } catch (e) { console.error(e); } });
+            });
+        } finally { cur = prev; }
+        els.forEach((el) => window.Sahyog?.paintPhotos?.(el));
+        window.Sahyog?.paintPresence?.();
+        return true;
+    };
 
     /** Reloads the current page in place (no animation, scroll kept): used for live updates. */
     nav.refresh = () => navigate(location.href, { push: false, quiet: true });

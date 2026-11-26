@@ -363,8 +363,9 @@
         nav.className = "sn-app-tags";
         nav.setAttribute("aria-label", "ShankhNaad");
         // Files, Team and Org only where the side rail has them (a super admin's rail doesn't)
-        const tags = [["chat", "/chat", "Team chat", "fa-comments"], ["calls", "/calls", "Calls", "fa-phone"], ["meet", "/meetings", "Meetings", "fa-video-camera"],
-            ["files", "/files", "Files", "fa-folder-open"], ["team", "/team", "Team", "fa-users"], ["org", "/org", "Org", "fa-sitemap"]]
+        // same order as the side rail: Chat, Calls, Files, Meetings, Team, Work, Org
+        const tags = [["chat", "/chat", "Team chat", "fa-comments"], ["calls", "/calls", "Calls", "fa-phone"], ["files", "/files", "Files", "fa-folder-open"],
+            ["meet", "/meetings", "Meetings", "fa-video-camera"], ["team", "/team", "Team", "fa-users"], ["work", "/work", "Work", "fa-briefcase"], ["org", "/org", "Org", "fa-sitemap"]]
             .filter(([k, href]) => k === "chat" || k === "calls" || k === "meet" || document.querySelector('.rr-item-btn[href="' + href + '"], a[href="' + href + '"]'));
         nav.innerHTML = tags
             .map(([k, href, label, icon]) => `<a href="${href}" class="sn-app-tag ${k}" title="${label}"><span class="sn-app-ic"><i class="fa ${icon}" aria-hidden="true"></i></span><span class="sn-app-lb">${label}</span></a>`)

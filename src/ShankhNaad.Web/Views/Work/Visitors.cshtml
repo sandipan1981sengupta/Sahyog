@@ -1,13 +1,73 @@
 @{
-    // Work → Visitors (see Controllers/VisitorsController.cs). The page is drawn by js/work-visitors.js.
-    var depts = (ViewData["Departments"] as List<DepartmentDto> ?? new()).OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
-        .Select(d => new { id = d.DepartmentId, name = d.Name }).ToList();
+    // Work → Visitors (Controllers/VisitorsController.cs). Lists are drawn by js/work-visitors.js; the window below is tag-helper controls.
+    var people = ViewData["People"] as List<(string Value, string Text)> ?? new();
+    var timeItems = new List<(string Value, string Text)>();
+    for (var m = 7 * 60; m <= 21 * 60; m += 15)
+        timeItems.Add(($"{m / 60:00}:{m % 60:00}", new DateTime(2000, 1, 1, m / 60, m % 60, 0).ToString("h:mm tt", System.Globalization.CultureInfo.InvariantCulture)));
 }
-<main class="sn-page sn-work">
-    <partial name="~/Views/Work/_WorkHead.cshtml" model="@("visitors")" />
-    <div class="sn-wk-app" id="viApp" aria-live="polite"><div class="sn-nir-loading">Loading…</div></div>
-</main>
-<script type="application/json" id="wkData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { me = User.UserGuid().ToString(), isAdmin = User.IsInRole(AppRoles.TenantAdmin), depts }))</script>
+<div class="sn-wk-pane" data-pane="visitors">
+    <div class="sn-wk-app" id="viApp">
+        <div id="viTop" aria-live="polite"><div class="sn-nir-loading">Loading…</div></div>
+        <section class="sn-hist glass">
+            <div class="sn-hist-bar">
+                <tab-control id="viTabs" height="44px" font-size="13.5px" font-weight="600" active-font-weight="600" transition-duration=".38s"
+                         background="rgba(255,255,255,.55)" active-background-color="#ffffff"
+                         text-color="#475569" active-text-color="#0B1220" border-color="rgba(15,23,42,.08)">
+                    <tab id="all" text="All" icon="bi bi-collection" badge="0" active="true"></tab>
+                    <tab id="expected" text="Expected" icon="bi bi-clock" badge="0"></tab>
+                    <tab id="in" text="In the building" icon="bi bi-building" badge="0"></tab>
+                    <tab id="left" text="Left" icon="bi bi-box-arrow-right" badge="0"></tab>
+                </tab-control>
+                <div class="sn-wk-daynav sn-daypill" data-daypill="vi">
+                    <button type="button" class="sn-dp-arrow" data-vday="-1" aria-label="Day before"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+                    <button type="button" class="sn-dp-mid" data-dp-open="vi" aria-haspopup="dialog" aria-expanded="false" title="Pick a day"><span data-vi-day>Today</span></button>
+                    <button type="button" class="sn-dp-arrow" data-vday="1" aria-label="Next day"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+                </div>
+                <div class="sn-wk-search" id="viSearch">
+                    <modern-input id="viQ" name="viQ" placeholder="Search name, company, host"></modern-input>
+                </div>
+                <div class="sn-hist-tools"><a class="sn-tool" data-vi-export href="/work/visitors/export"><i class="fa fa-download" aria-hidden="true"></i> Export</a>
+                    <button type="button" class="sn-tool" data-vi-walkin><i class="fa fa-sign-in" aria-hidden="true"></i> Walk-in</button>
+                    <button type="button" class="cee-btn cee-btn-gradient sn-nir-new" data-vi-new><i class="fa fa-plus" aria-hidden="true"></i> <span>Expect a visitor</span></button></div>
+            </div>
+            <div class="sn-hist-list" data-vi-rows aria-live="polite"></div>
+        </section>
+    </div>
+</div>
+
+@* the day pill's calendar (js/work-kit.js dayPick): this tag-helper date picker stays out of sight and opens under ‹ Today › *@
+<div class="sn-daypick" aria-hidden="true"><modern-datepicker-with-label id="viDayPick" name="viDayPick" label="Day" height="36px"></modern-datepicker-with-label></div>
+
+@* expect a visitor / check in a walk-in *@
+<dialog id="viDlg" class="sn-dialog glass-strong sn-wk-dlg" aria-labelledby="viT">
+    <form method="dialog" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon sn-wk-ic" aria-hidden="true"><i class="fa fa-id-card-o" data-vi-icon></i></span>
+                <div><h2 id="viT" data-vi-title>Expect a visitor</h2><p data-vi-sub></p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body sn-nir-body">
+            <div class="sn-wk-two">
+                <modern-input id="viName" name="viName" label="Name" mandatory="true" max-length="100" label-font-size="13.5px" placeholder="Ravi Kumar" tooltip-text="Write the visitor's name"></modern-input>
+                <modern-input id="viCo" name="viCo" label="Company (optional)" max-length="100" label-font-size="13.5px" placeholder="Mehta Traders"></modern-input>
+            </div>
+            <div class="sn-wk-two">
+                <modern-input id="viPhone" name="viPhone" label="Phone (optional)" input-type="phone" max-length="20" label-font-size="13.5px" placeholder="98450 12345"></modern-input>
+                <modern-input id="viWhy" name="viWhy" label="Purpose (optional)" max-length="200" label-font-size="13.5px" placeholder="Quarterly review"></modern-input>
+            </div>
+            <div class="sn-wk-two" data-vi-when>
+                <modern-datepicker-with-label id="viDay" name="viDay" label="Day" required="true"></modern-datepicker-with-label>
+                <modern-dropdown-with-label id="viTime" name="viTime" label="Time" value="11:00" items="timeItems" menu-height="240px"></modern-dropdown-with-label>
+            </div>
+            <modern-dropdown-with-label id="viHost" name="viHost" label="Meeting" required="true" placeholder="Who are they meeting?" items="people" menu-height="240px"></modern-dropdown-with-label>
+        </div>
+        <div class="sn-dlg-foot"><span></span>
+            <span class="sn-nir-foot-r"><button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="button" class="cee-btn cee-btn-gradient" data-vi-save><i class="fa fa-check" aria-hidden="true"></i> <span>Add</span></button></span>
+        </div>
+    </form>
+</dialog>
+
 @section Scripts {
     <script src="~/js/work-visitors.js" asp-append-version="true"></script>
 }

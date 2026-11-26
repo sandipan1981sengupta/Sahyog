@@ -14,7 +14,7 @@
 
     async function load(day) {
         const x = await W.get(`/work/visitors/data${day ? "?day=" + day : ""}`);
-        if (!x.ok) { root.innerHTML = `<div class="sn-wk-empty glass"><i class="fa fa-database" aria-hidden="true"></i><b>Visitors isn't ready yet</b><p>${esc(x.d.error || "Try again.")}</p></div>`; return; }
+        if (!x.ok) { document.getElementById("viTop").innerHTML = `<div class="sn-wk-empty glass"><i class="fa fa-database" aria-hidden="true"></i><b>Visitors isn't ready yet</b><p>${esc(x.d.error || "Try again.")}</p></div>`; return; }
         st.data = x.d; st.day = x.d.day;
         paint();
     }
@@ -37,14 +37,16 @@
             </div></div>`;
     }
 
+    // The list bar (glass tabs, day, search, buttons) is in the page (Views/Work/Visitors.cshtml);
+    // the script draws the totals and the tablet card above it (#viTop), and the rows.
+    const top = document.getElementById("viTop");
+    const search = document.getElementById("viSearch");
+    const n = (s) => st.data.visitors.filter((v) => stage(v) === s).length;
     function paint() {
         const d = st.data, all = d.visitors;
-        const n = (s) => all.filter((v) => stage(v) === s).length;
-        const q = st.q.toLowerCase();
-        const list = all.filter((v) => (st.tab === "all" || stage(v) === st.tab) && (!q || [v.name, v.company, v.hostName, v.phone, v.purpose].join(" ").toLowerCase().includes(q)));
         const isToday = d.day === d.today;
         const lobby = d.lobby;
-        root.innerHTML = `
+        top.innerHTML = `
         <div class="sn-grid-4 sn-nir-stats">
             <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(14,165,233,.12);color:#0284c7"><i class="fa fa-clock-o"></i></span><div><div class="sn-eyebrow">Expected</div><div class="sn-stat-val">${n("expected")}</div></div></div>
             <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(22,163,74,.12);color:#15803d"><i class="fa fa-building-o"></i></span><div><div class="sn-eyebrow">In the building</div><div class="sn-stat-val">${n("in")}</div></div></div>
@@ -58,58 +60,60 @@
                 ${lobby.url && lobby.enabled ? `<div class="sn-vi-link"><input readonly value="${esc(lobby.url)}" aria-label="Reception link"><button type="button" class="sn-tool" data-lobby-copy><i class="fa fa-clipboard" aria-hidden="true"></i> Copy</button><a class="sn-tool" href="${esc(lobby.url)}" target="_blank" rel="noopener"><i class="fa fa-external-link" aria-hidden="true"></i> Open</a></div>` : ""}</div>
             <span class="sn-vi-lobby-acts">${lobby.url ? `<button type="button" class="sn-tool" data-lobby="${lobby.enabled ? "off" : "on"}">${lobby.enabled ? "Turn off" : "Turn on"}</button>${lobby.enabled ? '<button type="button" class="sn-tool" data-lobby="new" title="The old link stops working">New link</button>' : ""}`
                 : '<button type="button" class="cee-btn cee-btn-gradient sn-nir-new" data-lobby="on"><i class="fa fa-power-off" aria-hidden="true"></i> <span>Set it up</span></button>'}</span>
-        </section>` : ""}
-        <section class="sn-hist glass">
-            <div class="sn-hist-bar">
-                <div class="sn-hist-tabs" role="tablist">${[["all", "All", all.length], ["expected", "Expected", n("expected")], ["in", "In the building", n("in")], ["left", "Left", n("left")]].map(([k, t, c]) => `<button type="button" role="tab" class="${st.tab === k ? "on" : ""}" aria-selected="${st.tab === k}" data-vtab="${k}">${t} <span class="sn-hist-n">${c}</span></button>`).join("")}</div>
-                <div class="sn-wk-daynav"><button type="button" data-vday="-1" aria-label="Day before"><i class="fa fa-chevron-left"></i></button><b>${isToday ? "Today" : esc(W.day(d.day))}</b><button type="button" data-vday="1" aria-label="Next day"><i class="fa fa-chevron-right"></i></button></div>
-                <label class="search sn-hist-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" placeholder="Search name, company, host" value="${esc(st.q)}" data-vq aria-label="Search visitors"></label>
-                <div class="sn-hist-tools"><a class="sn-tool" href="/work/visitors/export?day=${d.day}"><i class="fa fa-download" aria-hidden="true"></i> Export</a>
-                    ${isToday ? '<button type="button" class="sn-tool" data-vi-walkin><i class="fa fa-sign-in" aria-hidden="true"></i> Walk-in</button>' : ""}
-                    <button type="button" class="cee-btn cee-btn-gradient sn-nir-new" data-vi-new><i class="fa fa-plus" aria-hidden="true"></i> <span>Expect a visitor</span></button></div>
-            </div>
-            <div class="sn-hist-list">${list.map(row).join("") || `<div class="sn-wk-empty"><i class="fa fa-id-card-o" aria-hidden="true"></i><b>${all.length ? "Nothing matches" : "No visitors " + (isToday ? "today" : "this day")}</b><p>${all.length ? "" : "Expecting someone? Add them, and reception will know who they're meeting."}</p></div>`}</div>
-        </section>`;
+        </section>` : ""}`;
+        W.tabBadge("viTabs", "all", all.length, true);
+        ["expected", "in", "left"].forEach((k) => W.tabBadge("viTabs", k, n(k), true));
+        root.querySelector("[data-vi-day]").textContent = isToday ? "Today" : W.day(d.day);
+        root.querySelector('[data-vday="1"]').disabled = false;
+        root.querySelector("[data-vi-export]").href = `/work/visitors/export?day=${d.day}`;
+        root.querySelector("[data-vi-walkin]").hidden = !isToday;
+        paintRows();
     }
+    W.onTab("viTabs", (id) => { st.tab = id || "all"; if (st.data) paintRows(); });
 
-    async function expect(walkin) {
-        const people = await SN.nirnay.people();
-        const now = new Date(); const t = `${String(now.getHours() + 1).padStart(2, "0")}:00`;
-        const dlg = W.dialog("sn-vi-dlg", `${W.head(walkin ? "fa-sign-in" : "fa-id-card-o", walkin ? "Check in a walk-in visitor" : "Expect a visitor", walkin ? "They're at reception now. Their host gets a card." : "Reception sees them on the list; if they sign in at the tablet with this phone number, it's matched.")}
-            <div class="sn-dlg-body sn-nir-body">
-                <div class="sn-nir-two"><div><label class="sn-field-label" for="viName">Name</label><input id="viName" class="sn-wk-input" maxlength="100" placeholder="Ravi Kumar"></div>
-                    <div><label class="sn-field-label" for="viCo">Company <span class="muted">(optional)</span></label><input id="viCo" class="sn-wk-input" maxlength="100" placeholder="Mehta Traders"></div></div>
-                <div class="sn-nir-two"><div><label class="sn-field-label" for="viPhone">Phone <span class="muted">(optional)</span></label><input id="viPhone" class="sn-wk-input" maxlength="20" inputmode="tel" placeholder="98450 12345"></div>
-                    <div><label class="sn-field-label" for="viWhy">Purpose <span class="muted">(optional)</span></label><input id="viWhy" class="sn-wk-input" maxlength="200" placeholder="Quarterly review"></div></div>
-                ${walkin ? "" : `<div class="sn-nir-two"><div><label class="sn-field-label" for="viDay">Day</label><input type="date" id="viDay" class="sn-wk-input" value="${st.day >= W.ymd(now) ? st.day : W.ymd(now)}" min="${W.ymd(now)}"></div>
-                    <div><label class="sn-field-label" for="viTime">Time</label><input type="time" id="viTime" class="sn-wk-input" value="${t}" step="900"></div></div>`}
-                <div class="sn-field-label">Meeting</div><div id="viHost"></div>
-            </div>
-            <div class="sn-dlg-foot"><span></span><span class="sn-nir-foot-r"><button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                <button type="button" class="cee-btn cee-btn-gradient" data-vi-save><i class="fa fa-check" aria-hidden="true"></i> ${walkin ? "Check in" : "Add"}</button></span></div>`);
-        const host = W.personPicker(dlg.querySelector("#viHost"), people, cfg.me, null, "Who are they meeting?");
+    // ---------- the window (Views/Work/Visitors.cshtml, tag-helper controls) ----------
+    const C = W.ctl;
+    const dlg = document.getElementById("viDlg");
+    if (dlg) C.wire(dlg);
+    let walkin = false;
+    function expect(isWalkin) {
+        walkin = isWalkin;
+        const now = new Date();
+        dlg.querySelector("[data-vi-title]").textContent = walkin ? "Check in a walk-in visitor" : "Expect a visitor";
+        dlg.querySelector("[data-vi-sub]").textContent = walkin ? "They're at reception now. Their host gets a card."
+            : "Reception sees them on the list; if they sign in at the tablet with this phone number, it's matched.";
+        dlg.querySelector("[data-vi-icon]").className = "fa " + (walkin ? "fa-sign-in" : "fa-id-card-o");
+        dlg.querySelector("[data-vi-when]").hidden = walkin;
+        dlg.querySelector("[data-vi-save] span").textContent = walkin ? "Check in" : "Add";
+        ["viName", "viCo", "viPhone", "viWhy"].forEach((id) => C.set(id, ""));
+        C.set("viDay", st.day >= W.ymd(now) ? st.day : W.ymd(now));
+        C.set("viTime", `${String(Math.min(now.getHours() + 1, 21)).padStart(2, "0")}:00`);
+        C.set("viHost", cfg.me);
+        C.open(dlg);
         setTimeout(() => dlg.querySelector("#viName").focus(), 60);
-        dlg.onclick = async (e) => {
-            const b = e.target.closest("[data-vi-save]");
-            if (!b) return;
-            const q = (s) => dlg.querySelector(s);
-            b.disabled = true;
-            const x = await W.post("/work/visitors/expect", {
-                name: q("#viName").value, company: q("#viCo").value, phone: q("#viPhone").value, purpose: q("#viWhy").value,
-                hostId: host.value, day: walkin ? null : q("#viDay").value, time: walkin ? null : q("#viTime").value, arrived: !!walkin
-            });
-            b.disabled = false;
-            if (!x.ok) { W.toast(x.d.error || "Not saved.", "error", "Visitors"); return; }
-            dlg.close();
-            W.toast(walkin ? `${x.d.name} is checked in.` : `${x.d.name} is on the list.`, "success", "Visitors");
-            load(st.day);
-        };
     }
+    dlg?.querySelector("[data-vi-save]").addEventListener("click", async (e) => {
+        const b = e.currentTarget;
+        const name = C.get("viName");
+        if (!name) { window.validateModernInput?.("#viName"); W.toast("Write the visitor's name.", "warn", "Visitors"); return; }
+        if (!walkin && !C.get("viDay")) { W.toast("Pick the day.", "warn", "Visitors"); return; }
+        b.disabled = true;
+        const x = await W.post("/work/visitors/expect", {
+            name, company: C.get("viCo"), phone: C.get("viPhone"), purpose: C.get("viWhy"),
+            hostId: C.get("viHost") || null, day: walkin ? null : C.get("viDay"), time: walkin ? null : C.get("viTime"), arrived: walkin
+        });
+        b.disabled = false;
+        if (!x.ok) { W.toast(x.d.error || "Not saved.", "error", "Visitors"); return; }
+        dlg.close();
+        W.toast(walkin ? `${x.d.name} is checked in.` : `${x.d.name} is on the list.`, "success", "Visitors");
+        load(st.day);
+    });
 
     root.addEventListener("click", async (e) => {
         const t = e.target;
-        const tab = t.closest("[data-vtab]"); if (tab) { st.tab = tab.dataset.vtab; paint(); return; }
         const dn = t.closest("[data-vday]"); if (dn) { load(shift(st.day, +dn.dataset.vday)); return; }
+        const dp = t.closest("[data-dp-open]");
+        if (dp) { W.dayPick("viDayPick", dp, { value: st.day, onPick: (iso) => load(iso) }); return; }
         if (t.closest("[data-vi-new]")) { expect(false); return; }
         if (t.closest("[data-vi-walkin]")) { expect(true); return; }
         if (t.closest("[data-lobby-copy]")) { const i = root.querySelector(".sn-vi-link input"); i.select(); try { await navigator.clipboard.writeText(i.value); W.toast("Link copied.", "success"); } catch { document.execCommand?.("copy"); } return; }
@@ -129,11 +133,19 @@
             load(st.day);
         }
     });
-    root.addEventListener("input", (e) => {
-        if (!e.target.matches("[data-vq]")) return;
-        st.q = e.target.value; const pos = e.target.selectionStart; paint();
-        const i = root.querySelector("[data-vq]"); i.focus(); i.setSelectionRange(pos, pos);
+    // the rows (also while typing in the search box, which keeps its focus)
+    function paintRows() {
+        const d = st.data; if (!d) return;
+        const all = d.visitors, q = st.q.toLowerCase(), isToday = d.day === d.today;
+        const list = all.filter((v) => (st.tab === "all" || stage(v) === st.tab) && (!q || [v.name, v.company, v.hostName, v.phone, v.purpose].join(" ").toLowerCase().includes(q)));
+        root.querySelector("[data-vi-rows]").innerHTML = list.map(row).join("") || `<div class="sn-wk-empty"><i class="fa fa-id-card-o" aria-hidden="true"></i><b>${all.length ? "Nothing matches" : "No visitors " + (isToday ? "today" : "this day")}</b><p>${all.length ? "" : "Expecting someone? Add them, and reception will know who they're meeting."}</p></div>`;
+    }
+    search?.addEventListener("input", (e) => {
+        if (e.target.id !== "viQ") return;
+        st.q = e.target.value.trim();
+        paintRows();
     });
+    search?.addEventListener("click", (e) => { if (e.target.closest(".mi-clear-btn")) setTimeout(() => { st.q = ""; paintRows(); }, 0); });
     const changed = () => { if (!document.body.contains(root)) { document.removeEventListener("sn:visitor-changed", changed); return; } load(st.day); };
     document.addEventListener("sn:visitor-changed", changed);
     load();

@@ -145,96 +145,106 @@
     // =================================================================
     // admins: "Sound the Shankh"
     // =================================================================
-    let sendDlg = null, audienceData = null;
+    // The window is Razor (Views/Shankh/_SendDialog.cshtml, tag-helper controls), loaded once from /shankh/dialog.
+    // Nothing here redraws it: choices only show or hide parts, so it never changes size or jumps.
+    let sendDlg = null, armTimer = 0;
+    const initControls = (root) => {
+        const $ = window.jQuery;
+        ["ModernInput", "ModernDropdownWithLabel", "ModernRadio", "ModernCheckbox"].forEach((n) => {
+            const c = window[n];
+            if (c && typeof c.init === "function") { try { c.init($ ? $(root) : root); } catch (e) { console.error(e); } }
+        });
+        const pp = root.querySelector("[data-pp]");
+        if (pp && window.snPicker && !pp.__snp) { pp.__snp = true; try { window.snPicker(pp); } catch (e) { console.error(e); } }
+        root.querySelectorAll("time[data-utc]").forEach((t) => {
+            const d = new Date(t.dataset.utc);
+            t.textContent = isNaN(d) ? "" : d.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+        });
+    };
+    const q = (sel) => sendDlg.querySelector(sel);
+    const who = () => (q('input[name="shkTo"]:checked') || {}).value || "all";
+    const picked = () => [...sendDlg.querySelectorAll('input[name="shkPeople"]:checked')].map((i) => i.value);
+    function count() {
+        const w = who();
+        if (w === "people") return picked().length;
+        if (w === "dept") {
+            const id = (q("#shkDept_value") || {}).value;
+            const txt = id ? sendDlg.querySelector(`#shkDept .ddwl-option[data-value="${id}"]`)?.textContent || "" : "";
+            const m = /·\s*(\d+)\s*$/.exec(txt);
+            return m ? +m[1] : 0;
+        }
+        return +(sendDlg.dataset.everyone || 0);
+    }
+    function disarm() {
+        clearTimeout(armTimer);
+        const go = q("[data-go]");
+        go.classList.remove("armed");
+        go.querySelector("span").textContent = "Sound the Shankh";
+    }
+    function paintState() {
+        const w = who();
+        sendDlg.querySelectorAll("[data-shk-for]").forEach((x) => { x.hidden = x.dataset.shkFor !== w; });
+        const n = count();
+        q("[data-shk-count]").textContent = n ? `${n} ${n === 1 ? "person" : "people"} will be rung` : w === "dept" ? "Pick a department" : "Pick who to ring";
+        q("[data-go]").disabled = !n;
+        disarm();
+    }
     async function openSend() {
         if (!IS_ADMIN) return;
-        try { audienceData = await (await fetch("/shankh/audience", { headers: { Accept: "application/json" } })).json(); }
-        catch { toast("Couldn't load your team. Try again.", "error", "Shankh"); return; }
-        let recent = [];
-        try { recent = await (await fetch("/shankh/recent", { headers: { Accept: "application/json" } })).json(); } catch { }
-        if (!sendDlg) {
-            sendDlg = document.createElement("dialog");
-            sendDlg.className = "sn-dialog glass-strong sn-shankh-dlg";
-            sendDlg.setAttribute("aria-labelledby", "snShankhSendT");
+        if (!sendDlg || !document.body.contains(sendDlg)) {
+            let html = "";
+            try { const r = await fetch("/shankh/dialog", { headers: { Accept: "text/html" }, credentials: "same-origin" }); if (r.ok) html = await r.text(); } catch { }
+            if (!html) { toast("Couldn't open Shankh. Try again.", "error", "Shankh"); return; }
+            const holder = document.createElement("div");
+            holder.innerHTML = html.trim();
+            sendDlg = holder.querySelector("dialog");
             document.body.appendChild(sendDlg);
-        }
-        const st = { to: "all", dept: null, people: new Set(), kind: "outage", remind: 5, email: true, q: "", armed: false };
-        const d = audienceData;
-        const deptChips = () => d.departments.map((x) => `<button type="button" class="sn-shk-chip${st.dept === x.id ? " on" : ""}" data-dept="${esc(x.id)}">${esc(x.name)} <span>${x.count}</span></button>`).join("") || '<span class="muted small">No departments yet (Org page).</span>';
-        const peopleRows = () => d.people.filter((p) => !st.q || (p.name + " " + p.dept + " " + p.title).toLowerCase().includes(st.q))
-            .map((p) => `<label class="sn-shk-person"><input type="checkbox" data-person="${esc(p.id)}"${st.people.has(p.id) ? " checked" : ""}> <span class="sn-shk-av t${p.tone % 8}">${esc(p.initials)}</span><span><b>${esc(p.name)}</b><small>${esc([p.title, p.dept].filter(Boolean).join(" · "))}</small></span></label>`).join("");
-        const count = () => st.to === "all" ? d.everyone : st.to === "dept" ? (d.departments.find((x) => x.id === st.dept)?.count || 0) : st.people.size;
-        function render() {
-            const n = count();
-            sendDlg.innerHTML = `
-            <form method="dialog" novalidate>
-            <div class="sn-dlg-head">
-                <div class="sn-dlg-title"><span class="sn-dlg-icon sn-shk-ic" aria-hidden="true">🐚</span>
-                    <div><h2 id="snShankhSendT">Sound the Shankh</h2><p>Rings every screen until each person presses Seen. For real emergencies only.</p></div></div>
-                <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
-            </div>
-            <div class="sn-dlg-body sn-shk-body">
-                <div class="sn-field-label">Who</div>
-                <div class="sn-shk-seg" role="radiogroup">
-                    ${[["all", `Everyone · ${d.everyone}`], ["dept", "A department"], ["people", "Pick people"]].map(([k, t]) => `<button type="button" role="radio" aria-checked="${st.to === k}" class="${st.to === k ? "on" : ""}" data-to="${k}">${t}</button>`).join("")}
-                </div>
-                ${st.to === "dept" ? `<div class="sn-shk-chips">${deptChips()}</div>` : ""}
-                ${st.to === "people" ? `<label class="sn-shk-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" placeholder="Search by name, title or department" value="${esc(st.q)}" data-q></label><div class="sn-shk-people sn-glass-scroll">${peopleRows()}</div>` : ""}
-                <label class="sn-field-label" for="shkBody">Message</label>
-                <textarea id="shkBody" class="sn-textarea" rows="3" maxlength="1000" placeholder="What's happening, and what should people do? E.g. Client portal is down. Engineering: join the bridge now.">${esc(st.body || "")}</textarea>
-                <div class="sn-field-label">Kind</div>
-                <div class="sn-shk-kinds">${Object.entries(KIND).map(([k, v]) => `<button type="button" class="sn-shk-kind${st.kind === k ? " on" : ""}" data-kind="${k}">${v.icon} ${v.name}</button>`).join("")}</div>
-                <div class="sn-shk-opts">
-                    <label>Remind their managers if not seen in
-                        <select data-remind>${[[0, "never"], [2, "2 minutes"], [5, "5 minutes"], [10, "10 minutes"], [15, "15 minutes"]].map(([v, t]) => `<option value="${v}"${st.remind === v ? " selected" : ""}>${t}</option>`).join("")}</select></label>
-                    <label class="sn-shk-ck"><input type="checkbox" data-email${st.email ? " checked" : ""}> Also send an email (for anyone not in ShankhNaad right now)</label>
-                </div>
-                ${recent.length ? `<details class="sn-shk-recent"><summary>Recent alerts (${recent.length})</summary>${recent.slice(0, 6).map((r) => `<button type="button" class="sn-shk-rec" data-board="${esc(r.alertId)}"><span>${kindOf(r.kind).icon}</span><span><b>${esc(r.body.slice(0, 70))}</b><small>${esc(new Date(r.sentUtc).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))} · ${esc(r.audience)} · ${r.seen} of ${r.people - 1 < 0 ? 0 : r.people - 1} seen${r.closedUtc ? " · closed" : ""}</small></span></button>`).join("")}</details>` : ""}
-            </div>
-            <div class="sn-dlg-foot">
-                <span class="muted small">${n ? `${n} ${n === 1 ? "person" : "people"} will be rung` : "Pick who to ring"}</span>
-                <span style="display:flex;gap:10px;margin-left:auto">
-                    <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
-                    <button type="button" class="cee-btn sn-shk-go${st.armed ? " armed" : ""}" data-go${n ? "" : " disabled"}>🐚 ${st.armed ? `Yes, ring ${n} ${n === 1 ? "person" : "people"} now` : "Sound the Shankh"}</button>
-                </span>
-            </div></form>`;
-            const ta = sendDlg.querySelector("#shkBody");
-            ta.addEventListener("input", () => { st.body = ta.value; });
-            const qi = sendDlg.querySelector("[data-q]");
-            if (qi) qi.addEventListener("input", () => { st.q = qi.value.trim().toLowerCase(); const pos = qi.selectionStart; render(); const q2 = sendDlg.querySelector("[data-q]"); q2.focus(); q2.setSelectionRange(pos, pos); });
-        }
-        sendDlg.onclick = async (e) => {
-            const t = e.target;
-            if (t.closest("[data-close]")) { sendDlg.close(); return; }
-            const to = t.closest("[data-to]"); if (to) { st.to = to.dataset.to; st.armed = false; render(); return; }
-            const dp = t.closest("[data-dept]"); if (dp) { st.dept = dp.dataset.dept; st.armed = false; render(); return; }
-            const kd = t.closest("[data-kind]"); if (kd) { st.kind = kd.dataset.kind; render(); return; }
-            const bd = t.closest("[data-board]"); if (bd) { sendDlg.close(); openBoard(bd.dataset.board); return; }
-            const go = t.closest("[data-go]");
-            if (go) {
-                st.body = (sendDlg.querySelector("#shkBody").value || "").trim();
-                if (!st.body) { toast("Write what's happening and what people should do.", "warn", "Shankh"); sendDlg.querySelector("#shkBody").focus(); return; }
-                if (!st.armed) { st.armed = true; render(); setTimeout(() => { if (st.armed && sendDlg.open) { st.armed = false; render(); } }, 5000); return; }
+            initControls(sendDlg);
+            sendDlg.addEventListener("change", () => paintState());
+            if (window.jQuery) jQuery(sendDlg).on("change", "input[type=hidden]", () => paintState());   // the dropdowns report through jQuery
+            sendDlg.addEventListener("input", (e) => { if (!e.target.closest("[data-pp]")) disarm(); });
+            sendDlg.addEventListener("click", async (e) => {
+                const t = e.target;
+                if (t.closest("[data-close]")) { sendDlg.close(); return; }
+                const bd = t.closest("[data-board]"); if (bd) { sendDlg.close(); openBoard(bd.dataset.board); return; }
+                if (t.closest("[data-pp], .ddwl-option")) { setTimeout(paintState, 0); return; }   // picker / dropdown changes
+                const go = t.closest("[data-go]");
+                if (!go) return;
+                const body = (q("#shkBody").value || "").trim();
+                if (!body) {
+                    window.validateModernInput ? validateModernInput("#shkBody") : null;
+                    toast("Write what's happening and what people should do.", "warn", "Shankh");
+                    q("#shkBody").focus();
+                    return;
+                }
+                const n = count();
+                if (!n) return;
+                // two presses: the first arms the button (for 5 seconds), the second rings
+                if (!go.classList.contains("armed")) {
+                    go.classList.add("armed");
+                    go.querySelector("span").textContent = `Yes, ring ${n} ${n === 1 ? "person" : "people"} now`;
+                    armTimer = setTimeout(disarm, 5000);
+                    return;
+                }
+                disarm();
                 go.disabled = true;
+                const remind = +((q("#shkRemind_value") || {}).value || 0);
                 const x = await post("/shankh/send", {
-                    kind: st.kind, body: st.body, to: st.to, departmentId: st.dept, people: [...st.people],
-                    remindAfter: st.remind || null, email: st.email
+                    kind: (q('input[name="shkKind"]:checked') || {}).value || "outage", body, to: who(),
+                    departmentId: (q("#shkDept_value") || {}).value || null, people: picked(),
+                    remindAfter: remind || null, email: !!q("#shkEmail")?.checked
                 });
-                if (!x.ok) { st.armed = false; render(); toast(x.d.error || "Not sent. Try again.", "error", "Shankh"); return; }
+                go.disabled = false;
+                if (!x.ok) { toast(x.d.error || "Not sent. Try again.", "error", "Shankh"); return; }
                 sendDlg.close();
+                q("#shkBody").value = "";
                 toast(`Ringing ${x.d.people} ${x.d.people === 1 ? "person" : "people"}.${x.d.mailed ? ` Email sent to ${x.d.mailed}.` : ""}${x.d.mailNote ? " " + x.d.mailNote : ""}`, "success", "Shankh sounded");
                 openBoard(x.d.alertId);
-            }
-        };
-        sendDlg.onchange = (e) => {
-            const t = e.target;
-            if (t.matches("[data-person]")) { t.checked ? st.people.add(t.dataset.person) : st.people.delete(t.dataset.person); st.armed = false; render(); }
-            if (t.matches("[data-remind]")) st.remind = +t.value;
-            if (t.matches("[data-email]")) st.email = t.checked;
-        };
-        render();
+            });
+        }
+        paintState();
         if (!sendDlg.open) sendDlg.showModal();
-        setTimeout(() => sendDlg.querySelector("#shkBody")?.focus(), 60);
+        setTimeout(() => q("#shkBody")?.focus(), 60);
     }
 
     // =================================================================

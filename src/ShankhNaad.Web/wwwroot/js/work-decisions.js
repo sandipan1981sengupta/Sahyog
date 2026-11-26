@@ -77,7 +77,7 @@
     function paint() {
         const pool = rows.filter(matches);
         const count = (t) => pool.filter((x) => inTab(x, t)).length;
-        ["all", "D", "A", "mine"].forEach((t) => { const n = box.querySelector(`[data-n="${t}"]`); if (n) n.textContent = count(t); });
+        ["all", "D", "A", "mine"].forEach((t) => window.SN.wk.tabBadge("nirTabs", t, count(t), true));
         // the four totals: across everything loaded (not the filters)
         const today = new Date(); today.setHours(0, 0, 0, 0);
         const open = rows.filter((x) => x.isAction && !x.doneUtc);
@@ -119,12 +119,6 @@
     const drop = (id) => { rows = rows.filter((x) => x.decisionId !== id); paint(); };
     box.addEventListener("click", (e) => {
         const t = e.target;
-        const tab = t.closest("[data-tab]");
-        if (tab) {
-            st.tab = tab.dataset.tab;
-            box.querySelectorAll("[data-tab]").forEach((b) => { const on = b === tab; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
-            paint(); return;
-        }
         const src = t.closest("[data-src]");
         if (src) { st.src = src.dataset.src; box.querySelectorAll("[data-src]").forEach((b) => b.classList.toggle("on", b === src)); paint(); return; }
         if (t.closest("[data-nir-new]")) { N.record({ kind: st.tab === "A" ? "A" : "D" }, upsert, drop); return; }
@@ -138,19 +132,29 @@
     box.addEventListener("change", async (e) => {
         const t = e.target;
         if (t.matches("[data-row-done]")) { const d = await N.setDone(Number(t.dataset.rowDone), t.checked, t); if (d) upsert(d); return; }
-        if (t.matches("[data-nir-openonly]")) { st.open = t.checked; paint(); return; }
-        if (t.matches("[data-nir-dept]")) { st.dept = t.value; paint(); return; }
-        if (t.matches("[data-nir-period]")) { st.period = t.value; load(); }
+        if (t.id === "nirOpenOnly") { st.open = t.checked; paint(); }
+    });
+    // the dropdowns (tag-helper controls) report their choice through jQuery on the hidden input
+    const $ = window.jQuery;
+    if ($) $(box).on("change", "#nirDeptF_value, #nirPeriod_value", function () {
+        if (this.id === "nirDeptF_value") { st.dept = this.value; paint(); }
+        else { st.period = this.value; load(); }
     });
     let qt = 0;
-    box.querySelector("[data-nir-q]")?.addEventListener("input", (e) => {
+    box.querySelector("#nirQ")?.addEventListener("input", (e) => {
         st.q = e.target.value.trim();
         paint();
         clearTimeout(qt);
         if (rows.length >= LIMIT || serverQ) qt = setTimeout(load, 350);
     });
-    // a "Mine" header link: /work/decisions?tab=mine
+    // the clear (×) button of the search box
+    box.querySelector("#nirQ")?.closest(".modern-input-wrapper")?.addEventListener("click", (e) => {
+        if (e.target.closest(".mi-clear-btn")) setTimeout(() => { st.q = ""; paint(); }, 0);
+    });
+    // the glass tabs (tab-control): All / Decisions / Action items / Mine
+    window.SN.wk.onTab("nirTabs", (id) => { st.tab = id || "all"; paint(); });
+    // a "Mine" link: /work/decisions?tab=mine
     const want = new URLSearchParams(location.search).get("tab");
-    if (want) box.querySelector(`[data-tab="${want}"]`)?.click();
+    if (want) window.SN.wk.pickTab("nirTabs", want);
     load();
 })();

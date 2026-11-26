@@ -1,13 +1,79 @@
 @{
-    // Work → Stand-up (see Controllers/StandupController.cs). The page is drawn by js/work-standup.js.
-    var depts = (ViewData["Departments"] as List<DepartmentDto> ?? new()).OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
-        .Select(d => new { id = d.DepartmentId, name = d.Name }).ToList();
+    // Work → Stand-up (Controllers/StandupController.cs). Lists are drawn by js/work-standup.js;
+    // the two windows below are tag-helper controls the script fills in.
+    var teamItems = new List<(string Value, string Text)> { ("", "Everyone in the workspace") };
+    teamItems.AddRange(ViewData["Departments"] as List<(string Value, string Text)> ?? new());
+    var timeItems = new List<(string Value, string Text)>();
+    for (var m = 6 * 60; m <= 21 * 60 + 30; m += 30)
+        timeItems.Add(($"{m / 60:00}:{m % 60:00}", new DateTime(2000, 1, 1, m / 60, m % 60, 0).ToString("h:mm tt", System.Globalization.CultureInfo.InvariantCulture)));
+    var days = new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
 }
-<main class="sn-page sn-work">
-    <partial name="~/Views/Work/_WorkHead.cshtml" model="@("standup")" />
+<div class="sn-wk-pane" data-pane="standup">
     <div class="sn-wk-app" id="suApp" aria-live="polite"><div class="sn-nir-loading">Loading…</div></div>
-</main>
-<script type="application/json" id="wkData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { me = User.UserGuid().ToString(), isAdmin = User.IsInRole(AppRoles.TenantAdmin), depts }))</script>
+</div>
+
+@* the day pill's calendar (js/work-kit.js dayPick): this tag-helper date picker stays out of sight and opens under ‹ Today › *@
+<div class="sn-daypick" aria-hidden="true"><modern-datepicker-with-label id="suDayPick" name="suDayPick" label="Day" height="36px"></modern-datepicker-with-label></div>
+
+@* answer (or change an answer) *@
+<dialog id="suAnswerDlg" class="sn-dialog glass-strong sn-wk-dlg" aria-labelledby="suAnswerT">
+    <form method="dialog" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon sn-wk-ic" aria-hidden="true"><i class="fa fa-sun-o"></i></span>
+                <div><h2 id="suAnswerT" data-su-title>Stand-up</h2><p data-su-sub></p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body sn-nir-body">
+            <modern-input id="suA1" name="suA1" label="What did you finish?" multiline="true" rows="2" max-length="1000" resizable="false" label-font-size="13.5px" placeholder="A line or two is enough"></modern-input>
+            <modern-input id="suA2" name="suA2" label="What are you working on?" multiline="true" rows="2" max-length="1000" resizable="false" label-font-size="13.5px" placeholder="A line or two is enough"></modern-input>
+            <modern-input id="suA3" name="suA3" label="Anything blocking you?" multiline="true" rows="2" max-length="1000" resizable="false" label-font-size="13.5px" placeholder="Nothing? Leave it empty."></modern-input>
+            <modern-checkbox id="suBlocked" name="suBlocked" label="I'm blocked and need help" desc-text="Your manager and the stand-up's organizer are told" is-toggle-button="true" label-font-size="13.5px"></modern-checkbox>
+        </div>
+        <div class="sn-dlg-foot"><span></span>
+            <span class="sn-nir-foot-r"><button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="button" class="cee-btn cee-btn-gradient" data-su-send><i class="fa fa-paper-plane" aria-hidden="true"></i> <span>Post answers</span></button></span>
+        </div>
+    </form>
+</dialog>
+
+@* set up or change a stand-up *@
+<dialog id="suEditDlg" class="sn-dialog glass-strong sn-wk-dlg" aria-labelledby="suEditT">
+    <form method="dialog" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon sn-wk-ic" aria-hidden="true"><i class="fa fa-sun-o"></i></span>
+                <div><h2 id="suEditT" data-su-etitle>New stand-up</h2><p>People answer three short questions on the days you pick. At the time, ShankhNaad reminds whoever hasn't.</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body sn-nir-body">
+            <modern-input id="suName" name="suName" label="Name" mandatory="true" max-length="80" label-font-size="13.5px" value="Daily stand-up" tooltip-text="Give the stand-up a name"></modern-input>
+            <div class="sn-wk-two">
+                <modern-dropdown-with-label id="suTeam" name="suTeam" label="Who" value="" placeholder="Everyone in the workspace" items="teamItems" menu-height="240px"></modern-dropdown-with-label>
+                <modern-dropdown-with-label id="suAt" name="suAt" label="Time" value="10:00" items="timeItems" menu-height="240px"></modern-dropdown-with-label>
+            </div>
+            <div class="sn-wk-group">
+                <span class="sn-wk-glabel">Days</span>
+                <div class="sn-wk-days">
+                    @for (var i = 0; i < 7; i++)
+                    {
+                        <modern-checkbox id="@($"suD{i}")" name="@($"suD{i}")" label="@days[i]" checked="@(i < 5)"></modern-checkbox>
+                    }
+                </div>
+            </div>
+            <modern-input id="suQ1" name="suQ1" label="Question 1" max-length="150" label-font-size="13.5px" value="What did you finish since the last stand-up?"></modern-input>
+            <modern-input id="suQ2" name="suQ2" label="Question 2" max-length="150" label-font-size="13.5px" value="What are you working on today?"></modern-input>
+            <modern-input id="suQ3" name="suQ3" label="Question 3" max-length="150" label-font-size="13.5px" value="Anything blocking you?"></modern-input>
+            <div data-su-activewrap hidden>
+                <modern-checkbox id="suActive" name="suActive" label="Running" desc-text="Turn off to pause the stand-up and its reminders" is-toggle-button="true" checked="true" label-font-size="13.5px"></modern-checkbox>
+            </div>
+        </div>
+        <div class="sn-dlg-foot">
+            <span><button type="button" class="cee-btn sn-btn-light sn-md-danger" data-su-del hidden><span>Delete</span></button></span>
+            <span class="sn-nir-foot-r"><button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="button" class="cee-btn cee-btn-gradient" data-su-save><i class="fa fa-check" aria-hidden="true"></i> <span>Start it</span></button></span>
+        </div>
+    </form>
+</dialog>
+
 @section Scripts {
     <script src="~/js/work-standup.js" asp-append-version="true"></script>
 }

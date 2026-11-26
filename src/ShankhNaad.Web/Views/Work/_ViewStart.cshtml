@@ -1,0 +1,5 @@
+@{
+    // Work pages: the whole page (header, tabs, the section) — or, when the Work tabs ask for one section
+    // without leaving the page (header "X-SN-Pane: 1", js/work-kit.js), just that section and its script.
+    Layout = ViewData["WorkPane"] is true ? "~/Views/Work/_WorkPaneLayout.cshtml" : "~/Views/Work/_WorkLayout.cshtml";
+}

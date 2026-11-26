@@ -1,0 +1,55 @@
+@{
+    // "Record a decision" / "Add an action item" (DecisionsController.Dialog). Tag-helper controls only;
+    // js/nirnay.js fills it in, shows or hides parts, and never redraws it.
+    var people = ViewData["People"] as List<(string Value, string Text)> ?? new();
+}
+<dialog id="nirRecordDlg" class="sn-dialog glass-strong sn-wk-dlg sn-nir-dlg" aria-labelledby="nirRecordT">
+    <form method="dialog" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon sn-nir-ic" data-nir-icon aria-hidden="true"><i class="fa fa-balance-scale"></i></span>
+                <div><h2 id="nirRecordT" data-nir-title>Record a decision</h2><p data-nir-sub></p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body sn-nir-body">
+            <blockquote class="sn-nir-quote" data-nir-quote hidden></blockquote>
+
+            @* changing *@
+            <div class="sn-wk-fields" data-nir-edit>
+                <modern-radio-group name="nirKind" label="Type" selected-value="D" label-font-size="13.5px" option-font-size="14px">
+                    <modern-radio value="D" label="Decision"></modern-radio>
+                    <modern-radio value="A" label="Action item"></modern-radio>
+                </modern-radio-group>
+                <modern-input id="nirTitle" name="nirTitle" label="What was decided" mandatory="true" multiline="true" rows="2" max-length="300" resizable="false"
+                              label-font-size="13.5px" tooltip-text="Write what was decided"
+                              placeholder="E.g. Release moves to 5 December so QA can finish the payment flow"></modern-input>
+                <div class="sn-wk-two">
+                    <modern-dropdown-with-label id="nirOwner" name="nirOwner" label="Owner" placeholder="Who owns it?" items="people" menu-height="240px"></modern-dropdown-with-label>
+                    <div data-nir-due hidden>
+                        <modern-datepicker-with-label id="nirDue" name="nirDue" label="Due" placeholder="dd-mm-yyyy"></modern-datepicker-with-label>
+                        <div class="sn-nir-chips" data-nir-quick></div>
+                    </div>
+                </div>
+                <modern-input id="nirDetails" name="nirDetails" label="Why, or notes (optional)" multiline="true" rows="2" max-length="1000" resizable="false"
+                              label-font-size="13.5px" placeholder="The reason, or anything people should know later"></modern-input>
+            </div>
+
+            @* reading (someone else's) *@
+            <div class="sn-wk-read" data-nir-read hidden>
+                <div><small>Decision</small><p data-ro="title"></p></div>
+                <div class="sn-wk-two"><div><small>Owner</small><p data-ro="owner"></p></div><div data-ro-due-wrap><small>Due</small><p data-ro="due"></p></div></div>
+                <div><small>Why, or notes</small><p data-ro="details"></p></div>
+            </div>
+        </div>
+        <div class="sn-dlg-foot">
+            <span class="sn-wk-foot-l">
+                <button type="button" class="cee-btn sn-btn-light sn-md-danger" data-delete hidden><i class="fa fa-trash-o" aria-hidden="true"></i> <span>Delete</span></button>
+                <a class="sn-link" data-open-chat hidden>Open in chat</a>
+                <a class="sn-link" data-open-meeting hidden>Open the meeting</a>
+            </span>
+            <span class="sn-nir-foot-r">
+                <button type="button" class="cee-btn sn-btn-light" data-close><span>Cancel</span></button>
+                <button type="button" class="cee-btn cee-btn-gradient" data-save><i class="fa fa-check" aria-hidden="true"></i> <span>Save decision</span></button>
+            </span>
+        </div>
+    </form>
+</dialog>

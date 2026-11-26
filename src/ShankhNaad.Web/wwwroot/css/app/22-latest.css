@@ -188,13 +188,6 @@ html[data-theme="dark"] .sn-shk-opts select { background: rgba(9, 13, 28, .6); }
    Nirnay · decision log (js/nirnay.js, js/work-decisions.js, Views/Work/Decisions.cshtml)
    ===================================================================== */
 /* Work page: section links under the header */
-.sn-work-nav { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 0 14px; }
-.sn-work-nav a { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 999px; text-decoration: none; color: var(--sn-text-2, #64748B);
-    font: 700 13.5px Roboto, system-ui, sans-serif; background: rgba(255, 255, 255, .45); border: 1px solid rgba(148, 163, 184, .25); transition: background .18s ease, color .18s ease; }
-.sn-work-nav a:hover { color: var(--sn-text, #0F172A); background: rgba(255, 255, 255, .7); }
-.sn-work-nav a.on { color: #fff; border-color: transparent; background: linear-gradient(135deg, #2563EB, #7C3AED 60%, #DB2777); box-shadow: 0 8px 18px -10px rgba(124, 58, 237, .9); }
-html[data-theme="dark"] .sn-work-nav a { background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .1); }
-html[data-theme="dark"] .sn-work-nav a.on { color: #fff; }
 .sn-nir-stats { margin-bottom: 14px; }
 
 /* the register */
@@ -323,7 +316,6 @@ html[data-theme="dark"] .sn-nir-add[data-add="A"] { color: #7DD3FC; }
     .sn-nir-selects { margin-left: 0; }
 }
 .sn-nir-new { height: 36px !important; min-height: 36px; padding: 0 16px !important; }
-html[data-theme="dark"] .sn-work-nav a.on { border-color: transparent; background: linear-gradient(135deg, #2563EB, #7C3AED 60%, #DB2777); }
 @media (max-width: 760px) {
     .sn-nir-reg .sn-hist-tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
     .sn-nir-reg .sn-hist-tabs button { flex: none; padding: 8px 12px; white-space: nowrap; }
@@ -336,8 +328,6 @@ html[data-theme="dark"] .sn-work-nav a.on { border-color: transparent; backgroun
    Work: stand-up, roles, approvals, visitors · stand-in, catch-up · languages · smart scheduling
    (js/work-*.js, js/work-live.js, js/away.js, js/lang.js, js/meeting-smart.js)
    ===================================================================== */
-.sn-work-n { margin-left: 6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: inline-grid; place-items: center;
-    font: 800 10.5px Roboto, system-ui, sans-serif; color: #fff; background: #DC2626; }
 .sn-wk-app { display: flex; flex-direction: column; gap: 14px; }
 .sn-wk-cols { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 14px; align-items: start; }
 .sn-wk-col { border-radius: 26px; padding: 16px 18px 20px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -571,3 +561,104 @@ html[data-theme="dark"] .sn-smart-slot small { color: #86EFAC; } html[data-theme
 .sn-hol-add { display: grid; grid-template-columns: 150px 1fr auto; gap: 8px; align-items: center; }
 @media (max-width: 520px) { .sn-hol-add { grid-template-columns: 1fr; } }
 .sn-nir-cmain b small { display: inline; margin: 0; }
+
+/* ---------- windows that never jump ----------
+   Sound the Shankh: a fixed height; only the middle scrolls, so showing the department list or the people picker
+   doesn't resize (and re-centre) the window. Windows drawn by scripts start from the top of the screen,
+   so a taller or shorter content only moves their bottom edge. */
+html body.sn-body dialog.sn-dialog.sn-shk-fixed { width: min(640px, calc(100vw - 24px)); height: min(820px, calc(100dvh - 24px)); max-height: calc(100dvh - 24px); overflow: hidden; }
+html body.sn-body dialog.sn-dialog.sn-shk-fixed[open] { display: flex; flex-direction: column; }
+.sn-shk-fixed > form { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.sn-shk-fixed .sn-dlg-head, .sn-shk-fixed .sn-dlg-foot { flex: none; }
+.sn-shk-fixed .sn-dlg-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; gap: 14px; }
+.sn-shk-fixed .sn-shk-opts2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 18px; align-items: end; }
+.sn-shk-fixed .mr-options-inline { flex-wrap: wrap; }
+.sn-shk-fixed .sn-pp { max-height: 330px; }
+.sn-shk-fixed .sn-shk-go:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 600px) { .sn-shk-fixed .sn-shk-opts2 { grid-template-columns: 1fr; } }
+/* (Work windows are no longer redrawn while open, so they stay centred like every other window.) */
+
+/* ---------- Work windows and filters built from the tag-helper controls (Views/Work/*.cshtml) ---------- */
+.sn-wk-fields, .sn-wk-read { display: flex; flex-direction: column; gap: 12px; }
+.sn-wk-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 14px; align-items: start; }
+.sn-wk-two > [hidden] { display: none !important; }
+@media (max-width: 560px) { .sn-wk-two { grid-template-columns: 1fr; } }
+.sn-wk-read small { display: block; font: 700 11.5px Roboto, system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--sn-text-2, #64748B); }
+.sn-wk-read p { margin: 3px 0 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+.sn-wk-foot-l { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sn-wk-group { display: flex; flex-direction: column; gap: 8px; }
+.sn-wk-glabel { font: 600 13.5px var(--ctrl-font, Roboto, system-ui, sans-serif); }
+.sn-wk-days { display: flex; flex-wrap: wrap; gap: 6px 4px; }
+.sn-wk-days .modern-checkbox-wrapper { width: auto; }
+.sn-wk-days .mc-control { padding: 4px 10px 4px 6px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, .35); }
+.sn-hint { margin: 0; font-size: 12.5px; color: var(--sn-text-2, #64748B); }
+.sn-hint:empty { display: none; }
+.sn-su-qs { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--sn-text-2, #64748B); }
+.sn-ro-opt-ic { width: 18px; text-align: center; margin-right: 4px; color: #6366F1; }
+.sn-nir-dlg [data-nir-due] { display: flex; flex-direction: column; gap: 6px; }
+/* filters in the list bars */
+.sn-wk-search { flex: 1 1 240px; min-width: 0; max-width: 420px; }
+.sn-wk-search .mi-label { display: none; }
+.sn-nir-filters .modern-checkbox-wrapper { width: auto; }
+.sn-nir-selects .modern-dropdown-with-label-wrapper { width: 190px; }
+.sn-nir-selects .ddwl-label { display: none; }
+@media (max-width: 760px) { .sn-nir-selects .modern-dropdown-with-label-wrapper { width: auto; flex: 1 1 150px; } .sn-wk-search { max-width: none; flex-basis: 100%; } }
+.sn-nir-filters .mc-control { align-items: center; }
+
+/* ---- date pickers: the same pill shape and height as the dropdowns and text boxes (see 03-windows.css) ---- */
+.sn-body .mdpwl-field { --mdpwl-radius: 999px !important; --mdpwl-height: 44px; }
+.sn-body .mdpwl-input { padding-left: 18px; }
+
+/* ---- Work: glass section tabs (tab-control, like Calls and Files), roles' empty state across the whole box ---- */
+.sn-work-nav { display: flex; margin: 2px 0 14px; }
+.sn-work-nav .tab-control-wrapper { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.sn-ro-grid > .sn-wk-empty, .sn-ro-grid > .sn-nir-loading { grid-column: 1 / -1; }
+.sn-ro-roles .sn-wk-colhead { margin-bottom: 12px; }
+#viTop { display: flex; flex-direction: column; gap: 14px; }
+#viTop:empty { display: none; }
+.sn-app-tag.work .sn-app-ic { background: linear-gradient(135deg, #8B5CF6, #6D28D9); }
+
+/* Work: one page, one pane per tab (Views/Work/_WorkLayout.cshtml, js/work-kit.js). Panes once opened stay on the page, hidden. */
+.sn-wk-pane { display: flex; flex-direction: column; gap: 14px; min-width: 0; flex-shrink: 0; }
+.sn-wk-pane[hidden] { display: none !important; }
+.sn-wk-pane.sn-wk-in { animation: snWkPaneIn .32s cubic-bezier(.2, .8, .2, 1) both; }
+.sn-wk-pane.sn-wk-in.from-next { --wk-dx: 26px; }
+.sn-wk-pane.sn-wk-in.from-prev { --wk-dx: -26px; }
+@keyframes snWkPaneIn { from { opacity: 0; transform: translateX(var(--wk-dx, 0)) translateY(4px); } to { opacity: 1; transform: none; } }
+.sn-wk-pane-wait { display: grid; place-items: center; min-height: 220px; border-radius: 26px; }
+.sn-wk-pane-wait > span { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(37, 99, 235, .18); border-top-color: #2563EB; animation: snWkSpin .8s linear infinite; }
+@keyframes snWkSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sn-wk-pane.sn-wk-in { animation: none; } }
+
+/* Stand-up on a computer: both panels the same height, filling the page; each scrolls inside */
+@media (min-width: 1101px) {
+    #workHost[data-tab="standup"] > .sn-wk-pane[data-pane="standup"] { flex: 1 1 auto; min-height: 0; }
+    .sn-wk-pane[data-pane="standup"] > .sn-wk-app { flex: 1 1 auto; min-height: 0; }
+    .sn-wk-pane[data-pane="standup"] .sn-wk-cols.sn-su { flex: 1 1 auto; min-height: 0; height: 100%; align-items: stretch; grid-template-rows: minmax(0, 1fr); }
+    .sn-wk-pane[data-pane="standup"] .sn-wk-cols.sn-su > .sn-wk-col { min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
+}
+
+/* Day pill ‹ Today › (Stand-up, Visitors): the middle opens the tag-helper calendar (js/work-kit.js dayPick) */
+.sn-wk-daynav.sn-daypill { display: inline-flex; align-items: center; gap: 2px; flex-wrap: nowrap; padding: 4px; border-radius: 16px;
+    background: rgba(255, 255, 255, .55); border: 1px solid rgba(15, 23, 42, .08); box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+.sn-daypill .sn-dp-arrow { width: 34px; height: 34px; display: grid; place-items: center; border: 0 !important; border-radius: 11px; background: transparent !important;
+    color: #475569; font-size: 15px; cursor: pointer; transition: background .18s, color .18s; }
+.sn-daypill .sn-dp-arrow i { -webkit-text-stroke: .6px currentColor; }
+.sn-daypill .sn-dp-arrow:hover:not(:disabled) { background: rgba(15, 23, 42, .06) !important; color: #0B1220; }
+.sn-daypill .sn-dp-arrow:disabled { opacity: .3; cursor: default; }
+.sn-daypill .sn-dp-mid { min-width: 104px; height: 34px; padding: 0 16px; border: 0; border-radius: 11px; cursor: pointer;
+    background: #ffffff; color: #0B1220; font: 700 14px Roboto, system-ui, sans-serif; white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .1), 0 0 0 1px rgba(15, 23, 42, .04); transition: box-shadow .18s, transform .18s; }
+.sn-daypill .sn-dp-mid:hover, .sn-daypill .sn-dp-mid[aria-expanded="true"] { box-shadow: 0 4px 12px rgba(15, 23, 42, .12), 0 0 0 1px rgba(37, 99, 235, .25); }
+.sn-daypill .sn-dp-mid:active { transform: scale(.97); }
+.sn-daypill button:focus-visible { outline: 2px solid #2563EB; outline-offset: 1px; }
+html[data-theme="dark"] .sn-wk-daynav.sn-daypill { background: rgba(255, 255, 255, .04); border-color: rgba(255, 255, 255, .1); box-shadow: none; }
+html[data-theme="dark"] .sn-daypill .sn-dp-arrow { color: #CBD5E1; }
+html[data-theme="dark"] .sn-daypill .sn-dp-arrow:hover:not(:disabled) { background: rgba(255, 255, 255, .07) !important; color: #fff; }
+html[data-theme="dark"] .sn-daypill .sn-dp-mid { background: rgba(255, 255, 255, .1); color: #F1F5F9; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+html[data-theme="dark"] .sn-daypill .sn-dp-mid:hover, html[data-theme="dark"] .sn-daypill .sn-dp-mid[aria-expanded="true"] { background: rgba(255, 255, 255, .14); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16); }
+.sn-su-rollnav { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sn-su-rollnav small { color: var(--sn-text-2, #64748B); font-size: 12px; }
+/* the hidden picker that the pill opens: invisible, placed over the button only while its calendar is open */
+.sn-daypick { position: fixed; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; z-index: -1; overflow: hidden; }
+.sn-daypick .mdpwl-label { display: none; }

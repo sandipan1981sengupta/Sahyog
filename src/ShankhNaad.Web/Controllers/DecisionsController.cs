@@ -25,8 +25,8 @@ public sealed class WorkController : Controller
 /// Who sees what is decided in the database (sahyog_Decision_CanSee): the chat's people, the meeting's people,
 /// the owner and whoever recorded it; ones added on the register are for the whole workspace.
 /// </summary>
-[Authorize(Roles = AppRoles.TenantAdmin + "," + AppRoles.Member), Route("work/decisions")]
-public sealed class DecisionsController : Controller
+[Route("work/decisions")]
+public sealed class DecisionsController : WorkControllerBase
 {
     private const string NeedsDatabase = "Decisions need the database update database/46_Nirnay.sql (or 99_ApplyAllUpdates.sql). Ask CloudWheel to run it.";
 
@@ -50,20 +50,20 @@ public sealed class DecisionsController : Controller
         _hub = hub;
     }
 
-    private Guid TenantId => User.TenantId()!.Value;
-    private Guid Me => Guid.Parse(User.UserId());
-    private bool IsAdmin => User.IsInRole(AppRoles.TenantAdmin);
 
     // ------------------------------------------------------------------ the page
 
     [HttpGet("")]
-    public async Task<IActionResult> Index()
+    public Task<IActionResult> Index() => WorkFormPageAsync("Decisions", "Decisions");
+
+    /// <summary>The "Record a decision" window (Views/Work/_DecisionDialog.cshtml, tag-helper controls).
+    /// js/nirnay.js loads it once per page, the first time it's needed (chat, meetings, this page).</summary>
+    [HttpGet("dialog")]
+    public async Task<IActionResult> Dialog()
     {
-        ViewData["Section"] = "work";
-        ViewData["Title"] = "Decisions";
-        var org = await _org.GetAsync(TenantId);
-        ViewData["Departments"] = org.Departments;
-        return View("~/Views/Work/Decisions.cshtml", await PeopleAsync());
+        await LoadPickListsAsync();
+        Response.Headers.CacheControl = "no-store";
+        return PartialView("~/Views/Work/_DecisionDialog.cshtml");
     }
 
     /// <summary>Everyone active (owner pickers). From the org chart, or just names when it isn't set up.</summary>

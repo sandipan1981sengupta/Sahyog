@@ -34,7 +34,7 @@ public sealed class RolesController : WorkControllerBase
     }
 
     [HttpGet("")]
-    public IActionResult Index() => WorkPage("Roles", "Roles");
+    public Task<IActionResult> Index() => WorkFormPageAsync("Roles", "Roles");
 
     private async Task<List<Row>> RolesAsync()
     {

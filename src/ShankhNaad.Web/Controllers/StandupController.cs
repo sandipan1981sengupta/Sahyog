@@ -30,12 +30,7 @@ public sealed class StandupController : WorkControllerBase
     }
 
     [HttpGet("")]
-    public async Task<IActionResult> Index()
-    {
-        var org = await _org.GetAsync(TenantId);
-        ViewData["Departments"] = org.Departments;
-        return WorkPage("Standup", "Stand-up");
-    }
+    public Task<IActionResult> Index() => WorkFormPageAsync("Standup", "Stand-up");
 
     /// <summary>Departments this person may set stand-ups up for (admins: all, and "everyone").</summary>
     private async Task<(bool Everyone, HashSet<Guid> Depts)> ManageableAsync()

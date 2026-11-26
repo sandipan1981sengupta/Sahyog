@@ -1,13 +1,93 @@
 @{
-    // Work → Approvals (see Controllers/ApprovalsController.cs). The page is drawn by js/work-approvals.js.
-    var depts = (ViewData["Departments"] as List<DepartmentDto> ?? new()).OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
-        .Select(d => new { id = d.DepartmentId, name = d.Name }).ToList();
+    // Work → Approvals (Controllers/ApprovalsController.cs). Lists are drawn by js/work-approvals.js; the windows below are tag-helper controls.
+    var fallbackItems = new List<(string Value, string Text)> { ("", "An admin") };
+    fallbackItems.AddRange(ViewData["People"] as List<(string Value, string Text)> ?? new());
+    var today = DateTime.Today.ToString("dd-MM-yyyy");
 }
-<main class="sn-page sn-work">
-    <partial name="~/Views/Work/_WorkHead.cshtml" model="@("approvals")" />
-    <div class="sn-wk-app" id="apApp" aria-live="polite"><div class="sn-nir-loading">Loading…</div></div>
-</main>
-<script type="application/json" id="wkData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { me = User.UserGuid().ToString(), isAdmin = User.IsInRole(AppRoles.TenantAdmin), depts }))</script>
+<div class="sn-wk-pane" data-pane="approvals">
+    <div class="sn-wk-app" id="apApp">
+        <section class="sn-hist glass sn-ap-list">
+            <div class="sn-hist-bar">
+                <tab-control id="apTabs" height="44px" font-size="13.5px" font-weight="600" active-font-weight="600" transition-duration=".38s"
+                         background="rgba(255,255,255,.55)" active-background-color="#ffffff"
+                         text-color="#475569" active-text-color="#0B1220" border-color="rgba(15,23,42,.08)">
+                    <tab id="todo" text="Waiting for me" icon="bi bi-hourglass-split" badge="0" active="true"></tab>
+                    <tab id="mine" text="My requests" icon="bi bi-send"></tab>
+                    <tab id="done" text="Decided by me" icon="bi bi-check2-all"></tab>
+                    @if (User.IsInRole(AppRoles.TenantAdmin))
+                    {
+                        <tab id="all" text="All" icon="bi bi-collection"></tab>
+                    }
+                </tab-control>
+                <div class="sn-hist-tools">
+                    @if (User.IsInRole(AppRoles.TenantAdmin))
+                    {
+                        <button type="button" class="sn-tool" data-ap-rules><i class="fa fa-sliders" aria-hidden="true"></i> Rules</button>
+                    }
+                    <button type="button" class="cee-btn cee-btn-gradient sn-nir-new" data-ap-new><i class="fa fa-plus" aria-hidden="true"></i> <span>New request</span></button>
+                </div>
+            </div>
+            <div class="sn-hist-list" id="apList" aria-live="polite"><div class="sn-nir-loading">Loading…</div></div>
+        </section>
+    </div>
+</div>
+
+@* a new request *@
+<dialog id="apNewDlg" class="sn-dialog glass-strong sn-wk-dlg" aria-labelledby="apNewT">
+    <form method="dialog" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon sn-wk-ic" aria-hidden="true"><i class="fa fa-check-circle-o"></i></span>
+                <div><h2 id="apNewT">New request</h2><p>It goes up your reporting line. Approvers see it as a card in chat.</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body sn-nir-body">
+            <modern-radio-group name="apKind" label="What for" selected-value="leave" label-font-size="13.5px" option-font-size="14px">
+                <modern-radio value="leave" label="Leave"></modern-radio>
+                <modern-radio value="expense" label="Expense"></modern-radio>
+                <modern-radio value="purchase" label="Purchase"></modern-radio>
+                <modern-radio value="other" label="Other"></modern-radio>
+            </modern-radio-group>
+            <div class="sn-wk-two" data-ap-for="leave">
+                <modern-datepicker-with-label id="apFrom" name="apFrom" label="First day" required="true" value="@today"></modern-datepicker-with-label>
+                <modern-datepicker-with-label id="apTo" name="apTo" label="Last day" required="true" value="@today"></modern-datepicker-with-label>
+            </div>
+            <div data-ap-for="money" hidden>
+                <modern-input id="apAmount" name="apAmount" label="Amount" input-type="currency" mandatory="true" max-length="14" label-font-size="13.5px" placeholder="0" tooltip-text="Write the amount"></modern-input>
+            </div>
+            <modern-input id="apTitle" name="apTitle" label="What it's for" mandatory="true" max-length="150" label-font-size="13.5px" placeholder="Family function in Mysuru" tooltip-text="Write what it's for"></modern-input>
+            <modern-input id="apDetails" name="apDetails" label="Details (optional)" multiline="true" rows="3" max-length="1000" resizable="false" label-font-size="13.5px" placeholder="Anything the approver should know"></modern-input>
+            <div class="sn-ap-route" data-ap-route>Working out who approves…</div>
+        </div>
+        <div class="sn-dlg-foot"><span></span>
+            <span class="sn-nir-foot-r"><button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="button" class="cee-btn cee-btn-gradient" data-ap-send><i class="fa fa-paper-plane" aria-hidden="true"></i> Send for approval</button></span>
+        </div>
+    </form>
+</dialog>
+
+@* the workspace's rules (admins) *@
+<dialog id="apRulesDlg" class="sn-dialog glass-strong sn-wk-dlg" aria-labelledby="apRulesT">
+    <form method="dialog" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon sn-wk-ic" aria-hidden="true"><i class="fa fa-sliders"></i></span>
+                <div><h2 id="apRulesT">Approval rules</h2><p>For the whole workspace</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body sn-nir-body">
+            <div class="sn-wk-two">
+                <modern-input id="arAmt" name="arAmt" label="Second approver from" input-type="currency" max-length="14" label-font-size="13.5px" value="50000"></modern-input>
+                <modern-input id="arCur" name="arCur" label="Currency sign" max-length="8" label-font-size="13.5px" value="₹"></modern-input>
+            </div>
+            <p class="sn-hint">Expenses and purchases of this amount or more also go to the manager's manager.</p>
+            <modern-dropdown-with-label id="arFb" name="arFb" label="For people with no manager" value="" placeholder="An admin" items="fallbackItems" menu-height="240px"></modern-dropdown-with-label>
+        </div>
+        <div class="sn-dlg-foot"><span></span>
+            <span class="sn-nir-foot-r"><button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="button" class="cee-btn cee-btn-gradient" data-ar-save><i class="fa fa-check" aria-hidden="true"></i> Save</button></span>
+        </div>
+    </form>
+</dialog>
+
 @section Scripts {
     <script src="~/js/work-approvals.js" asp-append-version="true"></script>
 }

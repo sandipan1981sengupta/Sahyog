@@ -81,6 +81,35 @@ public sealed class ShankhController : Controller
         });
     }
 
+    /// <summary>The "Sound the Shankh" window, drawn by the tag-helper controls (Views/Shankh/_SendDialog.cshtml).
+    /// js/shankh.js loads it once, the first time an admin opens it.</summary>
+    [HttpGet("dialog"), Authorize(Roles = AppRoles.TenantAdmin)]
+    public async Task<IActionResult> Dialog([FromServices] PresenceTracker presence)
+    {
+        var people = (await PeopleAsync()).Where(p => p.UserId != Me).OrderBy(p => p.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
+        var online = presence.OnlineUsers(TenantId);
+        List<ShankhSummaryDto> recent;
+        try { recent = await _shankh.RecentAsync(TenantId); } catch (Microsoft.Data.SqlClient.SqlException) { recent = new(); }
+        Response.Headers.CacheControl = "no-store";
+        return PartialView("~/Views/Shankh/_SendDialog.cshtml", new ShankhDialogVm
+        {
+            Everyone = people.Count,
+            Departments = people.Where(p => p.DepartmentId is not null)
+                .GroupBy(p => new { Id = p.DepartmentId!.Value, Name = p.DepartmentName ?? "Department" })
+                .OrderBy(g => g.Key.Name).Select(g => (g.Key.Id, g.Key.Name, g.Count())).ToList(),
+            People = people.Select(p => new ShankhNaad.Web.Models.PersonVm(p.UserId.ToString(), p.DisplayName, p.Initials, p.AvatarTone, online.Contains(p.UserId.ToString()))).ToList(),
+            Recent = recent
+        });
+    }
+
+    public sealed class ShankhDialogVm
+    {
+        public int Everyone { get; init; }
+        public List<(Guid Id, string Name, int Count)> Departments { get; init; } = new();
+        public List<ShankhNaad.Web.Models.PersonVm> People { get; init; } = new();
+        public List<ShankhSummaryDto> Recent { get; init; } = new();
+    }
+
     /// <summary>Sound the Shankh.</summary>
     [HttpPost("send"), Authorize(Roles = AppRoles.TenantAdmin)]
     public async Task<IActionResult> Send([FromBody] SendInput input)

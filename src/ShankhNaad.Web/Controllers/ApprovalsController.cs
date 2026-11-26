@@ -41,7 +41,7 @@ public sealed class ApprovalsController : WorkControllerBase
     }
 
     [HttpGet("")]
-    public IActionResult Index() => WorkPage("Approvals", "Approvals");
+    public Task<IActionResult> Index() => WorkFormPageAsync("Approvals", "Approvals");
 
     private Task<Row?> RulesAsync() => _db.RowAsync("dbo.sahyog_ApprovalRules_Get", p => p.With("@TenantId", TenantId));
 

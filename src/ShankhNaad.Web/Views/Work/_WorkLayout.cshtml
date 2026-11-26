@@ -1,0 +1,15 @@
+@{
+    // The Work page around one section (Views/Work/Decisions|Standup|Approvals|Roles|Visitors.cshtml).
+    // The other sections are fetched the first time their tab is picked and then kept on the page (js/work-kit.js),
+    // so going back to a tab is instant and keeps where you were.
+    Layout = "_Layout";
+    var tab = ViewData["WorkTab"] as string ?? "decisions";
+}
+<main class="sn-page sn-work@(tab == "standup" ? " sn-page-fixed" : "")" id="workHost" data-tab="@tab">
+    <partial name="~/Views/Work/_WorkHead.cshtml" model="@tab" />
+    @RenderBody()
+</main>
+<partial name="~/Views/Work/_WorkData.cshtml" />
+@section Scripts {
+    @RenderSection("Scripts", required: false)
+}

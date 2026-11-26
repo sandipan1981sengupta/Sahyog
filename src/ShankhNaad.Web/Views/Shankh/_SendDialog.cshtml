@@ -1,0 +1,92 @@
+@model ShankhNaad.Web.Controllers.ShankhController.ShankhDialogVm
+@{
+    // "Sound the Shankh" (ShankhController.Dialog). Built from the tag-helper controls; js/shankh.js only wires it up
+    // and never redraws it, so the window keeps its size and place while you choose.
+    var picker = new PeoplePickerVm
+    {
+        Id = "shkPeople", People = Model.People, FieldName = "shkPeople", Title = "Ring", ToLabel = "Ring",
+        CssClass = "sn-pp-compact", EmptyText = "Nobody else in the workspace yet."
+    };
+}
+<dialog id="shankhSendDlg" data-everyone="@Model.Everyone" class="sn-dialog glass-strong sn-shankh-dlg sn-shk-fixed" aria-labelledby="snShankhSendT">
+    <form method="dialog" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon sn-shk-ic" aria-hidden="true">🐚</span>
+                <div><h2 id="snShankhSendT">Sound the Shankh</h2><p>Rings every screen until each person presses Seen. For real emergencies only.</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body sn-shk-body">
+            <modern-radio-group name="shkTo" label="Who" selected-value="all" label-font-size="13.5px" option-font-size="14px">
+                <modern-radio value="all" label="Everyone · @Model.Everyone"></modern-radio>
+                <modern-radio value="dept" label="A department"></modern-radio>
+                <modern-radio value="people" label="Pick people"></modern-radio>
+            </modern-radio-group>
+
+            <div data-shk-for="dept" hidden>
+                @if (Model.Departments.Count > 0)
+                {
+                    <modern-dropdown-with-label id="shkDept" name="shkDept" label="Department" placeholder="Pick a department" required="true" menu-height="220px">
+                        @foreach (var d in Model.Departments)
+                        {
+                            <option value="@d.Id">@d.Name · @d.Count</option>
+                        }
+                    </modern-dropdown-with-label>
+                }
+                else
+                {
+                    <p class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> No departments yet. Add them on the Org page, or pick people.</p>
+                }
+            </div>
+
+            <div data-shk-for="people" hidden>
+                <partial name="_PeoplePicker" model="picker" />
+            </div>
+
+            <modern-input id="shkBody" name="shkBody" label="Message" mandatory="true" multiline="true" rows="3" max-length="1000" resizable="false"
+                          label-font-size="13.5px" tooltip-text="Write what's happening and what people should do"
+                          placeholder="What's happening, and what should people do? E.g. Client portal is down. Engineering: join the bridge now."></modern-input>
+
+            <modern-radio-group name="shkKind" label="Kind" selected-value="outage" label-font-size="13.5px" option-font-size="14px">
+                <modern-radio value="outage" label="🚨 Outage"></modern-radio>
+                <modern-radio value="drill" label="🔥 Fire drill"></modern-radio>
+                <modern-radio value="client" label="📣 Client issue"></modern-radio>
+                <modern-radio value="other" label="⚠ Alert"></modern-radio>
+            </modern-radio-group>
+
+            <div class="sn-shk-opts2">
+                <modern-dropdown-with-label id="shkRemind" name="shkRemind" label="Remind their managers if not seen in" value="5">
+                    <option value="0">Never</option>
+                    <option value="2">2 minutes</option>
+                    <option value="5">5 minutes</option>
+                    <option value="10">10 minutes</option>
+                    <option value="15">15 minutes</option>
+                </modern-dropdown-with-label>
+                <modern-checkbox id="shkEmail" name="shkEmail" label="Also send an email" desc-text="For anyone not in ShankhNaad right now"
+                                 is-toggle-button="true" checked="true" label-font-size="13.5px"></modern-checkbox>
+            </div>
+
+            @if (Model.Recent.Count > 0)
+            {
+                <details class="sn-shk-recent">
+                    <summary>Recent alerts (@Model.Recent.Count)</summary>
+                    @foreach (var r in Model.Recent.Take(6))
+                    {
+                        var icon = r.Kind switch { "outage" => "🚨", "drill" => "🔥", "client" => "📣", _ => "⚠" };
+                        <button type="button" class="sn-shk-rec" data-board="@r.AlertId">
+                            <span>@icon</span>
+                            <span><b>@(r.Body.Length > 70 ? r.Body[..70] + "…" : r.Body)</b>
+                                <small><time data-utc="@r.SentUtc.ToString("o")"></time> · @r.Audience · @r.Seen of @Math.Max(r.People - 1, 0) seen@(r.ClosedUtc is null ? "" : " · closed")</small></span>
+                        </button>
+                    }
+                </details>
+            }
+        </div>
+        <div class="sn-dlg-foot">
+            <span class="muted small" data-shk-count>Everyone · @Model.Everyone will be rung</span>
+            <span class="sn-nir-foot-r">
+                <button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="button" class="cee-btn sn-shk-go" data-go>🐚 <span>Sound the Shankh</span></button>
+            </span>
+        </div>
+    </form>
+</dialog>

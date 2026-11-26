@@ -153,14 +153,15 @@
                          label-font-weight="600">
                 @if (!isSuperAdmin)
                 {
+                    @* order: Chat, Calls, Files, Meetings, Team, Work, Org *@
                     <rail-item key="chat" label="Chat" icon="comments-o" href="/chat" active="@(section == "chat")"></rail-item>
                     <rail-item key="calls" label="Calls" icon="phone" href="/calls" active="@(section == "calls")"></rail-item>
-                    <rail-item key="meetings" label="Meetings" icon="calendar" href="/meetings" active="@(section == "meetings")"></rail-item>
-                    @* Work: decisions now; stand-ups, approvals and visitors join it (DecisionsController) *@
-                    <rail-item key="work" label="Work" icon="briefcase" href="/work" active="@(section == "work")"></rail-item>
                     <rail-item key="files" label="Files" icon="folder-open" href="/files" active="@(section == "files")"></rail-item>
+                    <rail-item key="meetings" label="Meetings" icon="calendar" href="/meetings" active="@(section == "meetings")"></rail-item>
                     @* everyone in the workspace can see the team; only admins can change it (see TeamController) *@
                     <rail-item key="team" label="Team" icon="users" href="/team" active="@(section == "team")"></rail-item>
+                    @* Work: decisions, stand-up, approvals, roles, visitors (Controllers/DecisionsController.cs and the other Work controllers) *@
+                    <rail-item key="work" label="Work" icon="briefcase" href="/work" active="@(section == "work")"></rail-item>
                     @* who reports to whom, departments; admins edit it and import a CSV (OrgController) *@
                     <rail-item key="org" label="Org" icon="sitemap" href="/org" active="@(section == "org")"></rail-item>
                 }

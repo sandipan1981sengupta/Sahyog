@@ -3,11 +3,11 @@
     // The Work pages' header and section links. Model = the section on show: decisions | standup | roles | approvals | visitors
     var tabs = new[]
     {
-        ("decisions", "/work/decisions", "fa-balance-scale", "Decisions"),
-        ("standup", "/work/standup", "fa-sun-o", "Stand-up"),
-        ("approvals", "/work/approvals", "fa-check-circle-o", "Approvals"),
-        ("roles", "/work/roles", "fa-life-ring", "Roles"),
-        ("visitors", "/work/visitors", "fa-id-card-o", "Visitors")
+        ("decisions", "/work/decisions", "bi bi-journal-check", "Decisions"),
+        ("standup", "/work/standup", "bi bi-sun", "Stand-up"),
+        ("approvals", "/work/approvals", "bi bi-check2-circle", "Approvals"),
+        ("roles", "/work/roles", "bi bi-life-preserver", "Roles"),
+        ("visitors", "/work/visitors", "bi bi-person-badge", "Visitors")
     };
     var subtitle = Model switch
     {
@@ -31,9 +31,14 @@
                    show-export="false" show-save="false" show-submit="false" show-print="false">
     </action-header>
 </div>
-<nav class="sn-work-nav" aria-label="Work">
-    @foreach (var (key, href, icon, text) in tabs)
-    {
-        <a href="@href" class="@(key == Model ? "on" : "")" aria-current="@(key == Model ? "page" : null)" data-work-tab="@key"><i class="fa @icon" aria-hidden="true"></i> @text<span class="sn-work-n" data-work-n="@key" hidden></span></a>
-    }
-</nav>
+@* the Work sections: the same glass tabs as Calls and Files (tab-control); picking one opens that page (js/work-kit.js) *@
+<div class="sn-work-nav">
+    <tab-control id="workTabs" height="44px" font-size="13.5px" font-weight="600" active-font-weight="600" transition-duration=".38s"
+                 background="rgba(255,255,255,.55)" active-background-color="#ffffff"
+                 text-color="#475569" active-text-color="#0B1220" border-color="rgba(15,23,42,.08)">
+        @foreach (var (key, href, icon, text) in tabs)
+        {
+            <tab id="@key" text="@text" icon="@icon" active="@(key == Model)"></tab>
+        }
+    </tab-control>
+</div>

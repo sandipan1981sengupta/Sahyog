@@ -32,7 +32,7 @@ public sealed class VisitorsController : WorkControllerBase
     }
 
     [HttpGet("")]
-    public IActionResult Index() => WorkPage("Visitors", "Visitors");
+    public Task<IActionResult> Index() => WorkFormPageAsync("Visitors", "Visitors");
 
     private string KioskUrl(string code) => $"{(string.IsNullOrWhiteSpace(_app.PublicBaseUrl) ? $"{Request.Scheme}://{Request.Host}" : _app.PublicBaseUrl.TrimEnd('/'))}/lobby/{code}";
 

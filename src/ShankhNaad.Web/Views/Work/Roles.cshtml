@@ -1,13 +1,86 @@
 @{
-    // Work → Roles (see Controllers/RolesController.cs). The page is drawn by js/work-roles.js.
-    var depts = (ViewData["Departments"] as List<DepartmentDto> ?? new()).OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
-        .Select(d => new { id = d.DepartmentId, name = d.Name }).ToList();
+    // Work → Roles (Controllers/RolesController.cs). Lists are drawn by js/work-roles.js; the windows below are tag-helper controls.
+    var people = ViewData["People"] as List<(string Value, string Text)> ?? new();
+    var escItems = new List<(string Value, string Text)> { ("5", "5 minutes"), ("10", "10 minutes"), ("15", "15 minutes"), ("30", "30 minutes"), ("60", "1 hour"), ("0", "Never") };
+    var icons = new[] { ("life-ring", "Help desk"), ("laptop", "IT"), ("users", "People / HR"), ("inr", "Accounts"), ("shield", "Security"), ("truck", "Logistics"),
+                        ("wrench", "Facilities"), ("medkit", "Health"), ("bullhorn", "Announcements"), ("id-badge", "Admin office"), ("building", "Office"),
+                        ("graduation-cap", "Training"), ("balance-scale", "Legal"), ("phone", "Front desk") };
+    var iconItems = icons.Select(i => (i.Item1, $"<i class='fa fa-{i.Item1} sn-ro-opt-ic'></i> {i.Item2}")).ToList();
 }
-<main class="sn-page sn-work">
-    <partial name="~/Views/Work/_WorkHead.cshtml" model="@("roles")" />
-    <div class="sn-wk-app" id="roApp" aria-live="polite"><div class="sn-nir-loading">Loading…</div></div>
-</main>
-<script type="application/json" id="wkData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { me = User.UserGuid().ToString(), isAdmin = User.IsInRole(AppRoles.TenantAdmin), depts }))</script>
+<div class="sn-wk-pane" data-pane="roles">
+    <div class="sn-wk-app" id="roApp">
+        <section class="sn-hist glass sn-ro-roles" aria-label="Roles">
+            <div class="sn-wk-colhead"><h2>Ask a role</h2>
+                <span class="sn-wk-tools">@if (User.IsInRole(AppRoles.TenantAdmin))
+                {
+                    <button type="button" class="cee-btn cee-btn-gradient sn-nir-new" data-ro-new><i class="fa fa-plus" aria-hidden="true"></i> <span>New role</span></button>
+                }</span></div>
+            <div class="sn-ro-grid" id="roGrid" aria-live="polite"><div class="sn-nir-loading">Loading…</div></div>
+        </section>
+        <section class="sn-hist glass sn-ro-reqs" aria-label="Requests">
+            <div class="sn-hist-bar">
+                <tab-control id="roTabs" height="44px" font-size="13.5px" font-weight="600" active-font-weight="600" transition-duration=".38s"
+                         background="rgba(255,255,255,.55)" active-background-color="#ffffff"
+                         text-color="#475569" active-text-color="#0B1220" border-color="rgba(15,23,42,.08)">
+                    <tab id="open" text="Waiting" icon="bi bi-hourglass-split" badge="0" active="true"></tab>
+                    <tab id="sent" text="Sent by me" icon="bi bi-send" badge="0"></tab>
+                    <tab id="all" text="All" icon="bi bi-collection" badge="0"></tab>
+                </tab-control>
+            </div>
+            <div class="sn-hist-list" id="roList" aria-live="polite"></div>
+        </section>
+    </div>
+</div>
+
+@* message a role *@
+<dialog id="roAskDlg" class="sn-dialog glass-strong sn-wk-dlg" aria-labelledby="roAskT">
+    <form method="dialog" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon sn-ro-ic" data-ro-icon aria-hidden="true"><i class="fa fa-life-ring"></i></span>
+                <div><h2 id="roAskT" data-ro-title>Message a role</h2><p>It goes to whoever in the role is in and free. You'll chat with them one-to-one.</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body sn-nir-body">
+            <modern-input id="roBody" name="roBody" label="Your message" mandatory="true" multiline="true" rows="4" max-length="1000" resizable="false" label-font-size="13.5px"
+                          tooltip-text="Write your message" placeholder="What do you need? E.g. My laptop won't connect to the office Wi-Fi."></modern-input>
+            <p class="sn-hint" data-ro-esc></p>
+        </div>
+        <div class="sn-dlg-foot"><span></span>
+            <span class="sn-nir-foot-r"><button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="button" class="cee-btn cee-btn-gradient" data-ro-send><i class="fa fa-paper-plane" aria-hidden="true"></i> Send</button></span>
+        </div>
+    </form>
+</dialog>
+
+@* add or change a role (admins) *@
+<dialog id="roEditDlg" class="sn-dialog glass-strong sn-wk-dlg" aria-labelledby="roEditT">
+    <form method="dialog" novalidate>
+        <div class="sn-dlg-head">
+            <div class="sn-dlg-title"><span class="sn-dlg-icon sn-ro-ic" aria-hidden="true"><i class="fa fa-life-ring"></i></span>
+                <div><h2 id="roEditT" data-ro-etitle>New role</h2><p>People message the role; the first person in the list who is in and free gets it.</p></div></div>
+            <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+        </div>
+        <div class="sn-dlg-body sn-nir-body">
+            <div class="sn-wk-two">
+                <modern-input id="roName" name="roName" label="Name" mandatory="true" max-length="80" label-font-size="13.5px" placeholder="IT help desk" tooltip-text="Give the role a name"></modern-input>
+                <modern-dropdown-with-label id="roIcon" name="roIcon" label="Icon" value="life-ring" items="iconItems" menu-height="240px"></modern-dropdown-with-label>
+            </div>
+            <modern-input id="roDesc" name="roDesc" label="What it's for (optional)" max-length="200" label-font-size="13.5px" placeholder="Laptops, Wi-Fi, email, access cards"></modern-input>
+            <modern-dropdown-with-label id="roEsc" name="roEsc" label="No reply? Move on after" value="15" items="escItems"></modern-dropdown-with-label>
+            <div class="sn-wk-group">
+                <span class="sn-wk-glabel">Who answers, in order</span>
+                <div class="sn-ro-order" data-ro-order></div>
+                <modern-dropdown-with-label id="roAdd" name="roAdd" placeholder="Add a person…" items="people" menu-height="240px"></modern-dropdown-with-label>
+            </div>
+        </div>
+        <div class="sn-dlg-foot">
+            <span><button type="button" class="cee-btn sn-btn-light sn-md-danger" data-ro-del hidden><span>Delete</span></button></span>
+            <span class="sn-nir-foot-r"><button type="button" class="cee-btn sn-btn-light" data-close>Cancel</button>
+                <button type="button" class="cee-btn cee-btn-gradient" data-ro-save><i class="fa fa-check" aria-hidden="true"></i> Save</button></span>
+        </div>
+    </form>
+</dialog>
+
 @section Scripts {
     <script src="~/js/work-roles.js" asp-append-version="true"></script>
 }

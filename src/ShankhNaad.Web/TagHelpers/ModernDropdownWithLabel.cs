@@ -121,7 +121,7 @@ namespace ShankhNaad.Web.TagHelpers
                 {labelHtml}
                 <div class='modern-dropdown-with-label{disabledClass}' id='{Id}' data-name='{Name}' data-required='{Required.ToString().ToLower()}' {radiusStyleAttr}>
                     <button type='button' class='ddwl-toggle' {(Disabled ? "disabled" : "")}>
-                        <span class='ddwl-selected'>{initialLabel}</span>
+                        <span class='ddwl-selected' data-placeholder='{System.Net.WebUtility.HtmlEncode(Placeholder ?? "")}'>{initialLabel}</span>
                         <span class='ddwl-icon-error' style='display:none;'>
                             <svg width='12' height='12' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'>
                                 <circle cx='8' cy='8' r='8' fill='currentColor'/>

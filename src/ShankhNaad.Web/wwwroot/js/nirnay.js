@@ -49,140 +49,141 @@
     //      or { meetingId, meetingDate, meetingTitle } from a meeting, or {} on the register. ctx.kind "A" starts as an action item.
     // onSaved(decision) runs after a save, onDeleted(id) after a delete.
     // =================================================================
-    let dlg = null;
-    async function openRecord(ctx, onSaved, onDeleted) {
-        ctx = ctx || {};
-        const list = await loadPeople();
-        const d = ctx.decision || null;
-        const readOnly = !!(d && !canEdit(d));
-        const st = {
-            kind: d ? d.kind : (ctx.kind === "A" ? "A" : "D"),
-            title: d ? d.title : String(ctx.text || "").replace(/\s+/g, " ").trim().slice(0, 300),
-            details: d ? (d.details || "") : "",
-            owner: d ? d.ownerId : (list.some((p) => p.id === ctx.senderId) ? ctx.senderId : me),
-            due: d ? (d.dueDate || "") : "",
-            q: "", picking: false, armedDelete: false, busy: false
-        };
+    // The window is Razor (Views/Work/_DecisionDialog.cshtml, tag-helper controls), loaded once from /work/decisions/dialog.
+    let dlg = null, cur = null;
+    const C = () => window.SN.wk.ctl;
+    async function ensureDialog() {
+        if (dlg && document.body.contains(dlg)) return dlg;
+        dlg = document.getElementById("nirRecordDlg");
         if (!dlg) {
-            dlg = document.createElement("dialog");
-            dlg.className = "sn-dialog glass-strong sn-nir-dlg";
-            dlg.setAttribute("aria-labelledby", "snNirT");
+            let html = "";
+            try { const r = await fetch("/work/decisions/dialog", { headers: { Accept: "text/html" }, credentials: "same-origin" }); if (r.ok) html = await r.text(); } catch { }
+            if (!html) { toast("Couldn't open it. Try again.", "error", "Decisions"); return null; }
+            const holder = document.createElement("div");
+            holder.innerHTML = html.trim();
+            dlg = holder.querySelector("dialog");
             document.body.appendChild(dlg);
         }
-        const person = (id) => list.find((p) => p.id === id) || (d && d.ownerId === id ? { id, name: d.ownerName, dept: d.departmentName, tone: d.ownerTone } : null);
-        const source = d
-            ? (d.messageId ? `From ${d.channelIsDirect ? "a one-to-one chat" : esc(d.channelName || "a chat")}` : d.meetingId ? `From the meeting ${esc(d.meetingTitle || "")}` : "Added on the Decisions page")
-              + ` · recorded by ${d.recordedBy === me ? "you" : esc(d.recordedByName || "someone")} · ${day(d.recordedUtc)}`
-            : ctx.messageId ? `From ${ctx.senderId === me ? "your" : esc((ctx.senderName || "a") + "'s")} message${ctx.where ? " in " + esc(ctx.where) : ""}`
-            : ctx.meetingId ? `For the meeting ${esc(ctx.meetingTitle || "")}${ctx.meetingDate ? " · " + day(parseYmd(ctx.meetingDate)) : ""}`
+        C().init(dlg);
+        C().wire(dlg);
+        // "Today / Tomorrow / Friday / Next week" next to the due date
+        const t = new Date(); t.setHours(0, 0, 0, 0);
+        const add = (n) => { const x = new Date(t); x.setDate(x.getDate() + n); return ymd(x); };
+        dlg.querySelector("[data-nir-quick]").innerHTML = [["Today", 0], ["Tomorrow", 1], ["Friday", (5 - t.getDay() + 7) % 7 || 7], ["Next week", (8 - t.getDay()) % 7 || 7]]
+            .map(([l, n]) => `<button type="button" class="sn-nir-chip" data-due="${add(n)}">${l}</button>`).join("");
+        const kindChanged = () => paintKind();
+        dlg.addEventListener("change", (e) => { if (e.target.name === "nirKind") kindChanged(); });
+        dlg.addEventListener("click", onClick);
+        return dlg;
+    }
+    function paintKind() {
+        const isA = C().radio("nirKind") === "A", d = cur.decision;
+        dlg.querySelector("[data-nir-due]").hidden = !isA;
+        C().label("nirTitle", isA ? "What needs to be done" : "What was decided");
+        C().label("nirOwner", isA ? "Who will do it" : "Owner");
+        dlg.querySelector("#nirTitle").placeholder = isA ? "E.g. Send the revised quote to Mehta Traders" : "E.g. Release moves to 5 December so QA can finish the payment flow";
+        const ic = dlg.querySelector("[data-nir-icon]");
+        ic.classList.toggle("act", isA);
+        ic.innerHTML = `<i class="fa ${isA ? "fa-check-square-o" : "fa-balance-scale"}" aria-hidden="true"></i>`;
+        dlg.querySelector("[data-nir-title]").textContent = cur.readOnly ? (isA ? "Action item" : "Decision")
+            : d ? (isA ? "Change the action item" : "Change the decision") : (isA ? "Add an action item" : "Record a decision");
+        dlg.querySelector("[data-save] span").textContent = d ? "Save" : isA ? "Add action item" : "Save decision";
+    }
+    async function openRecord(ctx, onSaved, onDeleted) {
+        ctx = ctx || {};
+        if (!(await ensureDialog())) return;
+        const d = ctx.decision || null;
+        const readOnly = !!(d && !canEdit(d));
+        cur = { ctx, decision: d, readOnly, onSaved, onDeleted, armed: false };
+        const people = await loadPeople();
+        const sub = d
+            ? (d.messageId ? `From ${d.channelIsDirect ? "a one-to-one chat" : (d.channelName || "a chat")}` : d.meetingId ? `From the meeting ${d.meetingTitle || ""}` : "Added on the Decisions page")
+              + ` · recorded by ${d.recordedBy === me ? "you" : (d.recordedByName || "someone")} · ${day(d.recordedUtc)}`
+            : ctx.messageId ? `From ${ctx.senderId === me ? "your" : (ctx.senderName || "a") + "'s"} message${ctx.where ? " in " + ctx.where : ""}`
+            : ctx.meetingId ? `For the meeting ${ctx.meetingTitle || ""}${ctx.meetingDate ? " · " + day(parseYmd(ctx.meetingDate)) : ""}`
             : "Everyone in the workspace can see decisions added here.";
-        const quickDue = () => {
-            const t = new Date(); t.setHours(0, 0, 0, 0);
-            const add = (n) => { const x = new Date(t); x.setDate(x.getDate() + n); return x; };
-            const fri = add((5 - t.getDay() + 7) % 7 || 7);
-            const mon = add((8 - t.getDay()) % 7 || 7);
-            return [["Today", add(0)], ["Tomorrow", add(1)], ["Friday", fri], ["Next week", mon]].map(([l, x]) => [l, ymd(x)]);
-        };
+        dlg.querySelector("[data-nir-sub]").textContent = sub;
+        const q = dlg.querySelector("[data-nir-quote]");
+        q.hidden = !(ctx.messageId && ctx.text);
+        q.textContent = String(ctx.text || "").slice(0, 400);
+        dlg.querySelector("[data-nir-edit]").hidden = readOnly;
+        dlg.querySelector("[data-nir-read]").hidden = !readOnly;
 
-        function ownerHtml() {
-            const p = person(st.owner);
-            if (readOnly) return p ? `<div class="sn-nir-who"><span class="avatar av-28 tone-${(p.tone || 0) % 6}">${esc(initials(p.name))}</span><span><b>${esc(p.name)}</b><small>${esc(p.dept || "")}</small></span></div>` : `<p class="muted">Nobody yet</p>`;
-            if (p && !st.picking) return `<div class="sn-nir-who"><span class="avatar av-28 tone-${(p.tone || 0) % 6}">${esc(initials(p.name))}</span><span><b>${p.id === me ? "You" : esc(p.name)}</b><small>${esc([p.title, p.dept].filter(Boolean).join(" · "))}</small></span><button type="button" class="sn-link" data-pick>Change</button></div>`;
-            const q = st.q.toLowerCase();
-            const hits = list.filter((x) => !q || (x.name + " " + (x.dept || "") + " " + (x.title || "")).toLowerCase().includes(q)).slice(0, 7);
-            return `<label class="sn-nir-search"><i class="fa fa-search" aria-hidden="true"></i><input type="search" data-q placeholder="Who owns it? Type a name" value="${esc(st.q)}" autocomplete="off"></label>
-                <div class="sn-nir-hits sn-glass-scroll" role="listbox">${hits.map((x) => `<button type="button" role="option" class="sn-nir-hit" data-owner="${esc(x.id)}"><span class="avatar av-28 tone-${(x.tone || 0) % 6}">${esc(initials(x.name))}</span><span><b>${x.id === me ? "You" : esc(x.name)}</b><small>${esc([x.title, x.dept].filter(Boolean).join(" · "))}</small></span></button>`).join("") || '<p class="muted small" style="padding:8px">Nobody matches.</p>'}</div>`;
+        const kind = d ? d.kind : (ctx.kind === "A" ? "A" : "D");
+        C().setRadio("nirKind", kind);
+        if (readOnly) {
+            const r = (k, v) => { dlg.querySelector(`[data-ro="${k}"]`).textContent = v; };
+            r("title", d.title);
+            r("owner", d.ownerId === me ? "You" : d.ownerName || "Nobody yet");
+            r("due", d.dueDate ? dueText(d.dueDate) : "No date");
+            r("details", d.details || "No notes");
+            dlg.querySelector("[data-ro-due-wrap]").hidden = !d.isAction;
+        } else {
+            C().set("nirTitle", d ? d.title : String(ctx.text || "").replace(/\s+/g, " ").trim().slice(0, 300));
+            C().set("nirDetails", d ? d.details || "" : "");
+            const owner = d ? d.ownerId : (people.some((p) => p.id === ctx.senderId) ? ctx.senderId : me);
+            C().set("nirOwner", owner || "");
+            C().set("nirDue", d ? d.dueDate || "" : "");
         }
-
-        function render() {
-            const isA = st.kind === "A";
-            dlg.innerHTML = `
-            <form method="dialog" novalidate>
-            <div class="sn-dlg-head">
-                <div class="sn-dlg-title"><span class="sn-dlg-icon sn-nir-ic${isA ? " act" : ""}" aria-hidden="true"><i class="fa ${isA ? "fa-check-square-o" : "fa-balance-scale"}"></i></span>
-                    <div><h2 id="snNirT">${readOnly ? (isA ? "Action item" : "Decision") : d ? (isA ? "Change the action item" : "Change the decision") : (isA ? "Add an action item" : "Record a decision")}</h2><p>${source}</p></div></div>
-                <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
-            </div>
-            <div class="sn-dlg-body sn-nir-body">
-                ${ctx.messageId && ctx.text ? `<blockquote class="sn-nir-quote">${esc(String(ctx.text).slice(0, 400))}</blockquote>` : ""}
-                ${readOnly ? "" : `<div class="sn-nir-seg" role="radiogroup" aria-label="Type">
-                    <button type="button" role="radio" aria-checked="${!isA}" class="${!isA ? "on" : ""}" data-kind="D"><i class="fa fa-balance-scale" aria-hidden="true"></i> Decision</button>
-                    <button type="button" role="radio" aria-checked="${isA}" class="${isA ? "on act" : ""}" data-kind="A"><i class="fa fa-check-square-o" aria-hidden="true"></i> Action item</button>
-                </div>`}
-                <label class="sn-field-label" for="nirTitle">${isA ? "What needs to be done" : "What was decided"}</label>
-                ${readOnly ? `<p class="sn-nir-ro">${esc(st.title)}</p>` : `<textarea id="nirTitle" class="sn-textarea" rows="2" maxlength="300" placeholder="${isA ? "E.g. Send the revised quote to Mehta Traders" : "E.g. Release moves to 5 December so QA can finish the payment flow"}">${esc(st.title)}</textarea>`}
-                <div class="sn-nir-two">
-                    <div><div class="sn-field-label">${isA ? "Who will do it" : "Owner"}</div>${ownerHtml()}</div>
-                    ${isA ? `<div><label class="sn-field-label" for="nirDue">Due</label>
-                        ${readOnly ? `<p class="sn-nir-ro">${st.due ? esc(dueText(st.due)) : "No date"}</p>` : `<div class="sn-nir-due"><input type="date" id="nirDue" class="sn-input" value="${esc(st.due)}">
-                        <div class="sn-nir-chips">${quickDue().map(([l, v]) => `<button type="button" class="sn-nir-chip${st.due === v ? " on" : ""}" data-due="${v}">${l}</button>`).join("")}${st.due ? '<button type="button" class="sn-nir-chip" data-due="">No date</button>' : ""}</div></div>`}</div>` : ""}
-                </div>
-                <label class="sn-field-label" for="nirDetails">Why, or notes <span class="muted">(optional)</span></label>
-                ${readOnly ? `<p class="sn-nir-ro">${st.details ? esc(st.details) : '<span class="muted">No notes</span>'}</p>` : `<textarea id="nirDetails" class="sn-textarea" rows="2" maxlength="1000" placeholder="The reason, or anything people should know later">${esc(st.details)}</textarea>`}
-            </div>
-            <div class="sn-dlg-foot">
-                <span>${d && !readOnly ? `<button type="button" class="cee-btn sn-btn-light sn-md-danger" data-delete><i class="fa fa-trash-o" aria-hidden="true"></i> ${st.armedDelete ? "Yes, delete it" : "Delete"}</button>` : ""}
-                    ${d && d.messageId && d.channelId && !location.pathname.startsWith("/chat") ? `<a class="sn-link" href="/chat/${esc(d.channelId)}?m=${d.messageId}">Open in chat</a>` : ""}
-                    ${d && d.meetingId ? `<a class="sn-link" href="/meetings/${esc(d.meetingId)}/view${d.meetingDate ? "?date=" + esc(d.meetingDate) : ""}">Open the meeting</a>` : ""}</span>
-                <span class="sn-nir-foot-r">
-                    <button type="button" class="cee-btn sn-btn-light" data-close>${readOnly ? "Close" : "Cancel"}</button>
-                    ${readOnly ? "" : `<button type="button" class="cee-btn cee-btn-gradient" data-save${st.busy ? " disabled" : ""}><i class="fa fa-check" aria-hidden="true"></i> ${d ? "Save" : isA ? "Add action item" : "Save decision"}</button>`}
-                </span>
-            </div></form>`;
-            const qi = dlg.querySelector("[data-q]");
-            if (qi && st.picking) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
-        }
-        const keep = () => {
-            const t = dlg.querySelector("#nirTitle"); if (t) st.title = t.value;
-            const x = dlg.querySelector("#nirDetails"); if (x) st.details = x.value;
-            const due = dlg.querySelector("#nirDue"); if (due) st.due = due.value;
-        };
-        dlg.onclick = async (e) => {
-            const t = e.target;
-            if (t.closest("[data-close]")) { dlg.close(); return; }
-            if (readOnly) return;
-            const k = t.closest("[data-kind]"); if (k) { keep(); st.kind = k.dataset.kind; render(); return; }
-            if (t.closest("[data-pick]")) { keep(); st.picking = true; st.q = ""; render(); return; }
-            const o = t.closest("[data-owner]"); if (o) { keep(); st.owner = o.dataset.owner; st.picking = false; render(); return; }
-            const du = t.closest("[data-due]"); if (du) { keep(); st.due = du.dataset.due; render(); return; }
-            if (t.closest("[data-delete]")) {
-                if (!st.armedDelete) { keep(); st.armedDelete = true; render(); setTimeout(() => { if (st.armedDelete && dlg.open) { st.armedDelete = false; keep(); render(); } }, 4000); return; }
-                const x = await post(`/work/decisions/${d.decisionId}/delete`);
-                if (!x.ok) { toast(x.d.error || "Couldn't delete it.", "error", "Decisions"); return; }
-                dlg.close();
-                toast(d.isAction ? "Action item deleted." : "Decision deleted.", "success");
-                removeCard(d.decisionId);
-                onDeleted && onDeleted(d.decisionId);
+        const del = dlg.querySelector("[data-delete]");
+        del.hidden = !(d && !readOnly);
+        del.querySelector("span").textContent = "Delete";
+        const chat = dlg.querySelector("[data-open-chat]");
+        chat.hidden = !(d && d.messageId && d.channelId && !location.pathname.startsWith("/chat"));
+        if (!chat.hidden) chat.href = `/chat/${d.channelId}?m=${d.messageId}`;
+        const mt = dlg.querySelector("[data-open-meeting]");
+        mt.hidden = !(d && d.meetingId);
+        if (!mt.hidden) mt.href = `/meetings/${d.meetingId}/view${d.meetingDate ? "?date=" + d.meetingDate : ""}`;
+        dlg.querySelector("[data-save]").hidden = readOnly;
+        dlg.querySelector(".sn-nir-foot-r [data-close] span").textContent = readOnly ? "Close" : "Cancel";
+        paintKind();
+        C().open(dlg);
+        if (!d && !readOnly) setTimeout(() => { const t = dlg.querySelector("#nirTitle"); t.focus(); t.select(); }, 60);
+    }
+    async function onClick(e) {
+        const t = e.target;
+        if (!cur || cur.readOnly) return;
+        const du = t.closest("[data-due]");
+        if (du) { C().set("nirDue", du.dataset.due); return; }
+        const d = cur.decision;
+        const del = t.closest("[data-delete]");
+        if (del) {
+            if (!cur.armed) {
+                cur.armed = true; del.querySelector("span").textContent = "Yes, delete it";
+                setTimeout(() => { if (cur) { cur.armed = false; del.querySelector("span").textContent = "Delete"; } }, 4000);
                 return;
             }
-            if (t.closest("[data-save]")) {
-                keep();
-                const title = st.title.trim();
-                if (!title) { toast(st.kind === "A" ? "Write what needs to be done." : "Write what was decided.", "warn"); dlg.querySelector("#nirTitle")?.focus(); return; }
-                st.busy = true; render();
-                const x = await post("/work/decisions/save", {
-                    decisionId: d ? d.decisionId : 0, kind: st.kind, title, details: st.details.trim() || null,
-                    ownerId: st.owner || null, dueDate: st.kind === "A" && st.due ? st.due : null,
-                    channelId: d ? null : ctx.channelId || null, messageId: d ? null : ctx.messageId || null,
-                    meetingId: d ? null : ctx.meetingId || null, meetingDate: d ? null : ctx.meetingDate || null
-                });
-                st.busy = false;
-                if (!x.ok) { render(); toast(x.d.error || "Not saved. Try again.", "error", "Decisions"); return; }
-                dlg.close();
-                toast(d ? "Saved." : st.kind === "A" ? "Action item added." : "Decision recorded. It's on the Decisions page too.", "success", d ? null : "⚖ Nirnay");
-                if (x.d && x.d.decisionId) { paintCard(x.d); onSaved && onSaved(x.d); }
-            }
-        };
-        dlg.oninput = (e) => {
-            if (e.target.matches("[data-q]")) { st.q = e.target.value; keep(); render(); }
-        };
-        dlg.onchange = (e) => { if (e.target.matches("#nirDue")) { st.due = e.target.value; keep(); render(); } };
-        dlg.onkeydown = (e) => {
-            if (e.key === "Enter" && e.target.matches("[data-q]")) { e.preventDefault(); dlg.querySelector("[data-owner]")?.click(); }
-        };
-        render();
-        if (!dlg.open) dlg.showModal();
-        setTimeout(() => { const t = dlg.querySelector("#nirTitle"); if (t && !d) { t.focus(); t.select(); } }, 60);
+            const x = await post(`/work/decisions/${d.decisionId}/delete`);
+            if (!x.ok) { toast(x.d.error || "Couldn't delete it.", "error", "Decisions"); return; }
+            dlg.close();
+            toast(d.isAction ? "Action item deleted." : "Decision deleted.", "success");
+            removeCard(d.decisionId);
+            cur.onDeleted && cur.onDeleted(d.decisionId);
+            return;
+        }
+        const save = t.closest("[data-save]");
+        if (!save) return;
+        const kind = C().radio("nirKind") === "A" ? "A" : "D";
+        const title = C().get("nirTitle");
+        if (!title) {
+            window.validateModernInput?.("#nirTitle");
+            toast(kind === "A" ? "Write what needs to be done." : "Write what was decided.", "warn");
+            dlg.querySelector("#nirTitle").focus();
+            return;
+        }
+        save.disabled = true;
+        const ctx = cur.ctx;
+        const x = await post("/work/decisions/save", {
+            decisionId: d ? d.decisionId : 0, kind, title, details: C().get("nirDetails") || null,
+            ownerId: C().get("nirOwner") || null, dueDate: kind === "A" ? C().get("nirDue") || null : null,
+            channelId: d ? null : ctx.channelId || null, messageId: d ? null : ctx.messageId || null,
+            meetingId: d ? null : ctx.meetingId || null, meetingDate: d ? null : ctx.meetingDate || null
+        });
+        save.disabled = false;
+        if (!x.ok) { toast(x.d.error || "Not saved. Try again.", "error", "Decisions"); return; }
+        dlg.close();
+        toast(d ? "Saved." : kind === "A" ? "Action item added." : "Decision recorded. It's on the Decisions page too.", "success", d ? null : "⚖ Nirnay");
+        if (x.d && x.d.decisionId) { paintCard(x.d); cur.onSaved && cur.onSaved(x.d); }
     }
 
     // =================================================================
