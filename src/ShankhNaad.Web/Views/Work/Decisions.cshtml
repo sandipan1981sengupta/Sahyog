@@ -1,0 +1,70 @@
+@model List<object>
+@{
+    // Nirnay · the decision register (Controllers/DecisionsController.cs, js/work-decisions.js, database/46_Nirnay.sql)
+    var depts = (ViewData["Departments"] as List<DepartmentDto> ?? new()).OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+        .Select(d => new { id = d.DepartmentId, name = d.Name }).ToList();
+    var isAdmin = User.IsInRole(AppRoles.TenantAdmin);
+}
+<main class="sn-page sn-work">
+    <partial name="~/Views/Work/_WorkHead.cshtml" model="@("decisions")" />
+
+    <div class="sn-grid-4 sn-nir-stats">
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(124,58,237,.12);color:#6d28d9"><i class="fa fa-balance-scale"></i></span><div><div class="sn-eyebrow">Decisions</div><div class="sn-stat-val" data-stat="dec">-</div></div></div>
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(14,165,233,.12);color:#0284c7"><i class="fa fa-check-square-o"></i></span><div><div class="sn-eyebrow">Open action items</div><div class="sn-stat-val" data-stat="open">-</div></div></div>
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(220,38,38,.12);color:#dc2626"><i class="fa fa-clock-o"></i></span><div><div class="sn-eyebrow">Overdue</div><div class="sn-stat-val" data-stat="late">-</div></div></div>
+        <div class="sn-stat glass"><span class="sn-stat-ic" style="background:rgba(22,163,74,.12);color:#15803d"><i class="fa fa-user-o"></i></span><div><div class="sn-eyebrow">Yours to do</div><div class="sn-stat-val" data-stat="mine">-</div></div></div>
+    </div>
+
+    <section class="sn-hist glass sn-nir-reg" id="nirReg" aria-label="Decisions">
+        <div class="sn-hist-bar">
+            <div class="sn-hist-tabs" role="tablist" aria-label="Show">
+                <button type="button" role="tab" class="on" aria-selected="true" data-tab="all">All <span class="sn-hist-n" data-n="all">0</span></button>
+                <button type="button" role="tab" aria-selected="false" data-tab="D"><i class="fa fa-balance-scale" aria-hidden="true"></i> Decisions <span class="sn-hist-n" data-n="D">0</span></button>
+                <button type="button" role="tab" aria-selected="false" data-tab="A"><i class="fa fa-check-square-o" aria-hidden="true"></i> Action items <span class="sn-hist-n" data-n="A">0</span></button>
+                <button type="button" role="tab" aria-selected="false" data-tab="mine"><i class="fa fa-user-o" aria-hidden="true"></i> Mine <span class="sn-hist-n" data-n="mine">0</span></button>
+            </div>
+            <label class="search sn-hist-search">
+                <i class="fa fa-search" aria-hidden="true"></i>
+                <input type="search" placeholder="Search decisions, people, chats, meetings" aria-label="Search decisions" data-nir-q />
+            </label>
+            <div class="sn-hist-tools">
+                <button type="button" class="sn-tool" data-nir-export title="Download what's shown as a CSV file (opens in Excel)"><i class="fa fa-download" aria-hidden="true"></i> <span>Export</span></button>
+                <button type="button" class="cee-btn cee-btn-gradient sn-nir-new" data-nir-new><i class="fa fa-plus" aria-hidden="true"></i> <span>Add</span></button>
+            </div>
+        </div>
+        <div class="sn-nir-filters">
+            <div class="sn-hist-chips" aria-label="Where it was decided">
+                <button type="button" class="on" data-src="">Anywhere</button>
+                <button type="button" data-src="chat"><i class="fa fa-comments-o" aria-hidden="true"></i> Chats</button>
+                <button type="button" data-src="meeting"><i class="fa fa-calendar" aria-hidden="true"></i> Meetings</button>
+                <button type="button" data-src="other"><i class="fa fa-pencil" aria-hidden="true"></i> Added here</button>
+            </div>
+            <label class="sn-nir-open"><input type="checkbox" data-nir-openonly /> Only open action items</label>
+            <span class="sn-nir-selects">
+                @if (depts.Count > 0)
+                {
+                    <select class="sn-select" data-nir-dept aria-label="Team">
+                        <option value="">Every team</option>
+                        @foreach (var d in depts) { <option value="@d.id">@d.name</option> }
+                    </select>
+                }
+                <select class="sn-select" data-nir-period aria-label="When">
+                    <option value="">Any time</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                    <option value="90">Last 3 months</option>
+                    <option value="365">Last year</option>
+                </select>
+            </span>
+        </div>
+        <div class="sn-hist-list sn-nir-list" aria-live="polite">
+            <div class="sn-nir-loading">Loading…</div>
+        </div>
+    </section>
+</main>
+
+<script type="application/json" id="nirData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { me = User.UserGuid().ToString(), isAdmin, depts }))</script>
+
+@section Scripts {
+    <script src="~/js/work-decisions.js" asp-append-version="true"></script>
+}

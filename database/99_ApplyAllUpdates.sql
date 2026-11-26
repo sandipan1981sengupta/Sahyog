@@ -1,6 +1,6 @@
 /* =====================================================================
    ShankhNaad · 99_ApplyAllUpdates.sql
-   ONE file with every database update (03 → 44), in the right order.
+   ONE file with every database update (03 → 53), in the right order.
    Safe to run more than once: each step only adds or replaces what it needs,
    and no data is deleted.
 
@@ -3958,6 +3958,1552 @@ END
 GO
 
 PRINT N'44_LocationPrivacy.sql applied.';
+GO
+
+/* ############################## 45_Shankh.sql ############################## */
+PRINT N'Applying 45_Shankh.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 45 (safe to run more than once; needs 01–02 and 40_OrgStructure.sql):
+     Shankh: an urgent alert that rings every person's screen until they press "Seen".
+     1. A workspace admin sends it to everyone, a department, or picked people.
+     2. Each person's row records when they saw it.
+     3. After N minutes, the managers of people who still haven't seen it get a reminder (once).
+     4. The sender or an admin closes it: it stops ringing everywhere.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_ShankhAlerts', N'U') IS NULL
+CREATE TABLE dbo.sahyog_ShankhAlerts
+(
+    AlertId         UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_sahyog_ShankhAlerts PRIMARY KEY,
+    TenantId        UNIQUEIDENTIFIER NOT NULL
+                    CONSTRAINT FK_sahyog_ShankhAlerts_Tenants REFERENCES dbo.sahyog_Tenants(TenantId) ON DELETE CASCADE,
+    SenderId        UNIQUEIDENTIFIER NOT NULL,
+    Kind            VARCHAR(20)      NOT NULL,          -- outage · drill · client · other
+    Body            NVARCHAR(1000)   NOT NULL,
+    Audience        NVARCHAR(200)    NOT NULL,          -- "Everyone", "Engineering", "4 people" (shown on the board)
+    RemindAfterMin  INT              NULL,              -- NULL = no reminder to managers
+    SentUtc         DATETIME2(3)     NOT NULL CONSTRAINT DF_sahyog_ShankhAlerts_Sent DEFAULT (SYSUTCDATETIME()),
+    ClosedUtc       DATETIME2(3)     NULL,
+    ClosedBy        UNIQUEIDENTIFIER NULL
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_ShankhAlerts_Tenant')
+    CREATE INDEX IX_sahyog_ShankhAlerts_Tenant ON dbo.sahyog_ShankhAlerts(TenantId, SentUtc DESC);
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_ShankhRecipients', N'U') IS NULL
+CREATE TABLE dbo.sahyog_ShankhRecipients
+(
+    AlertId         UNIQUEIDENTIFIER NOT NULL
+                    CONSTRAINT FK_sahyog_ShankhRecipients_Alerts REFERENCES dbo.sahyog_ShankhAlerts(AlertId) ON DELETE CASCADE,
+    UserId          UNIQUEIDENTIFIER NOT NULL,
+    ManagerId       UNIQUEIDENTIFIER NULL,               -- their manager when the alert was sent (for the reminder)
+    SeenUtc         DATETIME2(3)     NULL,
+    RemindedUtc     DATETIME2(3)     NULL,               -- when their manager was reminded
+    CONSTRAINT PK_sahyog_ShankhRecipients PRIMARY KEY (AlertId, UserId)
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_ShankhRecipients_User')
+    CREATE INDEX IX_sahyog_ShankhRecipients_User ON dbo.sahyog_ShankhRecipients(UserId) INCLUDE (SeenUtc);
+GO
+
+/* ---------- send: the alert and one row per person (ids separated by commas) ---------- */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Shankh_Create
+    @AlertId UNIQUEIDENTIFIER, @TenantId UNIQUEIDENTIFIER, @SenderId UNIQUEIDENTIFIER,
+    @Kind VARCHAR(20), @Body NVARCHAR(1000), @Audience NVARCHAR(200), @RemindAfterMin INT,
+    @UserIds NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    INSERT dbo.sahyog_ShankhAlerts (AlertId, TenantId, SenderId, Kind, Body, Audience, RemindAfterMin)
+    VALUES (@AlertId, @TenantId, @SenderId, @Kind, @Body, @Audience, @RemindAfterMin);
+
+    INSERT dbo.sahyog_ShankhRecipients (AlertId, UserId, ManagerId, SeenUtc)
+    SELECT @AlertId, u.UserId, u.ManagerId,
+           CASE WHEN u.UserId = @SenderId THEN SYSUTCDATETIME() END      -- the sender has seen it
+    FROM (SELECT DISTINCT TRY_CAST(LTRIM(RTRIM(value)) AS UNIQUEIDENTIFIER) AS UserId FROM STRING_SPLIT(@UserIds, N',')) s
+    JOIN dbo.sahyog_Users u ON u.UserId = s.UserId AND u.TenantId = @TenantId AND u.IsActive = 1;
+
+    SELECT COUNT(*) AS People FROM dbo.sahyog_ShankhRecipients WHERE AlertId = @AlertId;
+END
+GO
+
+/* ---------- "Seen" ---------- */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Shankh_Seen @AlertId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @TenantId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE r SET SeenUtc = COALESCE(r.SeenUtc, SYSUTCDATETIME())
+    FROM dbo.sahyog_ShankhRecipients r
+    JOIN dbo.sahyog_ShankhAlerts a ON a.AlertId = r.AlertId AND a.TenantId = @TenantId
+    WHERE r.AlertId = @AlertId AND r.UserId = @UserId;
+    SELECT r.SeenUtc, a.SenderId FROM dbo.sahyog_ShankhRecipients r JOIN dbo.sahyog_ShankhAlerts a ON a.AlertId = r.AlertId
+    WHERE r.AlertId = @AlertId AND r.UserId = @UserId AND a.TenantId = @TenantId;
+END
+GO
+
+/* ---------- my alerts still ringing (shown again on every page until I press Seen) ---------- */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Shankh_MyOpen @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT a.AlertId, a.Kind, a.Body, a.Audience, a.SentUtc, a.SenderId, s.DisplayName AS SenderName
+    FROM dbo.sahyog_ShankhRecipients r
+    JOIN dbo.sahyog_ShankhAlerts a ON a.AlertId = r.AlertId AND a.TenantId = @TenantId
+    LEFT JOIN dbo.sahyog_Users s ON s.UserId = a.SenderId
+    WHERE r.UserId = @UserId AND r.SeenUtc IS NULL AND a.ClosedUtc IS NULL
+      AND a.SentUtc > DATEADD(HOUR, -24, SYSUTCDATETIME())               -- an old alert nobody closed stops after a day
+    ORDER BY a.SentUtc DESC;
+END
+GO
+
+/* ---------- the board: the alert, then everyone on it ---------- */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Shankh_Board @TenantId UNIQUEIDENTIFIER, @AlertId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT a.AlertId, a.Kind, a.Body, a.Audience, a.RemindAfterMin, a.SentUtc, a.ClosedUtc, a.SenderId,
+           s.DisplayName AS SenderName
+    FROM dbo.sahyog_ShankhAlerts a LEFT JOIN dbo.sahyog_Users s ON s.UserId = a.SenderId
+    WHERE a.AlertId = @AlertId AND a.TenantId = @TenantId;
+
+    SELECT r.UserId, u.DisplayName, u.AvatarTone, d.Name AS DepartmentName, r.ManagerId, m.DisplayName AS ManagerName,
+           r.SeenUtc, r.RemindedUtc
+    FROM dbo.sahyog_ShankhRecipients r
+    JOIN dbo.sahyog_ShankhAlerts a ON a.AlertId = r.AlertId AND a.TenantId = @TenantId
+    JOIN dbo.sahyog_Users u ON u.UserId = r.UserId
+    LEFT JOIN dbo.sahyog_Departments d ON d.DepartmentId = u.DepartmentId
+    LEFT JOIN dbo.sahyog_Users m ON m.UserId = r.ManagerId
+    WHERE r.AlertId = @AlertId
+    ORDER BY CASE WHEN r.SeenUtc IS NULL THEN 0 ELSE 1 END, u.DisplayName;
+END
+GO
+
+/* ---------- recent alerts (the admin's list) ---------- */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Shankh_Recent @TenantId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT TOP (20) a.AlertId, a.Kind, a.Body, a.Audience, a.SentUtc, a.ClosedUtc, s.DisplayName AS SenderName,
+           (SELECT COUNT(*) FROM dbo.sahyog_ShankhRecipients r WHERE r.AlertId = a.AlertId) AS People,
+           (SELECT COUNT(*) FROM dbo.sahyog_ShankhRecipients r WHERE r.AlertId = a.AlertId AND r.SeenUtc IS NOT NULL) AS Seen
+    FROM dbo.sahyog_ShankhAlerts a LEFT JOIN dbo.sahyog_Users s ON s.UserId = a.SenderId
+    WHERE a.TenantId = @TenantId
+    ORDER BY a.SentUtc DESC;
+END
+GO
+
+/* ---------- close: stops ringing everywhere; returns who was still ringing ---------- */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Shankh_Close @TenantId UNIQUEIDENTIFIER, @AlertId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE dbo.sahyog_ShankhAlerts SET ClosedUtc = COALESCE(ClosedUtc, SYSUTCDATETIME()), ClosedBy = COALESCE(ClosedBy, @UserId)
+    WHERE AlertId = @AlertId AND TenantId = @TenantId;
+    SELECT r.UserId FROM dbo.sahyog_ShankhRecipients r JOIN dbo.sahyog_ShankhAlerts a ON a.AlertId = r.AlertId
+    WHERE r.AlertId = @AlertId AND a.TenantId = @TenantId AND r.SeenUtc IS NULL;
+END
+GO
+
+/* ---------- reminders due: people who haven't seen it after RemindAfterMin; each is returned once ---------- */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Shankh_TakeDueReminders
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @due TABLE (AlertId UNIQUEIDENTIFIER, UserId UNIQUEIDENTIFIER, ManagerId UNIQUEIDENTIFIER);
+    UPDATE r SET RemindedUtc = SYSUTCDATETIME()
+    OUTPUT inserted.AlertId, inserted.UserId, inserted.ManagerId INTO @due
+    FROM dbo.sahyog_ShankhRecipients r
+    JOIN dbo.sahyog_ShankhAlerts a ON a.AlertId = r.AlertId
+    WHERE r.SeenUtc IS NULL AND r.RemindedUtc IS NULL AND a.ClosedUtc IS NULL AND a.RemindAfterMin IS NOT NULL
+      AND a.SentUtc < DATEADD(MINUTE, -a.RemindAfterMin, SYSUTCDATETIME())
+      AND a.SentUtc > DATEADD(HOUR, -24, SYSUTCDATETIME());
+    SELECT d.AlertId, a.TenantId, a.Body, a.SenderId, d.UserId, u.DisplayName, d.ManagerId, m.DisplayName AS ManagerName
+    FROM @due d
+    JOIN dbo.sahyog_ShankhAlerts a ON a.AlertId = d.AlertId
+    JOIN dbo.sahyog_Users u ON u.UserId = d.UserId
+    LEFT JOIN dbo.sahyog_Users m ON m.UserId = d.ManagerId AND m.IsActive = 1;
+END
+GO
+
+PRINT N'45_Shankh.sql applied.';
+GO
+
+PRINT N'45_Shankh.sql applied.';
+GO
+
+/* ############################## 46_Nirnay.sql ############################## */
+PRINT N'Applying 46_Nirnay.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 46 (safe to run more than once; needs 01–02 and 40_OrgStructure.sql):
+     Nirnay: the decision log.
+     1. Any chat message can be marked as a decision (or an action item) with an owner.
+     2. A meeting can end with a short list of decisions and action items.
+     3. One searchable register of everything decided, with where it was decided.
+   Who sees a decision: people in the chat it came from, people invited to the meeting it came from,
+   its owner and the person who recorded it. Ones added straight on the register are for everyone
+   in the workspace. Admins see the same as everyone else (one-to-one chats stay private).
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_Decisions', N'U') IS NULL
+CREATE TABLE dbo.sahyog_Decisions
+(
+    DecisionId      INT              IDENTITY(1,1) NOT NULL CONSTRAINT PK_sahyog_Decisions PRIMARY KEY,
+    TenantId        UNIQUEIDENTIFIER NOT NULL CONSTRAINT FK_sahyog_Decisions_Tenants REFERENCES dbo.sahyog_Tenants(TenantId) ON DELETE CASCADE,
+    Kind            CHAR(1)          NOT NULL CONSTRAINT DF_sahyog_Decisions_Kind DEFAULT ('D'),   -- D decision, A action item
+    Title           NVARCHAR(300)    NOT NULL,
+    Details         NVARCHAR(1000)   NULL,
+    OwnerId         UNIQUEIDENTIFIER NULL,
+    DueDate         DATE             NULL,               -- action items
+    DoneUtc         DATETIME2(3)     NULL,
+    DoneBy          UNIQUEIDENTIFIER NULL,
+    ChannelId       UNIQUEIDENTIFIER NULL,               -- from a chat message ...
+    MessageId       BIGINT           NULL,
+    MeetingId       UNIQUEIDENTIFIER NULL,               -- ... or from a meeting (that date)
+    MeetingDate     DATE             NULL,
+    RecordedBy      UNIQUEIDENTIFIER NOT NULL,
+    RecordedUtc     DATETIME2(3)     NOT NULL CONSTRAINT DF_sahyog_Decisions_Recorded DEFAULT (SYSUTCDATETIME()),
+    IsDeleted       BIT              NOT NULL CONSTRAINT DF_sahyog_Decisions_Deleted DEFAULT (0),
+    CONSTRAINT CK_sahyog_Decisions_Kind CHECK (Kind IN ('D', 'A'))
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_Decisions_Tenant')
+    CREATE INDEX IX_sahyog_Decisions_Tenant ON dbo.sahyog_Decisions(TenantId, RecordedUtc DESC) WHERE IsDeleted = 0;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_Decisions_Message')
+    CREATE INDEX IX_sahyog_Decisions_Message ON dbo.sahyog_Decisions(MessageId) WHERE MessageId IS NOT NULL AND IsDeleted = 0;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_Decisions_Meeting')
+    CREATE INDEX IX_sahyog_Decisions_Meeting ON dbo.sahyog_Decisions(MeetingId, MeetingDate) WHERE MeetingId IS NOT NULL AND IsDeleted = 0;
+GO
+
+/* ---------- can this person see this decision? (one place, used by every read) ---------- */
+CREATE OR ALTER FUNCTION dbo.sahyog_Decision_CanSee
+(
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER,
+    @OwnerId UNIQUEIDENTIFIER, @RecordedBy UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER, @MeetingId UNIQUEIDENTIFIER
+)
+RETURNS BIT
+AS
+BEGIN
+    IF @OwnerId = @UserId OR @RecordedBy = @UserId RETURN 1;
+    IF @ChannelId IS NULL AND @MeetingId IS NULL RETURN 1;
+    IF @ChannelId IS NOT NULL AND EXISTS (SELECT 1 FROM dbo.sahyog_ChannelMembers cm WHERE cm.ChannelId = @ChannelId AND cm.UserId = @UserId)
+        RETURN 1;
+    IF @MeetingId IS NOT NULL AND EXISTS (
+        SELECT 1 FROM dbo.sahyog_Meetings m
+        WHERE m.MeetingId = @MeetingId AND m.TenantId = @TenantId
+          AND (m.HostId = @UserId
+               OR EXISTS (SELECT 1 FROM dbo.sahyog_MeetingInvitees i WHERE i.MeetingId = m.MeetingId AND i.UserId = @UserId)))
+        RETURN 1;
+    RETURN 0;
+END
+GO
+
+/* ---------- one row as the app shows it ---------- */
+CREATE OR ALTER VIEW dbo.sahyog_DecisionRows
+AS
+SELECT d.DecisionId, d.TenantId, d.Kind, d.Title, d.Details, d.OwnerId, d.DueDate, d.DoneUtc, d.ChannelId, d.MessageId,
+       d.MeetingId, d.MeetingDate, d.RecordedBy, d.RecordedUtc,
+       o.DisplayName AS OwnerName, o.AvatarTone AS OwnerTone, o.DepartmentId,
+       dep.Name AS DepartmentName,
+       r.DisplayName AS RecordedByName,
+       c.Name AS ChannelName, CAST(ISNULL(c.IsDirect, 0) AS BIT) AS ChannelIsDirect,
+       mt.Title AS MeetingTitle, mt.HostId AS MeetingHostId
+FROM dbo.sahyog_Decisions d
+LEFT JOIN dbo.sahyog_Users o        ON o.UserId = d.OwnerId
+LEFT JOIN dbo.sahyog_Departments dep ON dep.DepartmentId = o.DepartmentId
+LEFT JOIN dbo.sahyog_Users r        ON r.UserId = d.RecordedBy
+LEFT JOIN dbo.sahyog_Channels c     ON c.ChannelId = d.ChannelId
+LEFT JOIN dbo.sahyog_Meetings mt    ON mt.MeetingId = d.MeetingId
+WHERE d.IsDeleted = 0;
+GO
+
+/* ---------- add or change one ----------
+   New from a message: the message must be in that chat (the app checks the person is in the chat).
+   Returns the DecisionId (0 when the message isn't there). */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Decision_Save
+    @DecisionId  INT = NULL,
+    @TenantId    UNIQUEIDENTIFIER,
+    @UserId      UNIQUEIDENTIFIER,
+    @Kind        CHAR(1),
+    @Title       NVARCHAR(300),
+    @Details     NVARCHAR(1000) = NULL,
+    @OwnerId     UNIQUEIDENTIFIER = NULL,
+    @DueDate     DATE = NULL,
+    @ChannelId   UNIQUEIDENTIFIER = NULL,
+    @MessageId   BIGINT = NULL,
+    @MeetingId   UNIQUEIDENTIFIER = NULL,
+    @MeetingDate DATE = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF @Kind NOT IN ('D', 'A') SET @Kind = 'D';
+    IF @Kind = 'D' SET @DueDate = NULL;
+    -- the owner must be someone in this workspace
+    IF @OwnerId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.sahyog_Users WHERE UserId = @OwnerId AND TenantId = @TenantId)
+        SET @OwnerId = NULL;
+
+    IF @DecisionId IS NULL OR @DecisionId = 0
+    BEGIN
+        IF @MessageId IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM dbo.sahyog_Messages WHERE MessageId = @MessageId AND ChannelId = @ChannelId AND TenantId = @TenantId)
+        BEGIN SELECT CAST(0 AS INT) AS DecisionId; RETURN; END;
+        IF @MessageId IS NULL AND @MeetingId IS NULL SET @ChannelId = NULL;
+
+        INSERT dbo.sahyog_Decisions (TenantId, Kind, Title, Details, OwnerId, DueDate, ChannelId, MessageId, MeetingId, MeetingDate, RecordedBy)
+        VALUES (@TenantId, @Kind, @Title, @Details, @OwnerId, @DueDate, @ChannelId, @MessageId, @MeetingId, @MeetingDate, @UserId);
+        SELECT CAST(SCOPE_IDENTITY() AS INT) AS DecisionId;
+        RETURN;
+    END;
+
+    -- changing: only what it says and who owns it; where it came from stays
+    UPDATE dbo.sahyog_Decisions
+    SET Kind = @Kind, Title = @Title, Details = @Details, OwnerId = @OwnerId, DueDate = @DueDate,
+        DoneUtc = CASE WHEN @Kind = 'D' THEN NULL ELSE DoneUtc END
+    WHERE DecisionId = @DecisionId AND TenantId = @TenantId AND IsDeleted = 0;
+    SELECT CASE WHEN @@ROWCOUNT = 1 THEN @DecisionId ELSE 0 END AS DecisionId;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Decision_Get
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @DecisionId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT v.* FROM dbo.sahyog_DecisionRows v
+    WHERE v.DecisionId = @DecisionId AND v.TenantId = @TenantId
+      AND dbo.sahyog_Decision_CanSee(@TenantId, @UserId, v.OwnerId, v.RecordedBy, v.ChannelId, v.MeetingId) = 1;
+END
+GO
+
+/* ---------- the register ----------
+   @Kind: NULL all, 'D', 'A';  @Open = 1: action items not done;  @Mine = 1: owned or recorded by me
+   @Source: NULL any, 'chat', 'meeting', 'other';  @Search matches the text, owner, chat or meeting name */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Decision_List
+    @TenantId     UNIQUEIDENTIFIER,
+    @UserId       UNIQUEIDENTIFIER,
+    @Kind         CHAR(1) = NULL,
+    @Open         BIT = 0,
+    @Mine         BIT = 0,
+    @Source       VARCHAR(10) = NULL,
+    @DepartmentId UNIQUEIDENTIFIER = NULL,
+    @FromUtc      DATETIME2(3) = NULL,
+    @Search       NVARCHAR(100) = NULL,
+    @Top          INT = 300
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @q NVARCHAR(110) = CASE WHEN NULLIF(LTRIM(RTRIM(@Search)), N'') IS NULL THEN NULL
+                                    ELSE N'%' + REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(@Search)), N'[', N'[[]'), N'%', N'[%]'), N'_', N'[_]') + N'%' END;
+    SELECT TOP (@Top) v.*
+    FROM dbo.sahyog_DecisionRows v
+    WHERE v.TenantId = @TenantId
+      AND (@Kind IS NULL OR v.Kind = @Kind)
+      AND (@Open = 0 OR (v.Kind = 'A' AND v.DoneUtc IS NULL))
+      AND (@Mine = 0 OR v.OwnerId = @UserId OR v.RecordedBy = @UserId)
+      AND (@Source IS NULL
+           OR (@Source = 'chat' AND v.MessageId IS NOT NULL)
+           OR (@Source = 'meeting' AND v.MeetingId IS NOT NULL)
+           OR (@Source = 'other' AND v.MessageId IS NULL AND v.MeetingId IS NULL))
+      AND (@DepartmentId IS NULL OR v.DepartmentId = @DepartmentId)
+      AND (@FromUtc IS NULL OR v.RecordedUtc >= @FromUtc)
+      AND (@q IS NULL OR v.Title LIKE @q OR v.Details LIKE @q OR v.OwnerName LIKE @q OR v.ChannelName LIKE @q OR v.MeetingTitle LIKE @q)
+      AND dbo.sahyog_Decision_CanSee(@TenantId, @UserId, v.OwnerId, v.RecordedBy, v.ChannelId, v.MeetingId) = 1
+    ORDER BY v.RecordedUtc DESC;
+END
+GO
+
+/* ---------- the cards under chat messages on screen (@Ids = "1,2,3") ---------- */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Decision_ForMessages
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @Ids NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT v.*
+    FROM dbo.sahyog_DecisionRows v
+    JOIN (SELECT DISTINCT TRY_CAST(value AS BIGINT) AS Id FROM STRING_SPLIT(@Ids, ',')) x ON x.Id = v.MessageId
+    WHERE v.TenantId = @TenantId
+      AND EXISTS (SELECT 1 FROM dbo.sahyog_ChannelMembers cm WHERE cm.ChannelId = v.ChannelId AND cm.UserId = @UserId)
+    ORDER BY v.DecisionId;
+END
+GO
+
+/* ---------- a meeting's decisions and action items (one date of a repeating meeting) ---------- */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Decision_ForMeeting
+    @TenantId UNIQUEIDENTIFIER, @MeetingId UNIQUEIDENTIFIER, @MeetingDate DATE = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT v.*
+    FROM dbo.sahyog_DecisionRows v
+    WHERE v.TenantId = @TenantId AND v.MeetingId = @MeetingId
+      AND (@MeetingDate IS NULL OR v.MeetingDate = @MeetingDate OR v.MeetingDate IS NULL)
+    ORDER BY v.Kind DESC, v.DecisionId;   -- decisions first, then action items
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Decision_SetDone
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @DecisionId INT, @Done BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE dbo.sahyog_Decisions
+    SET DoneUtc = CASE WHEN @Done = 1 THEN SYSUTCDATETIME() ELSE NULL END,
+        DoneBy  = CASE WHEN @Done = 1 THEN @UserId ELSE NULL END
+    WHERE DecisionId = @DecisionId AND TenantId = @TenantId AND Kind = 'A' AND IsDeleted = 0;
+    SELECT @@ROWCOUNT AS Changed;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Decision_Delete
+    @TenantId UNIQUEIDENTIFIER, @DecisionId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE dbo.sahyog_Decisions SET IsDeleted = 1 WHERE DecisionId = @DecisionId AND TenantId = @TenantId AND IsDeleted = 0;
+    SELECT @@ROWCOUNT AS Changed;
+END
+GO
+
+PRINT N'46_Nirnay.sql: decision log ready.';
+GO
+
+PRINT N'46_Nirnay.sql applied.';
+GO
+
+/* ############################## 47_Standup.sql ############################## */
+PRINT N'Applying 47_Standup.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 47 (safe to run more than once; needs 01–02 and 40_OrgStructure.sql):
+     Async stand-up. A team (a department, or everyone) answers three short questions on set days;
+     at the set time ShankhNaad reminds whoever hasn't answered; the roll-up shows answers and blockers.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_Standups', N'U') IS NULL
+CREATE TABLE dbo.sahyog_Standups
+(
+    StandupId    INT              IDENTITY(1,1) NOT NULL CONSTRAINT PK_sahyog_Standups PRIMARY KEY,
+    TenantId     UNIQUEIDENTIFIER NOT NULL CONSTRAINT FK_sahyog_Standups_Tenants REFERENCES dbo.sahyog_Tenants(TenantId) ON DELETE CASCADE,
+    Name         NVARCHAR(80)     NOT NULL,
+    DepartmentId UNIQUEIDENTIFIER NULL,                -- NULL = everyone in the workspace
+    Days         TINYINT          NOT NULL CONSTRAINT DF_sahyog_Standups_Days DEFAULT (31),   -- bit 0 Monday … bit 6 Sunday
+    AtMinutes    SMALLINT         NOT NULL CONSTRAINT DF_sahyog_Standups_At DEFAULT (600),    -- local time, minutes after midnight
+    Q1           NVARCHAR(150)    NOT NULL,
+    Q2           NVARCHAR(150)    NOT NULL,
+    Q3           NVARCHAR(150)    NOT NULL,
+    IsActive     BIT              NOT NULL CONSTRAINT DF_sahyog_Standups_Active DEFAULT (1),
+    CreatedBy    UNIQUEIDENTIFIER NOT NULL,
+    CreatedUtc   DATETIME2(3)     NOT NULL CONSTRAINT DF_sahyog_Standups_Created DEFAULT (SYSUTCDATETIME()),
+    LastRunDay   DATE             NULL                  -- the day the reminder last went out
+);
+GO
+IF OBJECT_ID(N'dbo.sahyog_StandupAnswers', N'U') IS NULL
+CREATE TABLE dbo.sahyog_StandupAnswers
+(
+    StandupId    INT              NOT NULL CONSTRAINT FK_sahyog_StandupAnswers_Standups REFERENCES dbo.sahyog_Standups(StandupId) ON DELETE CASCADE,
+    UserId       UNIQUEIDENTIFIER NOT NULL,
+    Day          DATE             NOT NULL,
+    A1           NVARCHAR(1000)   NULL,
+    A2           NVARCHAR(1000)   NULL,
+    A3           NVARCHAR(1000)   NULL,
+    HasBlocker   BIT              NOT NULL CONSTRAINT DF_sahyog_StandupAnswers_Blocker DEFAULT (0),
+    AnsweredUtc  DATETIME2(3)     NOT NULL CONSTRAINT DF_sahyog_StandupAnswers_At DEFAULT (SYSUTCDATETIME()),
+    CONSTRAINT PK_sahyog_StandupAnswers PRIMARY KEY (StandupId, Day, UserId)
+);
+GO
+
+/* the people in a stand-up: its department, or everyone active */
+CREATE OR ALTER FUNCTION dbo.sahyog_Standup_People (@StandupId INT)
+RETURNS TABLE
+AS RETURN
+    SELECT u.UserId, u.DisplayName, u.AvatarTone, u.ManagerId, u.JobTitle
+    FROM dbo.sahyog_Standups s
+    JOIN dbo.sahyog_Users u ON u.TenantId = s.TenantId AND u.IsActive = 1
+    WHERE s.StandupId = @StandupId
+      AND (s.DepartmentId IS NULL OR u.DepartmentId = s.DepartmentId);
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Standup_List
+    @TenantId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT s.StandupId, s.Name, s.DepartmentId, d.Name AS DepartmentName, s.Days, s.AtMinutes, s.Q1, s.Q2, s.Q3, s.IsActive,
+           s.CreatedBy, c.DisplayName AS CreatedByName,
+           (SELECT COUNT(*) FROM dbo.sahyog_Standup_People(s.StandupId)) AS People
+    FROM dbo.sahyog_Standups s
+    LEFT JOIN dbo.sahyog_Departments d ON d.DepartmentId = s.DepartmentId
+    LEFT JOIN dbo.sahyog_Users c ON c.UserId = s.CreatedBy
+    WHERE s.TenantId = @TenantId
+    ORDER BY s.IsActive DESC, s.Name;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Standup_Save
+    @StandupId INT = NULL, @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER,
+    @Name NVARCHAR(80), @DepartmentId UNIQUEIDENTIFIER = NULL, @Days TINYINT, @AtMinutes SMALLINT,
+    @Q1 NVARCHAR(150), @Q2 NVARCHAR(150), @Q3 NVARCHAR(150), @IsActive BIT = 1
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF @DepartmentId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.sahyog_Departments WHERE DepartmentId = @DepartmentId AND TenantId = @TenantId)
+        SET @DepartmentId = NULL;
+    IF @StandupId IS NULL OR @StandupId = 0
+    BEGIN
+        INSERT dbo.sahyog_Standups (TenantId, Name, DepartmentId, Days, AtMinutes, Q1, Q2, Q3, IsActive, CreatedBy)
+        VALUES (@TenantId, @Name, @DepartmentId, @Days, @AtMinutes, @Q1, @Q2, @Q3, @IsActive, @UserId);
+        SELECT CAST(SCOPE_IDENTITY() AS INT) AS StandupId;
+        RETURN;
+    END;
+    UPDATE dbo.sahyog_Standups
+    SET Name = @Name, DepartmentId = @DepartmentId, Days = @Days,
+        -- a new time today: let the reminder go out again
+        LastRunDay = CASE WHEN AtMinutes <> @AtMinutes THEN NULL ELSE LastRunDay END,
+        AtMinutes = @AtMinutes, Q1 = @Q1, Q2 = @Q2, Q3 = @Q3, IsActive = @IsActive
+    WHERE StandupId = @StandupId AND TenantId = @TenantId;
+    SELECT CASE WHEN @@ROWCOUNT = 1 THEN @StandupId ELSE 0 END AS StandupId;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Standup_Delete
+    @TenantId UNIQUEIDENTIFIER, @StandupId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DELETE dbo.sahyog_Standups WHERE StandupId = @StandupId AND TenantId = @TenantId;
+    SELECT @@ROWCOUNT AS Changed;
+END
+GO
+
+/* my stand-ups (I'm in them), with my answer for @Day if I gave one */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Standup_Mine
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @Day DATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT s.StandupId, s.Name, s.Days, s.AtMinutes, s.Q1, s.Q2, s.Q3, d.Name AS DepartmentName,
+           a.A1, a.A2, a.A3, a.HasBlocker, a.AnsweredUtc
+    FROM dbo.sahyog_Standups s
+    LEFT JOIN dbo.sahyog_Departments d ON d.DepartmentId = s.DepartmentId
+    LEFT JOIN dbo.sahyog_StandupAnswers a ON a.StandupId = s.StandupId AND a.Day = @Day AND a.UserId = @UserId
+    WHERE s.TenantId = @TenantId AND s.IsActive = 1
+      AND EXISTS (SELECT 1 FROM dbo.sahyog_Standup_People(s.StandupId) p WHERE p.UserId = @UserId)
+    ORDER BY s.AtMinutes, s.Name;
+END
+GO
+
+/* answer (or change my answer). Returns 0 when I'm not in that stand-up. */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Standup_Answer
+    @TenantId UNIQUEIDENTIFIER, @StandupId INT, @UserId UNIQUEIDENTIFIER, @Day DATE,
+    @A1 NVARCHAR(1000), @A2 NVARCHAR(1000), @A3 NVARCHAR(1000), @HasBlocker BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM dbo.sahyog_Standups WHERE StandupId = @StandupId AND TenantId = @TenantId)
+       OR NOT EXISTS (SELECT 1 FROM dbo.sahyog_Standup_People(@StandupId) WHERE UserId = @UserId)
+    BEGIN SELECT CAST(0 AS BIT) AS Saved, CAST(0 AS BIT) AS WasBlocked; RETURN; END;
+
+    DECLARE @was BIT = (SELECT HasBlocker FROM dbo.sahyog_StandupAnswers WHERE StandupId = @StandupId AND Day = @Day AND UserId = @UserId);
+    IF @was IS NULL
+        INSERT dbo.sahyog_StandupAnswers (StandupId, UserId, Day, A1, A2, A3, HasBlocker) VALUES (@StandupId, @UserId, @Day, @A1, @A2, @A3, @HasBlocker);
+    ELSE
+        UPDATE dbo.sahyog_StandupAnswers SET A1 = @A1, A2 = @A2, A3 = @A3, HasBlocker = @HasBlocker, AnsweredUtc = SYSUTCDATETIME()
+        WHERE StandupId = @StandupId AND Day = @Day AND UserId = @UserId;
+
+    -- who to tell about a new blocker: the person's manager and whoever set up the stand-up
+    SELECT CAST(1 AS BIT) AS Saved, CAST(ISNULL(@was, 0) AS BIT) AS WasBlocked, s.Name, s.CreatedBy, u.ManagerId, u.DisplayName
+    FROM dbo.sahyog_Standups s CROSS JOIN dbo.sahyog_Users u
+    WHERE s.StandupId = @StandupId AND u.UserId = @UserId;
+END
+GO
+
+/* the roll-up for one day: the stand-up, then everyone in it with their answer (or none) */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Standup_Rollup
+    @TenantId UNIQUEIDENTIFIER, @StandupId INT, @Day DATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT s.StandupId, s.Name, s.DepartmentId, d.Name AS DepartmentName, s.Days, s.AtMinutes, s.Q1, s.Q2, s.Q3, s.IsActive, s.CreatedBy
+    FROM dbo.sahyog_Standups s
+    LEFT JOIN dbo.sahyog_Departments d ON d.DepartmentId = s.DepartmentId
+    WHERE s.StandupId = @StandupId AND s.TenantId = @TenantId;
+
+    SELECT p.UserId, p.DisplayName, p.AvatarTone, p.JobTitle, a.A1, a.A2, a.A3, a.HasBlocker, a.AnsweredUtc
+    FROM dbo.sahyog_Standup_People(@StandupId) p
+    JOIN dbo.sahyog_Standups s ON s.StandupId = @StandupId AND s.TenantId = @TenantId
+    LEFT JOIN dbo.sahyog_StandupAnswers a ON a.StandupId = @StandupId AND a.Day = @Day AND a.UserId = p.UserId
+    ORDER BY CASE WHEN a.HasBlocker = 1 THEN 0 WHEN a.UserId IS NOT NULL THEN 1 ELSE 2 END, a.AnsweredUtc, p.DisplayName;
+END
+GO
+
+/* the reminder job: every active stand-up, with its workspace's time zone */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Standup_All
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT s.StandupId, s.TenantId, s.Name, s.Days, s.AtMinutes, s.LastRunDay, t.TimeZoneId
+    FROM dbo.sahyog_Standups s
+    JOIN dbo.sahyog_Tenants t ON t.TenantId = s.TenantId AND t.IsActive = 1
+    WHERE s.IsActive = 1;
+END
+GO
+
+/* marks today's reminder as sent and returns who hasn't answered yet (each stand-up once a day) */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Standup_TakeRun
+    @StandupId INT, @Day DATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE dbo.sahyog_Standups SET LastRunDay = @Day
+    WHERE StandupId = @StandupId AND (LastRunDay IS NULL OR LastRunDay < @Day);
+    IF @@ROWCOUNT = 0 RETURN;
+    SELECT p.UserId
+    FROM dbo.sahyog_Standup_People(@StandupId) p
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.sahyog_StandupAnswers a WHERE a.StandupId = @StandupId AND a.Day = @Day AND a.UserId = p.UserId);
+END
+GO
+
+PRINT N'47_Standup.sql: async stand-up ready.';
+GO
+
+PRINT N'47_Standup.sql applied.';
+GO
+
+/* ############################## 48_StandIn.sql ############################## */
+PRINT N'Applying 48_StandIn.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 48 (safe to run more than once; needs 32_OutOfOfficeAndEdit.sql and 46_Nirnay.sql):
+     Stand-in while out of office ("Ask Neha instead") and the "While you were away" catch-up.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_StandIns', N'U') IS NULL
+CREATE TABLE dbo.sahyog_StandIns
+(
+    UserId     UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_sahyog_StandIns PRIMARY KEY
+               CONSTRAINT FK_sahyog_StandIns_Users REFERENCES dbo.sahyog_Users(UserId) ON DELETE CASCADE,
+    TenantId   UNIQUEIDENTIFIER NOT NULL,
+    StandInId  UNIQUEIDENTIFIER NOT NULL,
+    SetUtc     DATETIME2(3)     NOT NULL CONSTRAINT DF_sahyog_StandIns_Set DEFAULT (SYSUTCDATETIME())
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_StandIns_Tenant')
+    CREATE INDEX IX_sahyog_StandIns_Tenant ON dbo.sahyog_StandIns(TenantId);
+GO
+
+/* @StandInId NULL = nobody */
+CREATE OR ALTER PROCEDURE dbo.sahyog_StandIn_Set
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @StandInId UNIQUEIDENTIFIER = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF @StandInId IS NULL OR @StandInId = @UserId
+       OR NOT EXISTS (SELECT 1 FROM dbo.sahyog_Users WHERE UserId = @StandInId AND TenantId = @TenantId AND IsActive = 1)
+    BEGIN
+        DELETE dbo.sahyog_StandIns WHERE UserId = @UserId AND TenantId = @TenantId;
+        SELECT CAST(NULL AS UNIQUEIDENTIFIER) AS StandInId, CAST(NULL AS NVARCHAR(100)) AS StandInName;
+        RETURN;
+    END;
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_StandIns WHERE UserId = @UserId)
+        UPDATE dbo.sahyog_StandIns SET StandInId = @StandInId, SetUtc = SYSUTCDATETIME() WHERE UserId = @UserId;
+    ELSE
+        INSERT dbo.sahyog_StandIns (UserId, TenantId, StandInId) VALUES (@UserId, @TenantId, @StandInId);
+    SELECT u.UserId AS StandInId, u.DisplayName AS StandInName FROM dbo.sahyog_Users u WHERE u.UserId = @StandInId;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_StandIn_List
+    @TenantId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT s.UserId, s.StandInId, u.DisplayName AS StandInName, u.AvatarTone AS StandInTone
+    FROM dbo.sahyog_StandIns s
+    JOIN dbo.sahyog_Users u ON u.UserId = s.StandInId AND u.IsActive = 1
+    WHERE s.TenantId = @TenantId;
+END
+GO
+
+/* ---------- "While you were away": what happened since @SinceUtc ----------
+   1 chats with unread messages · 2 decisions in my chats/meetings · 3 open action items for me
+   4 meetings I was invited to that took place · 5 what my stand-in wrote in chats we share */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Away_Summary
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @SinceUtc DATETIME2(3)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @now DATETIME2(3) = SYSUTCDATETIME();
+
+    SELECT TOP (12) c.ChannelId, c.IsDirect, cm.UnreadCount, c.LastMessageUtc,
+           CASE WHEN c.IsDirect = 1 THEN o.DisplayName ELSE c.Name END AS Name,
+           CASE WHEN c.IsDirect = 1 THEN o.AvatarTone ELSE 0 END AS Tone
+    FROM dbo.sahyog_ChannelMembers cm
+    JOIN dbo.sahyog_Channels c ON c.ChannelId = cm.ChannelId
+    OUTER APPLY (SELECT TOP (1) u.DisplayName, u.AvatarTone FROM dbo.sahyog_ChannelMembers x JOIN dbo.sahyog_Users u ON u.UserId = x.UserId
+                 WHERE x.ChannelId = c.ChannelId AND x.UserId <> @UserId) o
+    WHERE cm.UserId = @UserId AND cm.TenantId = @TenantId AND cm.UnreadCount > 0
+    ORDER BY cm.UnreadCount DESC, c.LastMessageUtc DESC;
+
+    IF OBJECT_ID(N'dbo.sahyog_DecisionRows', N'V') IS NOT NULL
+    BEGIN
+        SELECT TOP (10) v.DecisionId, v.Kind, v.Title, v.OwnerName, v.ChannelId, v.MessageId, v.ChannelName, v.ChannelIsDirect,
+               v.MeetingId, v.MeetingTitle, v.RecordedUtc
+        FROM dbo.sahyog_DecisionRows v
+        WHERE v.TenantId = @TenantId AND v.Kind = 'D' AND v.RecordedUtc >= @SinceUtc
+          AND dbo.sahyog_Decision_CanSee(@TenantId, @UserId, v.OwnerId, v.RecordedBy, v.ChannelId, v.MeetingId) = 1
+        ORDER BY v.RecordedUtc DESC;
+
+        SELECT TOP (10) v.DecisionId, v.Title, v.DueDate, v.RecordedByName, v.RecordedUtc
+        FROM dbo.sahyog_DecisionRows v
+        WHERE v.TenantId = @TenantId AND v.Kind = 'A' AND v.DoneUtc IS NULL AND v.OwnerId = @UserId
+        ORDER BY CASE WHEN v.DueDate IS NULL THEN 1 ELSE 0 END, v.DueDate, v.RecordedUtc DESC;
+    END
+    ELSE
+    BEGIN
+        SELECT CAST(NULL AS INT) AS DecisionId WHERE 1 = 0;
+        SELECT CAST(NULL AS INT) AS DecisionId WHERE 1 = 0;
+    END;
+
+    SELECT TOP (10) m.MeetingId, m.Title, m.StartUtc, m.DurationMinutes, h.DisplayName AS HostName
+    FROM dbo.sahyog_Meetings m
+    JOIN dbo.sahyog_Users h ON h.UserId = m.HostId
+    WHERE m.TenantId = @TenantId AND m.IsInstant = 0 AND m.Recurrence = 0
+      AND m.StartUtc >= @SinceUtc AND m.StartUtc < @now
+      AND (m.HostId = @UserId OR EXISTS (SELECT 1 FROM dbo.sahyog_MeetingInvitees i WHERE i.MeetingId = m.MeetingId AND i.UserId = @UserId))
+    ORDER BY m.StartUtc DESC;
+
+    -- my stand-in's messages in chats we are both in, while I was away
+    SELECT TOP (1) s.StandInId, u.DisplayName AS StandInName,
+           (SELECT COUNT(*) FROM dbo.sahyog_Messages msg
+            WHERE msg.TenantId = @TenantId AND msg.SenderId = s.StandInId AND msg.SentUtc >= @SinceUtc
+              AND EXISTS (SELECT 1 FROM dbo.sahyog_ChannelMembers a WHERE a.ChannelId = msg.ChannelId AND a.UserId = @UserId)) AS Messages
+    FROM dbo.sahyog_StandIns s
+    JOIN dbo.sahyog_Users u ON u.UserId = s.StandInId
+    WHERE s.UserId = @UserId AND s.TenantId = @TenantId;
+END
+GO
+
+PRINT N'48_StandIn.sql: stand-in and catch-up ready.';
+GO
+
+PRINT N'48_StandIn.sql applied.';
+GO
+
+/* ############################## 49_Roles.sql ############################## */
+PRINT N'Applying 49_Roles.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 49 (safe to run more than once; needs 01–02 and 40_OrgStructure.sql):
+     Message a role. Write to "IT help desk" or "Head of HR" instead of a person; ShankhNaad picks who
+     is in and free, opens a chat with them, and escalates when nobody replies in time.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_Roles', N'U') IS NULL
+CREATE TABLE dbo.sahyog_Roles
+(
+    RoleId       INT              IDENTITY(1,1) NOT NULL CONSTRAINT PK_sahyog_Roles PRIMARY KEY,
+    TenantId     UNIQUEIDENTIFIER NOT NULL CONSTRAINT FK_sahyog_Roles_Tenants REFERENCES dbo.sahyog_Tenants(TenantId) ON DELETE CASCADE,
+    Name         NVARCHAR(80)     NOT NULL,
+    Description  NVARCHAR(200)    NULL,
+    Icon         NVARCHAR(30)     NULL,               -- a Font Awesome name, e.g. "life-ring"
+    EscalateMin  INT              NOT NULL CONSTRAINT DF_sahyog_Roles_Esc DEFAULT (15),   -- 0 = never
+    CreatedUtc   DATETIME2(3)     NOT NULL CONSTRAINT DF_sahyog_Roles_Created DEFAULT (SYSUTCDATETIME())
+);
+GO
+IF OBJECT_ID(N'dbo.sahyog_RoleMembers', N'U') IS NULL
+CREATE TABLE dbo.sahyog_RoleMembers
+(
+    RoleId   INT              NOT NULL CONSTRAINT FK_sahyog_RoleMembers_Roles REFERENCES dbo.sahyog_Roles(RoleId) ON DELETE CASCADE,
+    UserId   UNIQUEIDENTIFIER NOT NULL,
+    Sort     INT              NOT NULL CONSTRAINT DF_sahyog_RoleMembers_Sort DEFAULT (0),     -- 0 = first to be asked
+    CONSTRAINT PK_sahyog_RoleMembers PRIMARY KEY (RoleId, UserId)
+);
+GO
+IF OBJECT_ID(N'dbo.sahyog_RoleRequests', N'U') IS NULL
+CREATE TABLE dbo.sahyog_RoleRequests
+(
+    RequestId    INT              IDENTITY(1,1) NOT NULL CONSTRAINT PK_sahyog_RoleRequests PRIMARY KEY,
+    TenantId     UNIQUEIDENTIFIER NOT NULL,
+    RoleId       INT              NOT NULL CONSTRAINT FK_sahyog_RoleRequests_Roles REFERENCES dbo.sahyog_Roles(RoleId) ON DELETE CASCADE,
+    FromUserId   UNIQUEIDENTIFIER NOT NULL,
+    Body         NVARCHAR(1000)   NOT NULL,
+    AssignedTo   UNIQUEIDENTIFIER NOT NULL,
+    ChannelId    UNIQUEIDENTIFIER NOT NULL,
+    CreatedUtc   DATETIME2(3)     NOT NULL CONSTRAINT DF_sahyog_RoleRequests_Created DEFAULT (SYSUTCDATETIME()),
+    AnsweredUtc  DATETIME2(3)     NULL,
+    EscalatedUtc DATETIME2(3)     NULL,
+    EscalatedTo  UNIQUEIDENTIFIER NULL,
+    EscChannelId UNIQUEIDENTIFIER NULL,               -- the chat with the person it was escalated to
+    ClosedUtc    DATETIME2(3)     NULL
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_RoleRequests_Open')
+    CREATE INDEX IX_sahyog_RoleRequests_Open ON dbo.sahyog_RoleRequests(CreatedUtc) WHERE AnsweredUtc IS NULL AND EscalatedUtc IS NULL AND ClosedUtc IS NULL;
+GO
+
+/* roles, then their people (in order) */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Role_List
+    @TenantId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT r.RoleId, r.Name, r.Description, r.Icon, r.EscalateMin,
+           (SELECT COUNT(*) FROM dbo.sahyog_RoleRequests q WHERE q.RoleId = r.RoleId AND q.AnsweredUtc IS NULL AND q.ClosedUtc IS NULL) AS Waiting
+    FROM dbo.sahyog_Roles r WHERE r.TenantId = @TenantId ORDER BY r.Name;
+
+    SELECT m.RoleId, m.UserId, m.Sort, u.DisplayName, u.AvatarTone, u.JobTitle, u.ManagerId
+    FROM dbo.sahyog_RoleMembers m
+    JOIN dbo.sahyog_Roles r ON r.RoleId = m.RoleId AND r.TenantId = @TenantId
+    JOIN dbo.sahyog_Users u ON u.UserId = m.UserId AND u.IsActive = 1
+    ORDER BY m.RoleId, m.Sort, u.DisplayName;
+END
+GO
+
+/* add or change a role; @MemberIds = a JSON array of ids, in the order they are asked: ["id","id"] */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Role_Save
+    @RoleId INT = NULL, @TenantId UNIQUEIDENTIFIER, @Name NVARCHAR(80), @Description NVARCHAR(200) = NULL,
+    @Icon NVARCHAR(30) = NULL, @EscalateMin INT = 15, @MemberIds NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    BEGIN TRAN;
+    IF @RoleId IS NULL OR @RoleId = 0
+    BEGIN
+        INSERT dbo.sahyog_Roles (TenantId, Name, Description, Icon, EscalateMin) VALUES (@TenantId, @Name, @Description, @Icon, @EscalateMin);
+        SET @RoleId = CAST(SCOPE_IDENTITY() AS INT);
+    END
+    ELSE
+    BEGIN
+        UPDATE dbo.sahyog_Roles SET Name = @Name, Description = @Description, Icon = @Icon, EscalateMin = @EscalateMin
+        WHERE RoleId = @RoleId AND TenantId = @TenantId;
+        IF @@ROWCOUNT = 0 BEGIN ROLLBACK; SELECT CAST(0 AS INT) AS RoleId; RETURN; END;
+        DELETE dbo.sahyog_RoleMembers WHERE RoleId = @RoleId;
+    END;
+    INSERT dbo.sahyog_RoleMembers (RoleId, UserId, Sort)
+    SELECT @RoleId, u.UserId, MIN(x.ordinal)
+    FROM (SELECT TRY_CAST(j.[value] AS UNIQUEIDENTIFIER) AS Id, CAST(j.[key] AS INT) AS ordinal
+          FROM OPENJSON(@MemberIds) j) x
+    JOIN dbo.sahyog_Users u ON u.UserId = x.Id AND u.TenantId = @TenantId AND u.IsActive = 1
+    GROUP BY u.UserId;
+    COMMIT;
+    SELECT @RoleId AS RoleId;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Role_Delete
+    @TenantId UNIQUEIDENTIFIER, @RoleId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DELETE dbo.sahyog_Roles WHERE RoleId = @RoleId AND TenantId = @TenantId;
+    SELECT @@ROWCOUNT AS Changed;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_RoleRequest_Create
+    @TenantId UNIQUEIDENTIFIER, @RoleId INT, @FromUserId UNIQUEIDENTIFIER, @Body NVARCHAR(1000),
+    @AssignedTo UNIQUEIDENTIFIER, @ChannelId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM dbo.sahyog_Roles WHERE RoleId = @RoleId AND TenantId = @TenantId)
+    BEGIN SELECT CAST(0 AS INT) AS RequestId; RETURN; END;
+    INSERT dbo.sahyog_RoleRequests (TenantId, RoleId, FromUserId, Body, AssignedTo, ChannelId)
+    VALUES (@TenantId, @RoleId, @FromUserId, @Body, @AssignedTo, @ChannelId);
+    SELECT CAST(SCOPE_IDENTITY() AS INT) AS RequestId;
+END
+GO
+
+/* requests I sent, and requests to roles I'm in (latest 60) */
+CREATE OR ALTER PROCEDURE dbo.sahyog_RoleRequest_Mine
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- first: notice replies (from the person asked in that chat, or from the person it was escalated to in theirs)
+    UPDATE q SET AnsweredUtc = SYSUTCDATETIME()
+    FROM dbo.sahyog_RoleRequests q
+    WHERE q.TenantId = @TenantId AND q.AnsweredUtc IS NULL AND q.ClosedUtc IS NULL
+      AND (EXISTS (SELECT 1 FROM dbo.sahyog_Messages m WHERE m.ChannelId = q.ChannelId AND m.SentUtc > q.CreatedUtc AND m.SenderId = q.AssignedTo)
+        OR EXISTS (SELECT 1 FROM dbo.sahyog_Messages m WHERE m.ChannelId = q.EscChannelId AND m.SentUtc > q.EscalatedUtc AND m.SenderId = q.EscalatedTo));
+
+    SELECT TOP (60) q.RequestId, q.RoleId, q.EscChannelId, r.Name AS RoleName, r.Icon, q.Body, q.CreatedUtc, q.AnsweredUtc, q.EscalatedUtc, q.ClosedUtc, q.ChannelId,
+           q.FromUserId, f.DisplayName AS FromName, f.AvatarTone AS FromTone,
+           q.AssignedTo, a.DisplayName AS AssignedName, q.EscalatedTo, e.DisplayName AS EscalatedName,
+           CAST(CASE WHEN q.FromUserId = @UserId THEN 1 ELSE 0 END AS BIT) AS Sent
+    FROM dbo.sahyog_RoleRequests q
+    JOIN dbo.sahyog_Roles r ON r.RoleId = q.RoleId
+    JOIN dbo.sahyog_Users f ON f.UserId = q.FromUserId
+    JOIN dbo.sahyog_Users a ON a.UserId = q.AssignedTo
+    LEFT JOIN dbo.sahyog_Users e ON e.UserId = q.EscalatedTo
+    WHERE q.TenantId = @TenantId
+      AND (q.FromUserId = @UserId OR q.AssignedTo = @UserId OR q.EscalatedTo = @UserId
+           OR EXISTS (SELECT 1 FROM dbo.sahyog_RoleMembers rm WHERE rm.RoleId = q.RoleId AND rm.UserId = @UserId))
+    ORDER BY CASE WHEN q.AnsweredUtc IS NULL AND q.ClosedUtc IS NULL THEN 0 ELSE 1 END, q.CreatedUtc DESC;
+END
+GO
+
+/* close: the person who asked, or anyone in the role */
+CREATE OR ALTER PROCEDURE dbo.sahyog_RoleRequest_Close
+    @TenantId UNIQUEIDENTIFIER, @RequestId INT, @UserId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE q SET ClosedUtc = SYSUTCDATETIME()
+    FROM dbo.sahyog_RoleRequests q
+    WHERE q.RequestId = @RequestId AND q.TenantId = @TenantId AND q.ClosedUtc IS NULL
+      AND (q.FromUserId = @UserId OR q.AssignedTo = @UserId OR q.EscalatedTo = @UserId
+           OR EXISTS (SELECT 1 FROM dbo.sahyog_RoleMembers rm WHERE rm.RoleId = q.RoleId AND rm.UserId = @UserId));
+    SELECT @@ROWCOUNT AS Changed;
+END
+GO
+
+/* the escalation job: marks replies, then takes requests still unanswered after the role's minutes (each once) */
+CREATE OR ALTER PROCEDURE dbo.sahyog_RoleRequest_TakeDue
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE q SET AnsweredUtc = SYSUTCDATETIME()
+    FROM dbo.sahyog_RoleRequests q
+    WHERE q.AnsweredUtc IS NULL AND q.ClosedUtc IS NULL AND q.EscalatedUtc IS NULL
+      AND EXISTS (SELECT 1 FROM dbo.sahyog_Messages m WHERE m.ChannelId = q.ChannelId AND m.SentUtc > q.CreatedUtc AND m.SenderId = q.AssignedTo);
+
+    DECLARE @due TABLE (RequestId INT);
+    UPDATE q SET EscalatedUtc = SYSUTCDATETIME()
+    OUTPUT inserted.RequestId INTO @due
+    FROM dbo.sahyog_RoleRequests q
+    JOIN dbo.sahyog_Roles r ON r.RoleId = q.RoleId
+    WHERE q.AnsweredUtc IS NULL AND q.ClosedUtc IS NULL AND q.EscalatedUtc IS NULL
+      AND r.EscalateMin > 0 AND q.CreatedUtc <= DATEADD(MINUTE, -r.EscalateMin, SYSUTCDATETIME());
+
+    SELECT q.RequestId, q.TenantId, q.RoleId, r.Name AS RoleName, r.EscalateMin, q.Body, q.FromUserId, f.DisplayName AS FromName,
+           q.AssignedTo, a.DisplayName AS AssignedName, a.ManagerId
+    FROM @due d
+    JOIN dbo.sahyog_RoleRequests q ON q.RequestId = d.RequestId
+    JOIN dbo.sahyog_Roles r ON r.RoleId = q.RoleId
+    JOIN dbo.sahyog_Users f ON f.UserId = q.FromUserId
+    JOIN dbo.sahyog_Users a ON a.UserId = q.AssignedTo;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_RoleRequest_SetEscalated
+    @RequestId INT, @EscalatedTo UNIQUEIDENTIFIER, @EscChannelId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE dbo.sahyog_RoleRequests SET EscalatedTo = @EscalatedTo, EscChannelId = @EscChannelId WHERE RequestId = @RequestId;
+END
+GO
+
+PRINT N'49_Roles.sql: message a role ready.';
+GO
+
+PRINT N'49_Roles.sql applied.';
+GO
+
+/* ############################## 50_Scheduling.sql ############################## */
+PRINT N'Applying 50_Scheduling.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 50 (safe to run more than once; needs 01–02):
+     Smart scheduling: the workspace's holidays (suggested meeting times skip them).
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_Holidays', N'U') IS NULL
+CREATE TABLE dbo.sahyog_Holidays
+(
+    HolidayId  INT              IDENTITY(1,1) NOT NULL CONSTRAINT PK_sahyog_Holidays PRIMARY KEY,
+    TenantId   UNIQUEIDENTIFIER NOT NULL CONSTRAINT FK_sahyog_Holidays_Tenants REFERENCES dbo.sahyog_Tenants(TenantId) ON DELETE CASCADE,
+    Day        DATE             NOT NULL,
+    Name       NVARCHAR(100)    NOT NULL,
+    CONSTRAINT UX_sahyog_Holidays_Day UNIQUE (TenantId, Day)
+);
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Holiday_List
+    @TenantId UNIQUEIDENTIFIER, @From DATE = NULL, @To DATE = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT HolidayId, Day, Name FROM dbo.sahyog_Holidays
+    WHERE TenantId = @TenantId AND (@From IS NULL OR Day >= @From) AND (@To IS NULL OR Day <= @To)
+    ORDER BY Day;
+END
+GO
+
+/* add, or rename the holiday on that day */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Holiday_Save
+    @TenantId UNIQUEIDENTIFIER, @Day DATE, @Name NVARCHAR(100)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_Holidays WHERE TenantId = @TenantId AND Day = @Day)
+        UPDATE dbo.sahyog_Holidays SET Name = @Name WHERE TenantId = @TenantId AND Day = @Day;
+    ELSE
+        INSERT dbo.sahyog_Holidays (TenantId, Day, Name) VALUES (@TenantId, @Day, @Name);
+    SELECT HolidayId, Day, Name FROM dbo.sahyog_Holidays WHERE TenantId = @TenantId AND Day = @Day;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Holiday_Delete
+    @TenantId UNIQUEIDENTIFIER, @HolidayId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DELETE dbo.sahyog_Holidays WHERE TenantId = @TenantId AND HolidayId = @HolidayId;
+    SELECT @@ROWCOUNT AS Changed;
+END
+GO
+
+PRINT N'50_Scheduling.sql: holidays ready.';
+GO
+
+PRINT N'50_Scheduling.sql applied.';
+GO
+
+/* ############################## 51_Visitors.sql ############################## */
+PRINT N'Applying 51_Visitors.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 51 (safe to run more than once; needs 01–02 and 40_OrgStructure.sql):
+     Visitor lobby. A reception tablet (a secret link, no sign-in) where visitors sign in and pick who
+     they are meeting; the host gets a card in ShankhNaad and answers "Coming" or "Please wait".
+     Staff can expect visitors ahead of time; the day's visitor list is on Work → Visitors.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_Lobby', N'U') IS NULL
+CREATE TABLE dbo.sahyog_Lobby
+(
+    TenantId   UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_sahyog_Lobby PRIMARY KEY
+               CONSTRAINT FK_sahyog_Lobby_Tenants REFERENCES dbo.sahyog_Tenants(TenantId) ON DELETE CASCADE,
+    KioskCode  NVARCHAR(24)     NOT NULL CONSTRAINT UX_sahyog_Lobby_Code UNIQUE,
+    Enabled    BIT              NOT NULL CONSTRAINT DF_sahyog_Lobby_Enabled DEFAULT (1),
+    Welcome    NVARCHAR(200)    NULL
+);
+GO
+IF OBJECT_ID(N'dbo.sahyog_Visitors', N'U') IS NULL
+CREATE TABLE dbo.sahyog_Visitors
+(
+    VisitorId    INT              IDENTITY(1,1) NOT NULL CONSTRAINT PK_sahyog_Visitors PRIMARY KEY,
+    TenantId     UNIQUEIDENTIFIER NOT NULL CONSTRAINT FK_sahyog_Visitors_Tenants REFERENCES dbo.sahyog_Tenants(TenantId) ON DELETE CASCADE,
+    Name         NVARCHAR(100)    NOT NULL,
+    Phone        NVARCHAR(30)     NULL,
+    Company      NVARCHAR(100)    NULL,
+    Purpose      NVARCHAR(200)    NULL,
+    HostId       UNIQUEIDENTIFIER NULL,
+    ExpectedUtc  DATETIME2(3)     NULL,             -- set when someone expects them
+    ArrivedUtc   DATETIME2(3)     NULL,
+    LeftUtc      DATETIME2(3)     NULL,
+    HostReply    NVARCHAR(20)     NULL,             -- coming | wait
+    HostReplyUtc DATETIME2(3)     NULL,
+    KioskToken   NVARCHAR(32)     NULL,             -- lets the tablet see the host's answer
+    CreatedBy    UNIQUEIDENTIFIER NULL,             -- NULL = signed in at the tablet
+    CreatedUtc   DATETIME2(3)     NOT NULL CONSTRAINT DF_sahyog_Visitors_Created DEFAULT (SYSUTCDATETIME())
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_Visitors_Day')
+    CREATE INDEX IX_sahyog_Visitors_Day ON dbo.sahyog_Visitors(TenantId, CreatedUtc);
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Lobby_Get
+    @TenantId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT TenantId, KioskCode, Enabled, Welcome FROM dbo.sahyog_Lobby WHERE TenantId = @TenantId;
+END
+GO
+
+/* @NewCode: set (first time, or "make a new link" so the old one stops working) */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Lobby_Save
+    @TenantId UNIQUEIDENTIFIER, @Enabled BIT, @Welcome NVARCHAR(200) = NULL, @NewCode NVARCHAR(24) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_Lobby WHERE TenantId = @TenantId)
+        UPDATE dbo.sahyog_Lobby SET Enabled = @Enabled, Welcome = @Welcome, KioskCode = ISNULL(@NewCode, KioskCode) WHERE TenantId = @TenantId;
+    ELSE IF @NewCode IS NOT NULL
+        INSERT dbo.sahyog_Lobby (TenantId, KioskCode, Enabled, Welcome) VALUES (@TenantId, @NewCode, @Enabled, @Welcome);
+    SELECT TenantId, KioskCode, Enabled, Welcome FROM dbo.sahyog_Lobby WHERE TenantId = @TenantId;
+END
+GO
+
+/* the tablet: which workspace this link belongs to */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Lobby_ByCode
+    @Code NVARCHAR(24)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT l.TenantId, l.Welcome, t.Name AS TenantName, t.TimeZoneId
+    FROM dbo.sahyog_Lobby l JOIN dbo.sahyog_Tenants t ON t.TenantId = l.TenantId AND t.IsActive = 1
+    WHERE l.KioskCode = @Code AND l.Enabled = 1;
+END
+GO
+
+/* people a visitor can pick at the tablet */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Lobby_Hosts
+    @TenantId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT u.UserId, u.DisplayName, u.AvatarTone, u.JobTitle, d.Name AS DepartmentName
+    FROM dbo.sahyog_Users u LEFT JOIN dbo.sahyog_Departments d ON d.DepartmentId = u.DepartmentId
+    WHERE u.TenantId = @TenantId AND u.IsActive = 1
+    ORDER BY u.DisplayName;
+END
+GO
+
+/* someone arrives at the tablet: if they were expected today (same phone), check that visit in; otherwise a new one */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Visitor_KioskArrive
+    @TenantId UNIQUEIDENTIFIER, @Name NVARCHAR(100), @Phone NVARCHAR(30) = NULL, @Company NVARCHAR(100) = NULL,
+    @Purpose NVARCHAR(200) = NULL, @HostId UNIQUEIDENTIFIER = NULL, @Token NVARCHAR(32), @DayStartUtc DATETIME2(3), @DayEndUtc DATETIME2(3)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF @HostId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.sahyog_Users WHERE UserId = @HostId AND TenantId = @TenantId AND IsActive = 1)
+        SET @HostId = NULL;
+    DECLARE @id INT = NULL;
+    IF NULLIF(@Phone, N'') IS NOT NULL
+        SELECT TOP (1) @id = VisitorId FROM dbo.sahyog_Visitors
+        WHERE TenantId = @TenantId AND Phone = @Phone AND ArrivedUtc IS NULL
+          AND ExpectedUtc >= @DayStartUtc AND ExpectedUtc < @DayEndUtc
+        ORDER BY ExpectedUtc;
+    IF @id IS NOT NULL
+        UPDATE dbo.sahyog_Visitors
+        SET ArrivedUtc = SYSUTCDATETIME(), KioskToken = @Token, HostId = ISNULL(@HostId, HostId),
+            Company = ISNULL(NULLIF(@Company, N''), Company), Purpose = ISNULL(NULLIF(@Purpose, N''), Purpose)
+        WHERE VisitorId = @id;
+    ELSE
+    BEGIN
+        INSERT dbo.sahyog_Visitors (TenantId, Name, Phone, Company, Purpose, HostId, ArrivedUtc, KioskToken)
+        VALUES (@TenantId, @Name, NULLIF(@Phone, N''), NULLIF(@Company, N''), NULLIF(@Purpose, N''), @HostId, SYSUTCDATETIME(), @Token);
+        SET @id = CAST(SCOPE_IDENTITY() AS INT);
+    END;
+    EXEC dbo.sahyog_Visitor_Get @TenantId = @TenantId, @VisitorId = @id;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Visitor_Get
+    @TenantId UNIQUEIDENTIFIER, @VisitorId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT v.VisitorId, v.Name, v.Phone, v.Company, v.Purpose, v.HostId, h.DisplayName AS HostName, h.AvatarTone AS HostTone,
+           v.ExpectedUtc, v.ArrivedUtc, v.LeftUtc, v.HostReply, v.HostReplyUtc, v.KioskToken, v.CreatedBy, c.DisplayName AS CreatedByName, v.CreatedUtc
+    FROM dbo.sahyog_Visitors v
+    LEFT JOIN dbo.sahyog_Users h ON h.UserId = v.HostId
+    LEFT JOIN dbo.sahyog_Users c ON c.UserId = v.CreatedBy
+    WHERE v.VisitorId = @VisitorId AND v.TenantId = @TenantId;
+END
+GO
+
+/* a member expects a visitor (@Arrived = 1: a walk-in checked in by staff) */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Visitor_Expect
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @Name NVARCHAR(100), @Phone NVARCHAR(30) = NULL, @Company NVARCHAR(100) = NULL,
+    @Purpose NVARCHAR(200) = NULL, @HostId UNIQUEIDENTIFIER = NULL, @ExpectedUtc DATETIME2(3) = NULL, @Arrived BIT = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF @HostId IS NULL OR NOT EXISTS (SELECT 1 FROM dbo.sahyog_Users WHERE UserId = @HostId AND TenantId = @TenantId AND IsActive = 1)
+        SET @HostId = @UserId;
+    INSERT dbo.sahyog_Visitors (TenantId, Name, Phone, Company, Purpose, HostId, ExpectedUtc, ArrivedUtc, CreatedBy)
+    VALUES (@TenantId, @Name, NULLIF(@Phone, N''), NULLIF(@Company, N''), NULLIF(@Purpose, N''), @HostId,
+            ISNULL(@ExpectedUtc, SYSUTCDATETIME()), CASE WHEN @Arrived = 1 THEN SYSUTCDATETIME() END, @UserId);
+    DECLARE @id INT = CAST(SCOPE_IDENTITY() AS INT);
+    EXEC dbo.sahyog_Visitor_Get @TenantId = @TenantId, @VisitorId = @id;
+END
+GO
+
+/* what = arrive | leave | coming | wait | delete */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Visitor_Update
+    @TenantId UNIQUEIDENTIFIER, @VisitorId INT, @What NVARCHAR(10)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF @What = N'delete'
+    BEGIN
+        DELETE dbo.sahyog_Visitors WHERE VisitorId = @VisitorId AND TenantId = @TenantId;
+        SELECT CAST(NULL AS INT) AS VisitorId WHERE 1 = 0;
+        RETURN;
+    END;
+    UPDATE dbo.sahyog_Visitors
+    SET ArrivedUtc   = CASE WHEN @What = N'arrive' THEN ISNULL(ArrivedUtc, SYSUTCDATETIME()) ELSE ArrivedUtc END,
+        LeftUtc      = CASE WHEN @What = N'leave' THEN SYSUTCDATETIME() ELSE LeftUtc END,
+        HostReply    = CASE WHEN @What IN (N'coming', N'wait') THEN @What ELSE HostReply END,
+        HostReplyUtc = CASE WHEN @What IN (N'coming', N'wait') THEN SYSUTCDATETIME() ELSE HostReplyUtc END
+    WHERE VisitorId = @VisitorId AND TenantId = @TenantId;
+    EXEC dbo.sahyog_Visitor_Get @TenantId = @TenantId, @VisitorId = @VisitorId;
+END
+GO
+
+/* one day's visitors (expected or arrived that day, or still in the building) */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Visitor_Day
+    @TenantId UNIQUEIDENTIFIER, @FromUtc DATETIME2(3), @ToUtc DATETIME2(3)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT v.VisitorId, v.Name, v.Phone, v.Company, v.Purpose, v.HostId, h.DisplayName AS HostName, h.AvatarTone AS HostTone,
+           v.ExpectedUtc, v.ArrivedUtc, v.LeftUtc, v.HostReply, v.HostReplyUtc, v.CreatedBy, c.DisplayName AS CreatedByName, v.CreatedUtc
+    FROM dbo.sahyog_Visitors v
+    LEFT JOIN dbo.sahyog_Users h ON h.UserId = v.HostId
+    LEFT JOIN dbo.sahyog_Users c ON c.UserId = v.CreatedBy
+    WHERE v.TenantId = @TenantId
+      AND (   (v.ArrivedUtc >= @FromUtc AND v.ArrivedUtc < @ToUtc)
+           OR (v.ArrivedUtc IS NULL AND v.ExpectedUtc >= @FromUtc AND v.ExpectedUtc < @ToUtc)
+           OR (v.ArrivedUtc < @FromUtc AND v.LeftUtc IS NULL AND @ToUtc > SYSUTCDATETIME()))
+    ORDER BY ISNULL(v.ArrivedUtc, v.ExpectedUtc);
+END
+GO
+
+/* the tablet asks how the host answered */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Visitor_KioskStatus
+    @TenantId UNIQUEIDENTIFIER, @VisitorId INT, @Token NVARCHAR(32)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT v.HostReply, v.HostReplyUtc, h.DisplayName AS HostName
+    FROM dbo.sahyog_Visitors v LEFT JOIN dbo.sahyog_Users h ON h.UserId = v.HostId
+    WHERE v.VisitorId = @VisitorId AND v.TenantId = @TenantId AND v.KioskToken = @Token
+      AND v.ArrivedUtc > DATEADD(HOUR, -2, SYSUTCDATETIME());
+END
+GO
+
+PRINT N'51_Visitors.sql: visitor lobby ready.';
+GO
+
+PRINT N'51_Visitors.sql applied.';
+GO
+
+/* ############################## 52_Approvals.sql ############################## */
+PRINT N'Applying 52_Approvals.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 52 (safe to run more than once; needs 01–02 and 40_OrgStructure.sql):
+     Approvals in chat. Leave, expense, purchase and other requests go up the reporting line
+     (the manager; big amounts also to the manager's manager). Approvers press Approve or Reject on the
+     card in their chat; approved leave turns on out of office for those days.
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_Approvals', N'U') IS NULL
+CREATE TABLE dbo.sahyog_Approvals
+(
+    ApprovalId   INT              IDENTITY(1,1) NOT NULL CONSTRAINT PK_sahyog_Approvals PRIMARY KEY,
+    TenantId     UNIQUEIDENTIFIER NOT NULL CONSTRAINT FK_sahyog_Approvals_Tenants REFERENCES dbo.sahyog_Tenants(TenantId) ON DELETE CASCADE,
+    Kind         VARCHAR(10)      NOT NULL,          -- leave | expense | purchase | other
+    Title        NVARCHAR(150)    NOT NULL,
+    Details      NVARCHAR(1000)   NULL,
+    Amount       DECIMAL(14,2)    NULL,
+    FromDate     DATE             NULL,
+    ToDate       DATE             NULL,
+    RequesterId  UNIQUEIDENTIFIER NOT NULL,
+    Status       VARCHAR(10)      NOT NULL CONSTRAINT DF_sahyog_Approvals_Status DEFAULT ('pending'),   -- pending | approved | rejected | cancelled
+    Step         INT              NOT NULL CONSTRAINT DF_sahyog_Approvals_Step DEFAULT (1),
+    CreatedUtc   DATETIME2(3)     NOT NULL CONSTRAINT DF_sahyog_Approvals_Created DEFAULT (SYSUTCDATETIME()),
+    DecidedUtc   DATETIME2(3)     NULL
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_Approvals_Requester')
+    CREATE INDEX IX_sahyog_Approvals_Requester ON dbo.sahyog_Approvals(TenantId, RequesterId, CreatedUtc DESC);
+GO
+IF OBJECT_ID(N'dbo.sahyog_ApprovalSteps', N'U') IS NULL
+CREATE TABLE dbo.sahyog_ApprovalSteps
+(
+    ApprovalId  INT              NOT NULL CONSTRAINT FK_sahyog_ApprovalSteps_Approvals REFERENCES dbo.sahyog_Approvals(ApprovalId) ON DELETE CASCADE,
+    Step        INT              NOT NULL,
+    ApproverId  UNIQUEIDENTIFIER NOT NULL,
+    Decision    VARCHAR(10)      NULL,               -- approved | rejected
+    Note        NVARCHAR(300)    NULL,
+    DecidedUtc  DATETIME2(3)     NULL,
+    ChannelId   UNIQUEIDENTIFIER NULL,               -- the chat the card was posted in
+    MessageId   BIGINT           NULL,
+    CONSTRAINT PK_sahyog_ApprovalSteps PRIMARY KEY (ApprovalId, Step)
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_sahyog_ApprovalSteps_Approver')
+    CREATE INDEX IX_sahyog_ApprovalSteps_Approver ON dbo.sahyog_ApprovalSteps(ApproverId);
+GO
+IF OBJECT_ID(N'dbo.sahyog_ApprovalRules', N'U') IS NULL
+CREATE TABLE dbo.sahyog_ApprovalRules
+(
+    TenantId          UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_sahyog_ApprovalRules PRIMARY KEY
+                      CONSTRAINT FK_sahyog_ApprovalRules_Tenants REFERENCES dbo.sahyog_Tenants(TenantId) ON DELETE CASCADE,
+    SecondLevelAmount DECIMAL(14,2)    NULL,         -- expenses / purchases from this amount also go to the manager's manager
+    FallbackApprover  UNIQUEIDENTIFIER NULL,         -- for people with no manager
+    Currency          NVARCHAR(8)      NOT NULL CONSTRAINT DF_sahyog_ApprovalRules_Cur DEFAULT (NCHAR(8377))
+);
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_ApprovalRules_Get
+    @TenantId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT ISNULL(r.SecondLevelAmount, 50000) AS SecondLevelAmount, r.FallbackApprover, u.DisplayName AS FallbackName, ISNULL(r.Currency, NCHAR(8377)) AS Currency
+    FROM (SELECT @TenantId AS TenantId) t
+    LEFT JOIN dbo.sahyog_ApprovalRules r ON r.TenantId = t.TenantId
+    LEFT JOIN dbo.sahyog_Users u ON u.UserId = r.FallbackApprover;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_ApprovalRules_Save
+    @TenantId UNIQUEIDENTIFIER, @SecondLevelAmount DECIMAL(14,2) = NULL, @FallbackApprover UNIQUEIDENTIFIER = NULL, @Currency NVARCHAR(8) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET @Currency = ISNULL(NULLIF(@Currency, N''), NCHAR(8377));
+    IF @FallbackApprover IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.sahyog_Users WHERE UserId = @FallbackApprover AND TenantId = @TenantId)
+        SET @FallbackApprover = NULL;
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_ApprovalRules WHERE TenantId = @TenantId)
+        UPDATE dbo.sahyog_ApprovalRules SET SecondLevelAmount = @SecondLevelAmount, FallbackApprover = @FallbackApprover, Currency = @Currency WHERE TenantId = @TenantId;
+    ELSE
+        INSERT dbo.sahyog_ApprovalRules (TenantId, SecondLevelAmount, FallbackApprover, Currency) VALUES (@TenantId, @SecondLevelAmount, @FallbackApprover, @Currency);
+    EXEC dbo.sahyog_ApprovalRules_Get @TenantId = @TenantId;
+END
+GO
+
+/* @Approvers = a JSON array of ids in order (step 1, step 2): ["id","id"] */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Approval_Create
+    @TenantId UNIQUEIDENTIFIER, @RequesterId UNIQUEIDENTIFIER, @Kind VARCHAR(10), @Title NVARCHAR(150), @Details NVARCHAR(1000) = NULL,
+    @Amount DECIMAL(14,2) = NULL, @FromDate DATE = NULL, @ToDate DATE = NULL, @Approvers NVARCHAR(400)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    BEGIN TRAN;
+    INSERT dbo.sahyog_Approvals (TenantId, Kind, Title, Details, Amount, FromDate, ToDate, RequesterId)
+    VALUES (@TenantId, @Kind, @Title, @Details, @Amount, @FromDate, @ToDate, @RequesterId);
+    DECLARE @id INT = CAST(SCOPE_IDENTITY() AS INT);
+    INSERT dbo.sahyog_ApprovalSteps (ApprovalId, Step, ApproverId)
+    SELECT @id, CAST(x.[key] AS INT) + 1, u.UserId
+    FROM OPENJSON(@Approvers) x
+    JOIN dbo.sahyog_Users u ON u.UserId = TRY_CAST(x.[value] AS UNIQUEIDENTIFIER) AND u.TenantId = @TenantId;
+    IF NOT EXISTS (SELECT 1 FROM dbo.sahyog_ApprovalSteps WHERE ApprovalId = @id)
+    BEGIN ROLLBACK; SELECT CAST(0 AS INT) AS ApprovalId; RETURN; END;
+    -- steps numbered 1, 2 … even if a name was skipped
+    ;WITH s AS (SELECT Step, ROW_NUMBER() OVER (ORDER BY Step) AS n FROM dbo.sahyog_ApprovalSteps WHERE ApprovalId = @id)
+    UPDATE s SET Step = n WHERE Step <> n;
+    COMMIT;
+    SELECT @id AS ApprovalId;
+END
+GO
+
+/* the request, then its steps. Empty when this person may not see it (requester, an approver, or an admin: @IsAdmin) */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Approval_Get
+    @TenantId UNIQUEIDENTIFIER, @ApprovalId INT, @UserId UNIQUEIDENTIFIER, @IsAdmin BIT = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT a.ApprovalId, a.Kind, a.Title, a.Details, a.Amount, a.FromDate, a.ToDate, a.RequesterId, r.DisplayName AS RequesterName,
+           r.AvatarTone AS RequesterTone, a.Status, a.Step, a.CreatedUtc, a.DecidedUtc,
+           (SELECT ApproverId FROM dbo.sahyog_ApprovalSteps s WHERE s.ApprovalId = a.ApprovalId AND s.Step = a.Step) AS CurrentApproverId
+    FROM dbo.sahyog_Approvals a
+    JOIN dbo.sahyog_Users r ON r.UserId = a.RequesterId
+    WHERE a.ApprovalId = @ApprovalId AND a.TenantId = @TenantId
+      AND (@IsAdmin = 1 OR a.RequesterId = @UserId OR EXISTS (SELECT 1 FROM dbo.sahyog_ApprovalSteps s WHERE s.ApprovalId = a.ApprovalId AND s.ApproverId = @UserId));
+
+    SELECT s.Step, s.ApproverId, u.DisplayName AS ApproverName, u.AvatarTone AS ApproverTone, u.JobTitle AS ApproverTitle,
+           s.Decision, s.Note, s.DecidedUtc, s.ChannelId, s.MessageId
+    FROM dbo.sahyog_ApprovalSteps s
+    JOIN dbo.sahyog_Approvals a ON a.ApprovalId = s.ApprovalId AND a.TenantId = @TenantId
+    JOIN dbo.sahyog_Users u ON u.UserId = s.ApproverId
+    WHERE s.ApprovalId = @ApprovalId
+      AND (@IsAdmin = 1 OR a.RequesterId = @UserId OR EXISTS (SELECT 1 FROM dbo.sahyog_ApprovalSteps x WHERE x.ApprovalId = a.ApprovalId AND x.ApproverId = @UserId))
+    ORDER BY s.Step;
+END
+GO
+
+/* @Box: mine (I asked) | todo (waiting for me now) | done (I decided) | all (admins) */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Approval_List
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @Box VARCHAR(10), @IsAdmin BIT = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT TOP (300) a.ApprovalId, a.Kind, a.Title, a.Details, a.Amount, a.FromDate, a.ToDate, a.RequesterId, r.DisplayName AS RequesterName,
+           r.AvatarTone AS RequesterTone, a.Status, a.Step, a.CreatedUtc, a.DecidedUtc,
+           cur.ApproverId AS CurrentApproverId, cu.DisplayName AS CurrentApproverName,
+           (SELECT COUNT(*) FROM dbo.sahyog_ApprovalSteps s WHERE s.ApprovalId = a.ApprovalId) AS Steps
+    FROM dbo.sahyog_Approvals a
+    JOIN dbo.sahyog_Users r ON r.UserId = a.RequesterId
+    LEFT JOIN dbo.sahyog_ApprovalSteps cur ON cur.ApprovalId = a.ApprovalId AND cur.Step = a.Step
+    LEFT JOIN dbo.sahyog_Users cu ON cu.UserId = cur.ApproverId
+    WHERE a.TenantId = @TenantId
+      AND (   (@Box = 'mine' AND a.RequesterId = @UserId)
+           OR (@Box = 'todo' AND a.Status = 'pending' AND cur.ApproverId = @UserId)
+           OR (@Box = 'done' AND EXISTS (SELECT 1 FROM dbo.sahyog_ApprovalSteps s WHERE s.ApprovalId = a.ApprovalId AND s.ApproverId = @UserId AND s.Decision IS NOT NULL))
+           OR (@Box = 'all' AND @IsAdmin = 1))
+    ORDER BY CASE WHEN a.Status = 'pending' THEN 0 ELSE 1 END, a.CreatedUtc DESC;
+END
+GO
+
+/* the approver of the current step decides. Returns the new status and, when approved with more steps, the next approver. */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Approval_Decide
+    @TenantId UNIQUEIDENTIFIER, @ApprovalId INT, @UserId UNIQUEIDENTIFIER, @Decision VARCHAR(10), @Note NVARCHAR(300) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    BEGIN TRAN;
+    DECLARE @step INT, @status VARCHAR(10);
+    SELECT @step = a.Step, @status = a.Status FROM dbo.sahyog_Approvals a WITH (UPDLOCK)
+    WHERE a.ApprovalId = @ApprovalId AND a.TenantId = @TenantId;
+    IF @status IS NULL OR @status <> 'pending'
+       OR NOT EXISTS (SELECT 1 FROM dbo.sahyog_ApprovalSteps WHERE ApprovalId = @ApprovalId AND Step = @step AND ApproverId = @UserId)
+    BEGIN ROLLBACK; SELECT CAST(0 AS BIT) AS Ok, @status AS Status, CAST(NULL AS UNIQUEIDENTIFIER) AS NextApproverId; RETURN; END;
+
+    UPDATE dbo.sahyog_ApprovalSteps SET Decision = @Decision, Note = @Note, DecidedUtc = SYSUTCDATETIME()
+    WHERE ApprovalId = @ApprovalId AND Step = @step;
+
+    DECLARE @next UNIQUEIDENTIFIER = (SELECT ApproverId FROM dbo.sahyog_ApprovalSteps WHERE ApprovalId = @ApprovalId AND Step = @step + 1);
+    IF @Decision = 'rejected'
+        UPDATE dbo.sahyog_Approvals SET Status = 'rejected', DecidedUtc = SYSUTCDATETIME() WHERE ApprovalId = @ApprovalId;
+    ELSE IF @next IS NOT NULL
+        UPDATE dbo.sahyog_Approvals SET Step = @step + 1 WHERE ApprovalId = @ApprovalId;
+    ELSE
+        UPDATE dbo.sahyog_Approvals SET Status = 'approved', DecidedUtc = SYSUTCDATETIME() WHERE ApprovalId = @ApprovalId;
+    COMMIT;
+    SELECT CAST(1 AS BIT) AS Ok, Status, CASE WHEN @Decision = 'approved' THEN @next END AS NextApproverId
+    FROM dbo.sahyog_Approvals WHERE ApprovalId = @ApprovalId;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Approval_Cancel
+    @TenantId UNIQUEIDENTIFIER, @ApprovalId INT, @UserId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE dbo.sahyog_Approvals SET Status = 'cancelled', DecidedUtc = SYSUTCDATETIME()
+    WHERE ApprovalId = @ApprovalId AND TenantId = @TenantId AND RequesterId = @UserId AND Status = 'pending';
+    SELECT @@ROWCOUNT AS Changed;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Approval_SetMessage
+    @ApprovalId INT, @Step INT, @ChannelId UNIQUEIDENTIFIER, @MessageId BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE dbo.sahyog_ApprovalSteps SET ChannelId = @ChannelId, MessageId = @MessageId WHERE ApprovalId = @ApprovalId AND Step = @Step;
+END
+GO
+
+PRINT N'52_Approvals.sql: approvals ready.';
+GO
+
+PRINT N'52_Approvals.sql applied.';
+GO
+
+/* ############################## 53_Languages.sql ############################## */
+PRINT N'Applying 53_Languages.sql ...';
+GO
+/* =====================================================================
+   ShankhNaad round 53 (safe to run more than once; needs 01–02):
+     Languages: translated chat messages and voice-note transcripts are kept, so each one is paid for once.
+     (The translation and speech services are set in appsettings.json → "Languages"; off until keys are added.)
+   ===================================================================== */
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.sahyog_Translations', N'U') IS NULL
+CREATE TABLE dbo.sahyog_Translations
+(
+    MessageId   BIGINT        NOT NULL,
+    Lang        VARCHAR(10)   NOT NULL,
+    TextHash    INT           NOT NULL,              -- the message text it was made from (an edit makes a new one)
+    Translated  NVARCHAR(MAX) NOT NULL,
+    FromLang    VARCHAR(10)   NULL,
+    CreatedUtc  DATETIME2(3)  NOT NULL CONSTRAINT DF_sahyog_Translations_Created DEFAULT (SYSUTCDATETIME()),
+    CONSTRAINT PK_sahyog_Translations PRIMARY KEY (MessageId, Lang)
+);
+GO
+IF OBJECT_ID(N'dbo.sahyog_Transcripts', N'U') IS NULL
+CREATE TABLE dbo.sahyog_Transcripts
+(
+    AttachmentId UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_sahyog_Transcripts PRIMARY KEY,
+    Transcript   NVARCHAR(MAX)    NOT NULL,
+    CreatedUtc   DATETIME2(3)     NOT NULL CONSTRAINT DF_sahyog_Transcripts_Created DEFAULT (SYSUTCDATETIME())
+);
+GO
+
+/* a message's text, only for someone in its chat; with a saved translation if there is one */
+CREATE OR ALTER PROCEDURE dbo.sahyog_Lang_Message
+    @TenantId UNIQUEIDENTIFIER, @UserId UNIQUEIDENTIFIER, @MessageId BIGINT, @Lang VARCHAR(10)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT m.Body, t.TextHash, t.Translated, t.FromLang
+    FROM dbo.sahyog_Messages m
+    LEFT JOIN dbo.sahyog_Translations t ON t.MessageId = m.MessageId AND t.Lang = @Lang
+    WHERE m.MessageId = @MessageId AND m.TenantId = @TenantId
+      AND EXISTS (SELECT 1 FROM dbo.sahyog_ChannelMembers cm WHERE cm.ChannelId = m.ChannelId AND cm.UserId = @UserId);
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Lang_SaveTranslation
+    @MessageId BIGINT, @Lang VARCHAR(10), @TextHash INT, @Translated NVARCHAR(MAX), @FromLang VARCHAR(10) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF EXISTS (SELECT 1 FROM dbo.sahyog_Translations WHERE MessageId = @MessageId AND Lang = @Lang)
+        UPDATE dbo.sahyog_Translations SET TextHash = @TextHash, Translated = @Translated, FromLang = @FromLang, CreatedUtc = SYSUTCDATETIME()
+        WHERE MessageId = @MessageId AND Lang = @Lang;
+    ELSE
+        INSERT dbo.sahyog_Translations (MessageId, Lang, TextHash, Translated, FromLang) VALUES (@MessageId, @Lang, @TextHash, @Translated, @FromLang);
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Lang_GetTranscript
+    @AttachmentId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT Transcript FROM dbo.sahyog_Transcripts WHERE AttachmentId = @AttachmentId;
+END
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sahyog_Lang_SaveTranscript
+    @AttachmentId UNIQUEIDENTIFIER, @Transcript NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM dbo.sahyog_Transcripts WHERE AttachmentId = @AttachmentId)
+        INSERT dbo.sahyog_Transcripts (AttachmentId, Transcript) VALUES (@AttachmentId, @Transcript);
+END
+GO
+
+PRINT N'53_Languages.sql: translations and transcripts ready.';
+GO
+
+PRINT N'53_Languages.sql applied.';
 GO
 
 PRINT N'ShankhNaad database is up to date.';

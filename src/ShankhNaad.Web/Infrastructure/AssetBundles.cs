@@ -102,8 +102,9 @@ public sealed class AssetBundles
             "js/tooltip.js",
             "js/mobile.js",
             "js/site.js",
-            "js/meeting-alerts.js", "js/location.js",
+            "js/meeting-alerts.js", "js/location.js", "js/shankh.js", "js/nirnay.js",
             "js/shankhnaad.js",
+            "js/work-kit.js", "js/work-live.js", "js/away.js", "js/lang.js",   // Work: stand-up, roles, visitors, approvals, stand-in, languages
             "js/people-picker.js",
             "js/people-actions.js",
             "js/pwa-install.js",

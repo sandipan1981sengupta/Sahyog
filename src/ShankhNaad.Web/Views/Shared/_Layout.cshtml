@@ -1,4 +1,5 @@
 @inject ShankhNaad.Web.Infrastructure.AssetBundles Bundles
+@inject ShankhNaad.Web.Infrastructure.LanguageService Lang
 @{
     var section = ViewData["Section"] as string ?? "";
     var isTenantAdmin = User.IsInRole(AppRoles.TenantAdmin);
@@ -119,7 +120,7 @@
     @Bundles.Tags("layout.css")
     @await RenderSectionAsync("Head", required: false)
 </head>
-<body class="sn-body" data-me="@(isSuperAdmin ? "" : User.UserId())">
+<body class="sn-body" data-me="@(isSuperAdmin ? "" : User.UserId())" data-admin="@(User.IsInRole(ShankhNaad.DtoLibrary.AppRoles.TenantAdmin) ? "1" : "")" data-lang="@(Lang.TranslateOn ? "t" : "")@(Lang.TranscribeOn ? "s" : "")">
     <div class="sn-backdrop" aria-hidden="true">
         <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span>
         <span class="orb o1"></span><span class="orb o2"></span><span class="orb o3"></span><span class="orb o4"></span><span class="orb o5"></span>
@@ -155,6 +156,8 @@
                     <rail-item key="chat" label="Chat" icon="comments-o" href="/chat" active="@(section == "chat")"></rail-item>
                     <rail-item key="calls" label="Calls" icon="phone" href="/calls" active="@(section == "calls")"></rail-item>
                     <rail-item key="meetings" label="Meetings" icon="calendar" href="/meetings" active="@(section == "meetings")"></rail-item>
+                    @* Work: decisions now; stand-ups, approvals and visitors join it (DecisionsController) *@
+                    <rail-item key="work" label="Work" icon="briefcase" href="/work" active="@(section == "work")"></rail-item>
                     <rail-item key="files" label="Files" icon="folder-open" href="/files" active="@(section == "files")"></rail-item>
                     @* everyone in the workspace can see the team; only admins can change it (see TeamController) *@
                     <rail-item key="team" label="Team" icon="users" href="/team" active="@(section == "team")"></rail-item>

@@ -556,7 +556,7 @@
         ding();
 
         const plain = (m.body || "").replace(/^\[\[fwd:[^\]\r\n]*\]\]\n?/, "↪ ");   // forwarded: "↪ text"
-        const preview = /^\[\[gif:/.test(plain.replace(/^↪ /, "")) ? "🎞️ Sent a GIF" : plain ? (plain.length > 90 ? plain.slice(0, 90) + "…" : plain) : "Sent a file";
+        const preview = /^\[\[approval:/.test(plain) ? "📝 Sent you a request to approve" : /^\[\[gif:/.test(plain.replace(/^↪ /, "")) ? "🎞️ Sent a GIF" : plain ? (plain.length > 90 ? plain.slice(0, 90) + "…" : plain) : "Sent a file";
         const av = document.createElement("span");
         av.className = `avatar av-38 tone-${m.senderTone}`;
         av.dataset.user = m.senderId;

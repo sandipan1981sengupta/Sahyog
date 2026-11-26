@@ -33,6 +33,7 @@ public sealed partial class ChatController
         if (src is null) return BadRequest(new { error = "That message was deleted." });
         var body = src.Body ?? "";
         if (body.StartsWith("[[call:", StringComparison.OrdinalIgnoreCase)) return BadRequest(new { error = "Call cards can't be forwarded." });
+        if (body.StartsWith("[[approval:", StringComparison.OrdinalIgnoreCase)) return BadRequest(new { error = "Approval requests can't be forwarded." });
 
         // forwarding a forward keeps the original author
         var origin = src.SenderName;

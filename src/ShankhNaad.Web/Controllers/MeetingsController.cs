@@ -362,7 +362,9 @@ public sealed class MeetingsController : Controller
             OneToOne = oneToOne,
             StartCameraOff = meeting.IsInstant && video != 1,     // calls: sound first (camera on any time); "Video call" starts with it on
             OfflineNote = TempData["CallOffline"] as string,
-            LeaveUrl = meeting.ChannelId is Guid ch ? Url.Action("Index", "Chat", new { id = ch })! : Url.Action(nameof(Index))!,
+            // the organizer of a scheduled meeting lands on a "Decisions and action items" window (js/nirnay.js)
+            LeaveUrl = (meeting.ChannelId is Guid ch ? Url.Action("Index", "Chat", new { id = ch })! : Url.Action(nameof(Index))!)
+                       + (meeting.HostId == Me && !meeting.IsInstant ? $"?wrap={meeting.MeetingId}" : ""),
             GuestUrl = meeting.GuestLinkEnabled ? _meetings.GuestUrl(meeting.GuestCode) : null,
             ChannelName = meeting.ChannelId is not null && !meeting.ChannelIsDirect ? meeting.ChannelName : null,
             ChatChannelId = meeting.ChannelId,

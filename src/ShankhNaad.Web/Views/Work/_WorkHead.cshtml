@@ -1,0 +1,39 @@
+@model string
+@{
+    // The Work pages' header and section links. Model = the section on show: decisions | standup | roles | approvals | visitors
+    var tabs = new[]
+    {
+        ("decisions", "/work/decisions", "fa-balance-scale", "Decisions"),
+        ("standup", "/work/standup", "fa-sun-o", "Stand-up"),
+        ("approvals", "/work/approvals", "fa-check-circle-o", "Approvals"),
+        ("roles", "/work/roles", "fa-life-ring", "Roles"),
+        ("visitors", "/work/visitors", "fa-id-card-o", "Visitors")
+    };
+    var subtitle = Model switch
+    {
+        "standup" => "Three short questions, answered when it suits you",
+        "approvals" => "Leave, expenses and purchases, approved in chat",
+        "roles" => "Message a team or a job, not a person",
+        "visitors" => "Who's coming to the office, and who's here",
+        _ => "What your team decided, and who's doing what"
+    };
+}
+<div class="sn-head glass">
+    <action-header id="WorkHeader"
+                   heading="Work"
+                   subtitle="@subtitle"
+                   left-icon-css="bi bi-briefcase-fill" left-icon-size="24"
+                   left-icon-gradient-start="#2563EB" left-icon-gradient-mid="#7C3AED" left-icon-gradient-end="#DB2777"
+                   background-color="transparent" box-shadow="none"
+                   refresh-color="#1D4ED8"
+                   show-refresh="true" refresh-on-click="SN.reload()"
+                   show-add="false" show-edit="false" show-delete="false" show-import="false"
+                   show-export="false" show-save="false" show-submit="false" show-print="false">
+    </action-header>
+</div>
+<nav class="sn-work-nav" aria-label="Work">
+    @foreach (var (key, href, icon, text) in tabs)
+    {
+        <a href="@href" class="@(key == Model ? "on" : "")" aria-current="@(key == Model ? "page" : null)" data-work-tab="@key"><i class="fa @icon" aria-hidden="true"></i> @text<span class="sn-work-n" data-work-n="@key" hidden></span></a>
+    }
+</nav>

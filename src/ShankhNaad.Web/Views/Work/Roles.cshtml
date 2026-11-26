@@ -1,0 +1,13 @@
+@{
+    // Work → Roles (see Controllers/RolesController.cs). The page is drawn by js/work-roles.js.
+    var depts = (ViewData["Departments"] as List<DepartmentDto> ?? new()).OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+        .Select(d => new { id = d.DepartmentId, name = d.Name }).ToList();
+}
+<main class="sn-page sn-work">
+    <partial name="~/Views/Work/_WorkHead.cshtml" model="@("roles")" />
+    <div class="sn-wk-app" id="roApp" aria-live="polite"><div class="sn-nir-loading">Loading…</div></div>
+</main>
+<script type="application/json" id="wkData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { me = User.UserGuid().ToString(), isAdmin = User.IsInRole(AppRoles.TenantAdmin), depts }))</script>
+@section Scripts {
+    <script src="~/js/work-roles.js" asp-append-version="true"></script>
+}

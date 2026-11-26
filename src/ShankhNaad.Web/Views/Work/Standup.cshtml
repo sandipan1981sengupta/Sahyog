@@ -1,0 +1,13 @@
+@{
+    // Work → Stand-up (see Controllers/StandupController.cs). The page is drawn by js/work-standup.js.
+    var depts = (ViewData["Departments"] as List<DepartmentDto> ?? new()).OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+        .Select(d => new { id = d.DepartmentId, name = d.Name }).ToList();
+}
+<main class="sn-page sn-work">
+    <partial name="~/Views/Work/_WorkHead.cshtml" model="@("standup")" />
+    <div class="sn-wk-app" id="suApp" aria-live="polite"><div class="sn-nir-loading">Loading…</div></div>
+</main>
+<script type="application/json" id="wkData">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { me = User.UserGuid().ToString(), isAdmin = User.IsInRole(AppRoles.TenantAdmin), depts }))</script>
+@section Scripts {
+    <script src="~/js/work-standup.js" asp-append-version="true"></script>
+}

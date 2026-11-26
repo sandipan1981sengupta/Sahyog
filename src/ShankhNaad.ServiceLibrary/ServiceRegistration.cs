@@ -38,6 +38,9 @@ public static class ServiceRegistration
         services.AddScoped<ILocationService, LocationService>();
         services.AddScoped<IOutOfOfficeService, OutOfOfficeService>();
         services.AddScoped<IOrgService, OrgService>();
+        services.AddScoped<IShankhService, ShankhService>();         // urgent alerts (45_Shankh.sql)
+        services.AddScoped<IDecisionService, DecisionService>();     // Nirnay: decision log (46_Nirnay.sql)
+        services.AddScoped<IWorkData, WorkData>();                 // Work features: stand-up, roles, visitors, approvals, holidays, languages (47–53)
         services.AddScoped<IAttendanceService, AttendanceService>();
         services.AddScoped<IAppEmailSender, SmtpEmailSender>();
         services.AddScoped<IAccountEmailService, AccountEmailService>();

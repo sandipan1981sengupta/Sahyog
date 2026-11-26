@@ -46,6 +46,11 @@
         {
             <a class="cee-btn cee-btn-gradient sn-md-join" href="/meetings/room/@m.MeetingId"><i class="fa fa-video-camera" aria-hidden="true"></i> <span>@joinText</span></a>
         }
+        @if (!m.IsCancelled && !m.DateCancelled)
+        {
+            @* Nirnay: this date's decisions and action items (js/nirnay.js) *@
+            <button type="button" class="cee-btn sn-btn-light" data-nirnay-meeting="@m.MeetingId" data-date="@m.OccurrenceDate.ToString("yyyy-MM-dd", inv)"><i class="fa fa-balance-scale" aria-hidden="true"></i> Decisions</button>
+        }
         @if (m.CanManage && !m.FullPage)
         {
             <button type="button" class="cee-btn sn-btn-light" data-dact="edit"><i class="fa fa-pencil" aria-hidden="true"></i> Edit</button>

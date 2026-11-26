@@ -113,7 +113,7 @@
         const e = emojiOnly(body);
         return e ? emojiHtml(e) : `<p class="bubble">${linkify(S.escape(body))}</p>`;
     }
-    const shortText = (body) => fwdOf(body) ? "↪ " + (fwdOf(body).rest ? shortText(fwdOf(body).rest) : "Forwarded") : isGif(body) ? "🎞️ GIF" : /^\[\[call:/i.test(body || "") ? "📞 Call" : (body || "").replace(/\s+/g, " ").trim();
+    const shortText = (body) => /^\[\[approval:/.test(body || "") ? "📝 Approval request" : fwdOf(body) ? "↪ " + (fwdOf(body).rest ? shortText(fwdOf(body).rest) : "Forwarded") : isGif(body) ? "🎞️ GIF" : /^\[\[call:/i.test(body || "") ? "📞 Call" : (body || "").replace(/\s+/g, " ").trim();
 
     function attachmentHtml(a) {
         const name = S.escape(a.fileName);
@@ -344,6 +344,18 @@
         if (rep) { e.preventDefault(); startReply(rep.dataset.reply); return; }
         const fw = e.target.closest("[data-fwd]");
         if (fw) { e.preventDefault(); openForward(Number(fw.dataset.fwd)); return; }
+        // ⚖ mark as decision (js/nirnay.js)
+        const dc = e.target.closest("[data-decide]");
+        if (dc) {
+            e.preventDefault();
+            const row = dc.closest(".msg"), id = Number(dc.dataset.decide);
+            window.SN?.nirnay?.record({
+                messageId: id, channelId: row?.dataset.ch || channelId, text: bodies.get(id) || "",
+                senderId: row?.dataset.sender, senderName: msgInfo.get(id)?.name,
+                where: other ? "" : (document.title || "").split(" · ")[0].trim()
+            });
+            return;
+        }
         // the quote in a reply: jump to the original and make it glow for a moment
         const q = e.target.closest(".msg-quote[data-jump]");
         if (!q) return;
@@ -460,7 +472,10 @@
         // a call started from this chat: ONE card per call that changes as the call goes on
         const call = /^\[\[call:([0-9a-f-]{36})\]\]$/i.exec(m.body || "");
         if (call) { el.classList.add("msg-is-call"); el.dataset.call = call[1].toLowerCase(); }
-        const body = call
+        // an approval request card (js/work-live.js fills it)
+        const approval = !call && /^\[\[approval:(\d+)\]\]$/.exec(m.body || "");
+        if (approval) { el.classList.add("msg-is-approval"); setTimeout(() => window.SN?.approvals?.queue(approval[1]), 0); }
+        const body = approval ? `<div class="bubble msg-approval" data-approval="${approval[1]}"><div class="sn-ap-card loading">Loading request…</div></div>` : call
             ? `<div class="bubble msg-call" data-call="${call[1].toLowerCase()}" data-mine="${mine ? 1 : 0}" data-ch="${S.escape(m.channelId)}" data-who="${S.escape(m.senderName)}" data-at="${S.escape(m.sentUtc)}">${callCardHtml(call[1].toLowerCase(), mine, m.senderName, m.sentUtc)}</div>`
             : bodyHtml(m.body);
         if (call) queueCallState(call[1].toLowerCase());
@@ -471,7 +486,7 @@
         // a group message shown in a person's chat
         const fromGroup = m.channelId !== channelId ? (m.fromGroup || "a group") : null;
         // your own text messages can be edited (not calls, not a file without text)
-        const canEdit = mine && !call && !!m.body && !isGif(m.body) && !fwdOf(m.body);
+        const canEdit = mine && !call && !!m.body && !isGif(m.body) && !fwdOf(m.body) && !/^\[\[approval:/.test(m.body);
         if (!call && isGif(m.body)) el.classList.add("msg-is-gif");
         if (!call && emojiOnly(m.body)) el.classList.add("msg-is-emoji");
         if (!call) bodies.set(Number(m.id), m.body || "");
@@ -481,11 +496,14 @@
             <div class="msg-body">
                 <span class="msg-meta">${mine ? "You" : `<strong>${S.escape(m.senderName)}</strong>`} · ${time(m.sentUtc)}${edited}${fromGroup ? ` <span class="msg-from" title="Written in the group ${S.escape(fromGroup)}"><i class="fa fa-users" aria-hidden="true"></i> in ${S.escape(fromGroup)}</span>` : ""}</span>
                 <div class="msg-line">${quoteHtml(m)}${body}${file}${mine && !fromGroup ? ticksHtml(m.sentUtc) : ""}${canEdit ? `<button type="button" class="msg-edit" data-edit="${m.id}" title="Edit message (↑ in an empty box edits your last one)" aria-label="Edit message"><i class="fa fa-pencil" aria-hidden="true"></i></button>` : ""}${canDelete ? `<button type="button" class="msg-del" data-del="${m.id}" title="Delete message" aria-label="Delete message"><i class="fa fa-trash-o" aria-hidden="true"></i></button>` : ""}
-                    <span class="msg-quick" role="toolbar" aria-label="React or reply">${REACTS.map((e) => `<button type="button" data-react="${e}" data-mid="${m.id}" aria-label="React ${e}">${e}</button>`).join("")}<button type="button" class="mq-more" data-more="${m.id}" title="More reactions" aria-label="More reactions"><i class="fa fa-plus" aria-hidden="true"></i></button>${call ? "" : `<span class="mq-sep" aria-hidden="true"></span><button type="button" class="mq-reply" data-reply="${m.id}" title="Reply" aria-label="Reply to this message"><i class="fa fa-reply" aria-hidden="true"></i></button><button type="button" class="mq-fwd" data-fwd="${m.id}" title="Forward" aria-label="Forward this message"><i class="fa fa-share" aria-hidden="true"></i></button>`}</span>
+                    <span class="msg-quick" role="toolbar" aria-label="React or reply">${REACTS.map((e) => `<button type="button" data-react="${e}" data-mid="${m.id}" aria-label="React ${e}">${e}</button>`).join("")}<button type="button" class="mq-more" data-more="${m.id}" title="More reactions" aria-label="More reactions"><i class="fa fa-plus" aria-hidden="true"></i></button>${call || approval ? "" : `<span class="mq-sep" aria-hidden="true"></span><button type="button" class="mq-reply" data-reply="${m.id}" title="Reply" aria-label="Reply to this message"><i class="fa fa-reply" aria-hidden="true"></i></button><button type="button" class="mq-fwd" data-fwd="${m.id}" title="Forward" aria-label="Forward this message"><i class="fa fa-share" aria-hidden="true"></i></button><button type="button" class="mq-decide" data-decide="${m.id}" title="Mark as decision or action item" aria-label="Mark as decision"><i class="fa fa-balance-scale" aria-hidden="true"></i></button>${(document.body.dataset.lang || "").includes("t") && m.body && !isGif(m.body) ? `<button type="button" class="mq-tr" data-translate="${m.id}" title="Translate" aria-label="Translate"><i class="fa fa-language" aria-hidden="true"></i></button>` : ""}`}</span>
                 </div>
                 <div class="msg-reacts" data-mid="${m.id}"></div>
             </div>`;
         queueReactions(m.id);
+        el.dataset.ch = m.channelId;
+        el.dataset.sender = m.senderId;
+        window.SN?.nirnay?.queue(m.id);      // decision cards (js/nirnay.js)
         return el;
     }
 
@@ -674,6 +692,16 @@
     const initial = JSON.parse(document.getElementById("initialMessages")?.textContent || "[]");
     initial.forEach(append);
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    // /chat/{id}?m=123 (e.g. "Open in chat" on the Decisions page): show that message
+    (function () {
+        const want = new URLSearchParams(location.search).get("m");
+        if (!want) return;
+        const u = new URL(location.href); u.searchParams.delete("m");
+        history.replaceState(history.state, "", u.pathname + u.search + u.hash);
+        const target = list?.querySelector(`.msg[data-id="${Number(want)}"]`);
+        if (!target) { S.toast("That message is further up. Press \"Load older messages\" to see it."); return; }
+        setTimeout(() => { target.scrollIntoView({ block: "center" }); target.classList.remove("msg-flash"); void target.offsetWidth; target.classList.add("msg-flash"); }, 80);
+    })();
 
     loadOlderBtn?.addEventListener("click", async () => {
         if (!channelId || oldestId === null) return;

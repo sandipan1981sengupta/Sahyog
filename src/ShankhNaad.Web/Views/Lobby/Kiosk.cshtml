@@ -1,0 +1,135 @@
+@model ShankhNaad.ServiceLibrary.Row
+@{
+    Layout = null;
+    // The reception tablet (LobbyController). No sign-in: the link's code is the secret. Self-contained page.
+    var company = Model.S("tenantName") ?? "our office";
+    var welcome = Model.S("welcome");
+    var code = (string)ViewContext.RouteData.Values["code"]!;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#FFF7ED" />
+    <title>Welcome · @company</title>
+    <link rel="icon" href="~/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="~/lib/Mordern-Controls/font-awesome-4.7.0/css/font-awesome.min.css" />
+    <style>
+        * { box-sizing: border-box; }
+        html, body { margin: 0; min-height: 100%; }
+        body { font-family: Roboto, "Segoe UI", system-ui, sans-serif; color: #1C1917; background: radial-gradient(1200px 700px at 10% -10%, #FFEDD5, transparent 60%), radial-gradient(900px 600px at 110% 110%, #DCFCE7, transparent 55%), #FFFBF5;
+            display: grid; place-items: center; padding: 24px; -webkit-tap-highlight-color: transparent; }
+        .k { width: min(720px, 100%); background: rgba(255, 255, 255, .78); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, .9); border-radius: 32px;
+            box-shadow: 0 30px 80px -30px rgba(154, 52, 18, .35); padding: 36px clamp(20px, 4vw, 44px); }
+        .k-top { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+        .k-logo { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; background: linear-gradient(135deg, #FF8A1F, #F97316 48%, #15803D 52%, #138808); color: #fff; font-size: 30px; }
+        h1 { margin: 0; font-size: clamp(26px, 4vw, 34px); } .k-sub { margin: 4px 0 0; color: #57534E; font-size: 17px; }
+        label { display: block; font-weight: 700; font-size: 15px; margin: 16px 0 6px; }
+        label small { font-weight: 500; color: #78716C; }
+        input { width: 100%; height: 56px; border-radius: 16px; border: 1.5px solid #E7E5E4; background: #fff; padding: 0 18px; font-size: 18px; font-family: inherit; color: inherit; }
+        input:focus { outline: 3px solid rgba(249, 115, 22, .35); border-color: #F97316; }
+        .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; } @@media (max-width: 560px) { .two { grid-template-columns: 1fr; } }
+        .hosts { margin-top: 8px; max-height: 260px; overflow: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        @@media (max-width: 560px) { .hosts { grid-template-columns: 1fr; } }
+        .host { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; border: 1.5px solid #E7E5E4; background: #fff; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+        .host.on { border-color: #F97316; background: #FFF7ED; box-shadow: 0 0 0 3px rgba(249, 115, 22, .18); }
+        .host b { display: block; font-size: 16px; } .host small { color: #78716C; font-size: 13px; }
+        .av { width: 42px; height: 42px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #7C2D12; background: #FED7AA; }
+        .av.t1 { background: #BBF7D0; color: #14532D; } .av.t2 { background: #BFDBFE; color: #1E3A8A; } .av.t3 { background: #FDE68A; color: #713F12; } .av.t4 { background: #FBCFE8; color: #831843; } .av.t5 { background: #DDD6FE; color: #4C1D95; }
+        .go { margin-top: 26px; width: 100%; height: 64px; border: 0; border-radius: 999px; font-weight: 800; font-size: 20px; font-family: inherit; color: #fff; cursor: pointer;
+            background: linear-gradient(110deg, #FF8A1F, #F97316 46%, #15803D 54%, #138808); box-shadow: 0 16px 30px -14px rgba(194, 65, 12, .8); }
+        .go:disabled { opacity: .55; }
+        .err { color: #B91C1C; font-weight: 600; margin-top: 12px; min-height: 1em; }
+        .done { text-align: center; padding: 20px 0; } .done .big { font-size: 74px; color: #16A34A; } .done h2 { font-size: 30px; margin: 10px 0; } .done p { font-size: 19px; color: #44403C; }
+        .status { margin: 24px auto 0; max-width: 460px; padding: 18px 20px; border-radius: 22px; font-size: 20px; font-weight: 700; background: #FFF7ED; color: #9A3412; }
+        .status.ok { background: #DCFCE7; color: #166534; }
+        .again { margin-top: 22px; background: none; border: 0; color: #C2410C; font-weight: 700; font-size: 17px; font-family: inherit; cursor: pointer; text-decoration: underline; }
+        .foot { margin-top: 22px; text-align: center; color: #A8A29E; font-size: 13px; }
+    </style>
+</head>
+<body>
+@Html.AntiForgeryToken()
+<main class="k" id="k">
+    <div class="k-top"><span class="k-logo"><i class="fa fa-hand-paper-o" aria-hidden="true"></i></span>
+        <div><h1>Welcome to @company</h1><p class="k-sub">@(string.IsNullOrWhiteSpace(welcome) ? "Please sign in, and we'll let your host know you're here." : welcome)</p></div></div>
+    <form id="f" autocomplete="off" novalidate>
+        <div class="two">
+            <div><label for="n">Your name</label><input id="n" maxlength="100" required /></div>
+            <div><label for="c">Company <small>(optional)</small></label><input id="c" maxlength="100" /></div>
+            <div><label for="p">Phone <small>(optional)</small></label><input id="p" maxlength="20" inputmode="tel" /></div>
+            <div><label for="w">Reason for visit <small>(optional)</small></label><input id="w" maxlength="200" /></div>
+        </div>
+        <label for="q">Who are you here to meet?</label>
+        <input id="q" placeholder="Type their name" />
+        <div class="hosts" id="hosts" role="listbox" aria-label="People"></div>
+        <button class="go" id="go" type="submit"><i class="fa fa-sign-in" aria-hidden="true"></i> Sign in</button>
+        <div class="err" id="err" role="alert"></div>
+    </form>
+    <p class="foot">Your name and visit are shared with the person you're meeting and the office.</p>
+</main>
+<script>
+(function () {
+    "use strict";
+    var base = "/lobby/@code", hosts = [], pick = null, poll = 0, reset = 0;
+    var $ = function (id) { return document.getElementById(id); };
+    var esc = function (t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+    var ini = function (n) { return String(n || "?").trim().split(/\s+/).slice(0, 2).map(function (w) { return w[0]; }).join("").toUpperCase(); };
+    var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+    var html0 = $("k").innerHTML;
+    function paintHosts() {
+        var q = ($("q").value || "").toLowerCase();
+        var list = hosts.filter(function (h) { return !q || (h.name + " " + (h.dept || "") + " " + (h.title || "")).toLowerCase().indexOf(q) >= 0; }).slice(0, q ? 12 : 8);
+        $("hosts").innerHTML = list.map(function (h) {
+            return '<button type="button" class="host' + (h.id === pick ? " on" : "") + '" data-id="' + h.id + '" role="option" aria-selected="' + (h.id === pick) + '"><span class="av t' + (h.tone % 6) + '">' + esc(ini(h.name)) + '</span><span><b>' + esc(h.name) + '</b><small>' + esc([h.title, h.dept].filter(Boolean).join(" · ")) + '</small></span></button>';
+        }).join("") || (q ? '<p style="color:#78716C">Nobody by that name. Ask at the desk, or sign in without a name below.</p>' : "");
+    }
+    function wire() {
+        fetch(base + "/hosts").then(function (r) { return r.json(); }).then(function (d) { hosts = d || []; paintHosts(); }).catch(function () { });
+        $("q").addEventListener("input", paintHosts);
+        $("hosts").addEventListener("click", function (e) { var b = e.target.closest("[data-id]"); if (b) { pick = b.dataset.id; paintHosts(); } });
+        $("f").addEventListener("submit", function (e) {
+            e.preventDefault();
+            var name = $("n").value.trim();
+            if (!name) { $("err").textContent = "Please write your name."; $("n").focus(); return; }
+            if (!pick && hosts.length) { $("err").textContent = "Please pick who you're here to meet."; $("q").focus(); return; }
+            $("go").disabled = true; $("err").textContent = "";
+            fetch(base + "/arrive", { method: "POST", headers: { "Content-Type": "application/json", "RequestVerificationToken": token, Accept: "application/json" },
+                body: JSON.stringify({ name: name, phone: $("p").value, company: $("c").value, purpose: $("w").value, hostId: pick }) })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+                .then(function (x) {
+                    if (!x.ok) { $("go").disabled = false; $("err").textContent = (x.d && x.d.error) || "Something went wrong. Please ask at the desk."; return; }
+                    thanks(name, x.d);
+                }).catch(function () { $("go").disabled = false; $("err").textContent = "No connection. Please ask at the desk."; });
+        });
+        $("n").focus();
+    }
+    function thanks(name, d) {
+        var host = d.host || "your host";
+        $("k").innerHTML = '<div class="done"><div class="big"><i class="fa fa-check-circle" aria-hidden="true"></i></div><h2>Thank you, ' + esc(name.split(" ")[0]) + '!</h2>'
+            + '<p>' + (d.host ? "We've told <b>" + esc(host) + "</b> you're here." : "Please let the front desk know who you're meeting.") + '</p>'
+            + '<div class="status" id="st">' + (d.host ? "Waiting for " + esc(host.split(" ")[0]) + " to answer…" : "Please take a seat.") + '</div>'
+            + '<button type="button" class="again" id="again">Done · next visitor</button></div>';
+        $("again").addEventListener("click", restart);
+        var tries = 0;
+        clearInterval(poll);
+        if (d.host) poll = setInterval(function () {
+            if (++tries > 150) { clearInterval(poll); return; }
+            fetch(base + "/status/" + d.visitorId + "?t=" + encodeURIComponent(d.token)).then(function (r) { return r.ok ? r.json() : null; }).then(function (s) {
+                if (!s || !s.reply) return;
+                clearInterval(poll);
+                var first = esc((s.host || host).split(" ")[0]);
+                $("st").className = "status ok";
+                $("st").innerHTML = s.reply === "coming" ? '<i class="fa fa-smile-o" aria-hidden="true"></i> ' + first + " is on the way!" : '<i class="fa fa-coffee" aria-hidden="true"></i> Please take a seat. ' + first + " will be with you shortly.";
+                clearTimeout(reset); reset = setTimeout(restart, 45000);
+            }).catch(function () { });
+        }, 4000);
+        clearTimeout(reset); reset = setTimeout(restart, 10 * 60 * 1000);
+    }
+    function restart() { clearInterval(poll); clearTimeout(reset); pick = null; $("k").innerHTML = html0; wire(); }
+    wire();
+})();
+</script>
+</body>
+</html>
