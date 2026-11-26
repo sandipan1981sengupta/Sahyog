@@ -1,0 +1,178 @@
+/* ShankhNaad app styles 19/22 · Team panel, the ⋯ menus, New group vs Add people, org chart pop-up, share a file, big people picker.
+   Part of the old shankhnaad.css, split in the same order (the bundle loads 01 → 22, so which rule wins is unchanged). */
+/* ===== Team panel extras: Share button, ⋯ button, drop a file on a name (Calls and Files) ===== */
+.sn-hbtn.share { color: #fff; background: linear-gradient(135deg, #3B82F6, #1D4ED8); border-color: transparent; }
+.sn-tp-more { width: 34px; height: 34px; flex: none; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer; color: #64748B; background: transparent;
+    transition: background .18s ease, color .18s ease; }
+.sn-tp-more:hover, .sn-tp-more:focus-visible, .sn-tp-more.on { color: #fff; background: linear-gradient(135deg, #6366F1, #A855F7); }
+html[data-theme="dark"] .sn-tp-more { color: #94A3B8; }
+.sn-tp-row.drop-over { outline: 2px dashed #3B82F6; outline-offset: -2px; background: rgba(59, 130, 246, .1); }
+.sn-files-split .sn-tp-note i { color: #2563EB; }
+
+/* ===== the ⋯ menus (Chat rows, Team panel): a line under each action, thin lines between groups ===== */
+.sn-sheet-who { display: flex; flex-direction: column; min-width: 0; }
+.sn-sheet-who small { font-size: 11.5px; font-weight: 500; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sn-sheet-t { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.sn-sheet-t small { font-size: 11.5px; font-weight: 500; opacity: .72; }
+.sn-sheet-sep { border: 0; border-top: 1px solid rgba(100, 116, 139, .2); margin: 4px 8px; }
+html[data-theme="dark"] .sn-sheet-sep { border-top-color: rgba(255, 255, 255, .1); }
+.sn-sheet-ic.org { background: linear-gradient(135deg, #8B5CF6, #2563EB); }
+.sn-sheet.pop.sn-people-menu, .sn-sheet.pop { width: 270px; }
+
+/* ===== dialogs: New group chat (NEW CHAT) vs Add people (THIS CHAT) ===== */
+.sn-dlg-tag { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; margin-left: 6px; border-radius: 999px; vertical-align: middle;
+    font: 800 10.5px Roboto, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #fff; }
+.sn-dlg-tag.new { background: linear-gradient(135deg, #8B5CF6, #DB2777); }
+.sn-dlg-tag.here { background: linear-gradient(135deg, #22C55E, #0E7490); }
+.sn-dlg-banner { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px; padding: 11px 14px; border-radius: 16px; font-size: 13px; line-height: 1.5; }
+.sn-dlg-banner i { font-size: 16px; margin-top: 1px; }
+.sn-dlg-banner.new { color: #6B21A8; background: rgba(168, 85, 247, .1); border: 1px solid rgba(168, 85, 247, .3); }
+.sn-dlg-banner.here { color: #166534; background: rgba(34, 197, 94, .1); border: 1px solid rgba(34, 197, 94, .3); }
+html[data-theme="dark"] .sn-dlg-banner.new { color: #E9D5FF; background: rgba(168, 85, 247, .14); border-color: rgba(168, 85, 247, .35); }
+html[data-theme="dark"] .sn-dlg-banner.here { color: #BBF7D0; background: rgba(34, 197, 94, .12); border-color: rgba(34, 197, 94, .3); }
+#newChannelDialog { border-color: rgba(219, 39, 119, .35); }
+#addMembersDialog { border-color: rgba(34, 197, 94, .35); }
+
+/* ===== organization chart pop-up ===== */
+.sn-orgpop { width: min(720px, 96vw); }
+.sn-orgpop .sn-dlg-body { display: flex; flex-direction: column; gap: 8px; max-height: 66vh; overflow-y: auto; }
+.sn-oc-sec { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #64748B; margin-top: 8px; }
+.sn-oc-chain { display: flex; flex-direction: column; align-items: flex-start; }
+.sn-oc-line { display: block; width: 2px; height: 14px; margin-left: 27px; background: rgba(37, 99, 235, .35); }
+.sn-oc-me { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.sn-oc-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.sn-oc-acts .cee-btn { height: 36px; padding: 0 14px; font-size: 13px; }
+.sn-oc-person { display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 7px; border-radius: 16px; cursor: pointer; text-align: left; color: inherit; font-family: inherit;
+    background: rgba(255, 255, 255, .55); border: 1px solid rgba(15, 23, 42, .08); min-width: 0; max-width: 100%; }
+.sn-oc-person:hover { border-color: rgba(37, 99, 235, .4); }
+.sn-oc-person > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.sn-oc-person b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sn-oc-person small { font-size: 11.5px; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sn-oc-person.me { border: 2px solid #2563EB; background: rgba(37, 99, 235, .08); padding: 8px 14px 8px 8px; }
+.sn-oc-person.me b { font-size: 15px; }
+.sn-oc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.sn-oc-empty { margin: 2px 0; font-size: 12.5px; color: #64748B; }
+.sn-oc-contact { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; }
+.sn-oc-contact a, .sn-oc-contact span { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.sn-oc-contact i { color: #2563EB; }
+html[data-theme="dark"] .sn-oc-person { background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .1); }
+html[data-theme="dark"] .sn-oc-person.me { border-color: #A78BFA; background: rgba(167, 139, 250, .14); }
+html[data-theme="dark"] .sn-oc-sec, html[data-theme="dark"] .sn-oc-person small, html[data-theme="dark"] .sn-oc-empty { color: #94A3B8; }
+html[data-theme="dark"] .sn-oc-line { background: rgba(167, 139, 250, .4); }
+html[data-theme="dark"] .sn-oc-contact i { color: #A78BFA; }
+html[data-theme="dark"].sn-carbon .sn-oc-person.me { border-color: #D4D4D8; background: rgba(255, 255, 255, .08); }
+html[data-theme="dark"].sn-carbon .sn-oc-line { background: rgba(255, 255, 255, .25); }
+html[data-theme="dark"].sn-carbon .sn-oc-contact i { color: #D4D4D8; }
+
+/* ===== share a file with one person ===== */
+.sn-sharepop { width: min(600px, 96vw); }
+.sn-sh-drop { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px 18px; border-radius: 20px; text-align: center; cursor: pointer;
+    border: 2px dashed rgba(37, 99, 235, .35); background: rgba(37, 99, 235, .05); }
+.sn-sh-drop:hover, .sn-sh-drop.over { border-color: #2563EB; background: rgba(37, 99, 235, .1); }
+.sn-sh-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.sn-sh-drop-ic { width: 50px; height: 50px; border-radius: 16px; display: grid; place-items: center; font-size: 22px; color: #fff; background: linear-gradient(115deg, #2563EB 0%, #7C3AED 55%, #DB2777 100%); }
+.sn-sh-drop small { font-size: 12.5px; color: #64748B; }
+.sn-sh-list { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.sn-sh-list:empty { display: none; }
+.sn-sh-file { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 14px; background: rgba(255, 255, 255, .55); border: 1px solid rgba(15, 23, 42, .08); }
+.sn-sh-file > i { font-size: 18px; color: #2563EB; }
+.sn-sh-file > span { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.sn-sh-file b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sn-sh-file small { font-size: 12px; color: #64748B; }
+.sn-sh-file button { width: 30px; height: 30px; border-radius: 9px; border: 0; background: transparent; color: #64748B; cursor: pointer; }
+.sn-sh-msg { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; }
+.sn-sh-msg input { height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid rgba(15, 23, 42, .12); background: rgba(255, 255, 255, .7); font: 500 14px Roboto, sans-serif; color: inherit; outline: 0; }
+.sn-sh-msg input:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37, 99, 235, .15); }
+#snShGo.busy { opacity: .7; pointer-events: none; }
+html[data-theme="dark"] .sn-sh-drop { border-color: rgba(167, 139, 250, .4); background: rgba(167, 139, 250, .06); }
+html[data-theme="dark"] .sn-sh-drop:hover, html[data-theme="dark"] .sn-sh-drop.over { border-color: #A78BFA; background: rgba(167, 139, 250, .12); }
+html[data-theme="dark"] .sn-sh-drop small, html[data-theme="dark"] .sn-sh-file small { color: #94A3B8; }
+html[data-theme="dark"] .sn-sh-file { background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .1); }
+html[data-theme="dark"] .sn-sh-file > i { color: #A78BFA; }
+html[data-theme="dark"] .sn-sh-msg input { background: rgba(2, 6, 23, .45); border-color: rgba(255, 255, 255, .12); }
+html[data-theme="dark"].sn-carbon .sn-sh-drop-ic { background: linear-gradient(115deg, #52525B 0%, #3F3F46 100%); }
+
+/* Team panel pins look like the Chat list: "Pinned" / "Everyone" in the same label style, a small pin on the row (pin / unpin in ⋯) */
+.sn-team-pane .sn-tp-sec { display: flex; align-items: center; gap: 4px; padding: 8px 10px 4px; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 700; }
+.sn-team-pane .sn-tp-sec i { font-size: 11px; transform: rotate(35deg); margin-right: 4px; color: #D97706; }
+.sn-team-pane .sn-tp-mark { display: inline-block; visibility: hidden; width: 12px; font-size: 11px; color: #D97706; transform: rotate(35deg); }
+.sn-team-pane .sn-tp-row.pinned .sn-tp-mark { visibility: visible; }
+.sn-team-pane .sn-tp-pin[hidden] { display: none; }
+
+/* org chart pop-up: big teams and long manager lines stay short until you ask */
+.sn-oc-hidden { display: contents; }
+.sn-oc-hidden[hidden] { display: none; }
+.sn-oc-chain .sn-oc-hidden { display: flex; flex-direction: column; align-items: flex-start; }
+.sn-oc-chain .sn-oc-hidden[hidden] { display: none; }
+.sn-oc-more { align-self: flex-start; height: 32px; padding: 0 12px; border-radius: 999px; border: 1px dashed rgba(37, 99, 235, .45); background: rgba(37, 99, 235, .06);
+    color: #1D4ED8; font: 600 12.5px Roboto, sans-serif; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.sn-oc-more:hover { background: rgba(37, 99, 235, .12); }
+html[data-theme="dark"] .sn-oc-more { color: #C4B5FD; border-color: rgba(167, 139, 250, .45); background: rgba(167, 139, 250, .08); }
+html[data-theme="dark"].sn-carbon .sn-oc-more { color: #E4E4E7; border-color: rgba(255, 255, 255, .25); background: rgba(255, 255, 255, .05); }
+.sn-oc-morewrap { display: flex; flex-direction: column; align-items: flex-start; }
+
+/* Team panel (Calls, Files): the search box, header and note keep their size; only the list scrolls */
+.sn-team-pane > .sn-tp-head, .sn-team-pane > .sn-tp-search, .sn-team-pane > .sn-tp-note { flex: none; }
+.sn-body .sn-team-pane .sn-tp-search { height: 42px; min-height: 42px; margin: 0 2px; box-sizing: border-box; }
+.sn-body .sn-team-pane .sn-tp-search input { height: 100%; font-size: 14px; }
+.sn-team-pane .sn-tp-list { min-height: 132px; }
+/* a short window: a slimmer tip so the people get the room */
+@media (max-height: 760px) {
+    .sn-team-pane .sn-tp-note { padding: 7px 10px; font-size: 11.5px; }
+}
+
+/* Every search box (Chat, Calls, Files, Team panels, Org, people pickers, Members, dialogs):
+   a fixed height that never gets squeezed when a panel or window is short */
+.sn-body .search, .sn-body .sn-hist-search, .sn-body .sn-pp-search, .sn-body .sn-mem-search,
+.sn-body .sn-md-search, .sn-body .sn-org-search, .add-dlg-search {
+    flex-shrink: 0; min-height: 40px; box-sizing: border-box;
+}
+.sn-body .search input, .sn-body .sn-hist-search input, .sn-body .sn-pp-search input, .sn-body .sn-mem-search input,
+.sn-body .sn-md-search input, .sn-body .sn-org-search input, .add-dlg-search input { min-height: 0; height: 100%; align-self: stretch; }
+
+/* the status under a picture now shows as a normal tooltip (wwwroot/js/tooltip.js), which floats above everything:
+   the old label drawn inside the picture was cut off in scrolling lists (Team panel, Chats) */
+@media (hover: hover) { .sn-body .avatar[data-status]:hover::after { content: none; display: none; } }
+
+/* ===== people picker with 20+ people: one row of chips + "+N more", Picked filter, whole teams, A–Z bar, people already in ===== */
+.sn-pp-head { align-items: center; }
+.sn-pp-clear-top { margin-left: 4px; font-size: 12.5px; }
+.sn-pp-clear-top[hidden] { display: none; }
+.sn-pp-chips.one-row { flex-wrap: nowrap; overflow: hidden; max-height: none; }
+.sn-pp-chips.open { max-height: 132px; }
+.sn-pp-chip[hidden] { display: none; }
+.sn-pp-more { flex: none; height: 28px; padding: 0 12px; border-radius: 999px; border: 0; cursor: pointer; white-space: nowrap;
+    font: 700 12px Roboto, sans-serif; color: #fff; background: linear-gradient(135deg, #6366F1, #A855F7); }
+.sn-pp-more.less { color: #6D28D9; background: rgba(124, 58, 237, .12); }
+.sn-pp-seg [data-pp-picked-n]:empty { display: none; }
+.sn-pp-teams { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sn-pp-team { height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid rgba(100, 116, 139, .3); background: transparent; color: inherit; cursor: pointer;
+    font: 600 12px Roboto, sans-serif; display: inline-flex; align-items: center; gap: 5px; }
+.sn-pp-team i { font-size: 10px; color: #7C3AED; }
+.sn-pp-team:hover { border-color: #7C3AED; background: rgba(124, 58, 237, .08); }
+.sn-pp-sub { font-size: 11.5px; color: #94A3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sn-pp-sub .sn-pp-state { font-size: inherit; }
+.sn-pp-listwrap { position: relative; }
+.sn-pp-listwrap.has-index .sn-pp-list { padding-right: 26px; }
+.sn-pp-index { position: absolute; right: 4px; top: 6px; bottom: 6px; width: 20px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; z-index: 2; }
+.sn-pp-index button { flex: 1; width: 20px; min-height: 0; max-height: 18px; padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: pointer;
+    font: 700 9.5px Roboto, sans-serif; color: #94A3B8; }
+.sn-pp-index button:hover { color: #fff; background: #7C3AED; }
+.sn-pp-already { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 16px; background: rgba(255, 255, 255, .5); border: 1px solid rgba(15, 23, 42, .08); }
+.sn-pp-faces { display: flex; align-items: center; }
+.sn-pp-faces .avatar { margin-left: -9px; box-shadow: 0 0 0 2px #fff; }
+.sn-pp-faces .avatar:first-child { margin-left: 0; }
+.sn-pp-more-faces { margin-left: 6px; height: 26px; padding: 0 9px; border-radius: 999px; display: inline-flex; align-items: center; font: 700 12px Roboto, sans-serif; background: rgba(100, 116, 139, .14); }
+.sn-pp-already-t { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
+.sn-pp-already-t b { font-size: 13.5px; }
+.sn-pp-already-list { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; max-height: 96px; overflow-y: auto; }
+.sn-pp-already-list[hidden] { display: none; }
+.sn-pp-already-name { padding: 3px 10px; border-radius: 999px; font-size: 12px; background: rgba(100, 116, 139, .12); }
+html[data-theme="dark"] .sn-pp-more.less { color: #DDD6FE; background: rgba(167, 139, 250, .16); }
+html[data-theme="dark"] .sn-pp-team { border-color: rgba(148, 163, 184, .25); }
+html[data-theme="dark"] .sn-pp-team i { color: #C4B5FD; }
+html[data-theme="dark"] .sn-pp-already { background: rgba(255, 255, 255, .04); border-color: rgba(255, 255, 255, .09); }
+html[data-theme="dark"] .sn-pp-faces .avatar { box-shadow: 0 0 0 2px #151a33; }
+html[data-theme="dark"] .sn-pp-more-faces, html[data-theme="dark"] .sn-pp-already-name { background: rgba(255, 255, 255, .08); }
+@media (max-width: 560px) { .sn-pp-index { display: none; } .sn-pp-listwrap.has-index .sn-pp-list { padding-right: 4px; } }
+

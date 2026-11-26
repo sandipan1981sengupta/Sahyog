@@ -1,0 +1,309 @@
+/* ShankhNaad app styles 03/22 · Readable controls, frosted pop-ups, glass windows, round dropdowns, slide animations.
+   Part of the old shankhnaad.css, split in the same order (the bundle loads 01 → 22, so which rule wins is unchanged). */
+/* =====================================================================
+   Round 3: readable controls, solid frosted pop-ups, opening effects
+   ===================================================================== */
+
+/* ---- inputs stand out from the glass: white fill + visible border ---- */
+.sn-body .mi-input, .sn-body .ddwl-toggle, .sn-body .mdpwl-input, .sn-body .mt-search, .sn-body .mt-filter-input,
+.sn-body .search, .sn-body .composer textarea {
+    background: var(--sn-field);
+    border: 1.5px solid var(--sn-field-edge);
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, .06);
+}
+.sn-body .composer textarea { border: 0; box-shadow: none; background: transparent; }
+.sn-body .mi-input:hover, .sn-body .ddwl-toggle:hover, .sn-body .mdpwl-input:hover, .sn-body .mt-search:hover { border-color: rgba(37, 99, 235, .45); }
+.sn-body .mi-input:focus, .sn-body .mdpwl-input:focus, .sn-body .mt-search:focus-within, .sn-body .search:focus-within {
+    background: #fff; border-color: var(--sn-blue); box-shadow: 0 0 0 4px rgba(37, 99, 235, .14);
+}
+.sn-body .mi-input::placeholder, .sn-body .mdpwl-input::placeholder { color: #64748b; }
+.sn-body .mt-filter-toggle-btn:not(.mt-filters-open .mt-filter-toggle-btn), .sn-body .mt-col-toggle-btn, .sn-body .mt-page-btn:not(.mt-page-active) {
+    background: var(--sn-field); border: 1.5px solid var(--sn-field-edge);
+}
+.sn-body .composer { background: rgba(255, 255, 255, .82); border: 1.5px solid var(--sn-field-edge); }
+
+/* ---- selected grid row: dark text on a light blue tint ---- */
+.sn-body .mt-tbody tr.mt-row-selected { background: rgba(219, 234, 254, .85); }
+.sn-body .mt-tbody tr.mt-row-selected:hover { background: rgba(219, 234, 254, .95); }
+.sn-body .mt-tbody tr.mt-row-selected td { color: var(--sn-ink) !important; font-weight: 700; }
+
+/* ---- every pop-up surface is solid frosted glass (content behind does not show through) ---- */
+.sn-body .ddwl-menu, .sn-body .mt-col-panel, .sn-body .mt-toolbar-dd .dd-menu,
+html body .strip-user-dropdown[data-strip-user-dropdown] {
+    background: linear-gradient(160deg, rgba(255, 255, 255, .94), rgba(248, 250, 255, .88)) !important;
+    backdrop-filter: blur(28px) saturate(190%) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+    border: 1px solid rgba(255, 255, 255, .95) !important;
+    box-shadow: inset 0 1px 0 #fff, 0 24px 50px -18px rgba(30, 41, 99, .45), 0 2px 6px rgba(15, 23, 42, .06) !important;
+}
+.sn-body .flatpickr-calendar {
+    background: linear-gradient(160deg, rgba(255, 255, 255, .96), rgba(246, 248, 255, .92)) !important;
+    backdrop-filter: blur(30px) saturate(190%) !important;
+    -webkit-backdrop-filter: blur(30px) saturate(190%) !important;
+    border: 1px solid rgba(255, 255, 255, .95) !important;
+    box-shadow: inset 0 1px 0 #fff, 0 30px 60px -20px rgba(30, 41, 99, .5), 0 2px 8px rgba(15, 23, 42, .08) !important;
+    border-radius: 22px !important;
+    z-index: 80 !important;
+}
+.sn-body .flatpickr-calendar.open { animation: snPopIn .22s cubic-bezier(.2, .9, .3, 1.2) both; }
+.sn-body .flatpickr-day.selected, .sn-body .flatpickr-day.selected:hover { background: var(--sn-grad) !important; border-color: transparent !important; color: #fff !important; }
+.sn-body .flatpickr-day.today:not(.selected) { border-color: var(--sn-blue) !important; color: var(--sn-blue-dark) !important; }
+
+/* ---- pop-up windows (dialogs): the window itself is frosted glass, the page behind stays sharp ---- */
+.sn-body .sn-dialog.glass-strong {
+    background: linear-gradient(150deg, rgba(255, 255, 255, .92) 0%, rgba(246, 248, 255, .86) 55%, rgba(252, 245, 250, .9) 100%);
+    backdrop-filter: blur(44px) saturate(200%);
+    -webkit-backdrop-filter: blur(44px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, .95);
+    box-shadow: inset 0 1.5px 1px #fff, 0 60px 120px -40px rgba(30, 41, 99, .55), 0 0 0 1px rgba(37, 99, 235, .06);
+}
+.sn-body .sn-dialog[open] { animation: snDialogIn .42s cubic-bezier(.16, 1, .3, 1) both; }
+.sn-body .sn-dialog[open]::backdrop { animation: snFade .3s ease both; }
+/* a light sweep across the glass when a window opens */
+.sn-body .sn-dialog[open] > :first-child { position: relative; }
+.sn-body .sn-dialog[open] > :first-child::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+    background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, .55) 45%, transparent 60%);
+    background-size: 250% 100%; background-position: 120% 0;
+    animation: snShine 1.1s .15s ease-out both;
+}
+/* glowing brand edge on top of every window */
+.sn-body .sn-dialog .sn-dlg-head, .sn-body .sn-dialog .sn-about-head { position: relative; }
+.sn-body .sn-dialog .sn-dlg-head::before, .sn-body .sn-dialog .sn-about-head::before {
+    content: ""; position: absolute; left: 28px; right: 28px; top: 0; height: 3px; border-radius: 0 0 3px 3px;
+    background: var(--sn-grad); box-shadow: 0 2px 12px rgba(219, 39, 119, .45);
+}
+/* group boxes inside a window: clearly separate panels */
+.sn-body .sn-dialog .cee-group-box { background: rgba(255, 255, 255, .55) !important; border: 1px solid rgba(100, 116, 139, .16) !important; box-shadow: 0 8px 24px -16px rgba(30, 41, 99, .35); }
+
+/* ---- Template 1 message boxes: same glass window, page behind not blurred ---- */
+.sn-body .mb-overlay, .auth-body .mb-overlay { --mb-backdrop: rgba(15, 23, 42, .16); backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+.sn-body .mb-dialog, .auth-body .mb-dialog {
+    max-width: 460px; border-radius: 26px;
+    backdrop-filter: blur(40px) saturate(200%); -webkit-backdrop-filter: blur(40px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, .95);
+    box-shadow: inset 0 1px 0 #fff, 0 50px 100px -30px rgba(30, 41, 99, .55);
+    animation: snDialogIn .42s cubic-bezier(.16, 1, .3, 1) both;
+}
+.sn-body .mb-body, .auth-body .mb-body { padding: 28px 26px; min-height: 0; font-size: 15px; background: rgba(255, 255, 255, .9); color: var(--sn-ink); }
+
+/* ---- other opening effects ---- */
+.sn-body .ddwl-menu, html body .strip-user-dropdown[data-strip-user-dropdown] { transform-origin: top center; }
+.sn-body .mt-col-toggle-wrap.open .mt-col-panel { animation: snPopIn .22s cubic-bezier(.2, .9, .3, 1.2) both; }
+
+@keyframes snDialogIn {
+    0% { opacity: 0; transform: translateY(18px) scale(.94); filter: blur(8px); }
+    60% { opacity: 1; filter: blur(0); }
+    100% { opacity: 1; transform: none; filter: none; }
+}
+@keyframes snPopIn { 0% { opacity: 0; transform: translateY(-6px) scale(.96); } 100% { opacity: 1; transform: none; } }
+@keyframes snFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes snShine { from { background-position: 120% 0; } to { background-position: -40% 0; } }
+@media (prefers-reduced-motion: reduce) {
+    .sn-body .sn-dialog[open], .sn-body .sn-dialog[open]::backdrop, .sn-body .sn-dialog[open] > :first-child::after,
+    .sn-body .flatpickr-calendar.open, .sn-body .mb-dialog, .sn-body .mt-col-panel { animation: none !important; }
+}
+
+/* windows show pop-ups (calendar, dropdowns) outside their edge instead of scrolling them */
+.sn-body .sn-dialog { overflow: visible; max-height: none; }
+@media (max-height: 860px) { .sn-body .sn-dialog { overflow: auto; max-height: calc(100vh - 24px); } }
+
+/* =====================================================================
+   Round 4: login-style glass windows, round dropdowns, radios, slide animations
+   ===================================================================== */
+
+/* ---- Template 1 dropdowns: same pill shape as the text boxes ---- */
+.sn-body .modern-dropdown-with-label { --ddwl-radius: 999px; }
+.sn-body .ddwl-toggle { border-radius: 999px !important; min-height: 44px; padding-left: 18px; padding-right: 16px; }
+.sn-body .ddwl-menu { border-radius: 18px !important; }
+.sn-body .ddwl-option { border-radius: 12px; }
+
+/* ---- radio buttons: white circle, gradient dot when chosen ---- */
+.sn-body .mr-indicator { background: rgba(255, 255, 255, .9) !important; border: 1.5px solid rgba(100, 116, 139, .45) !important; box-shadow: inset 0 1px 2px rgba(15, 23, 42, .08); }
+.sn-body .mr-cbx input[type="radio"]:checked ~ .mr-indicator { background: #fff !important; border-color: var(--sn-blue) !important; box-shadow: 0 0 0 4px rgba(37, 99, 235, .14) !important; }
+.sn-body .mr-dot { background: var(--sn-grad) !important; width: 10px; height: 10px; }
+
+/* ---- left menu logo: full colour tile ---- */
+.sn-rail .rr-logo-image { background: transparent !important; }
+.sn-rail .rr-logo-image img { width: 100% !important; height: 100% !important; opacity: 1 !important; filter: none !important; }
+
+/* ---- pop-up windows look like the sign-in glass: colour glows under frosted glass ---- */
+.sn-body .sn-dialog.glass-strong {
+    background:
+        radial-gradient(520px 320px at 0% 0%, rgba(147, 197, 253, .55), transparent 60%),
+        radial-gradient(420px 300px at 100% 0%, rgba(196, 181, 253, .45), transparent 60%),
+        radial-gradient(560px 360px at 100% 100%, rgba(244, 114, 182, .42), transparent 60%),
+        linear-gradient(150deg, rgba(255, 255, 255, .9) 0%, rgba(244, 247, 255, .86) 55%, rgba(253, 244, 250, .9) 100%);
+    backdrop-filter: blur(48px) saturate(210%);
+    -webkit-backdrop-filter: blur(48px) saturate(210%);
+    border: 1px solid rgba(255, 255, 255, .95);
+    box-shadow: inset 0 1.5px 1px #fff, inset 0 -1px 1px rgba(255, 255, 255, .5), 0 60px 120px -40px rgba(30, 41, 99, .6), 0 0 0 1px rgba(37, 99, 235, .06);
+}
+/* panels inside a window: frosted white glass over the colour */
+.sn-body .sn-dialog .cee-group-box {
+    background: linear-gradient(150deg, rgba(255, 255, 255, .72), rgba(255, 255, 255, .5)) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, .95) !important;
+    box-shadow: inset 0 1px 0 #fff, 0 14px 30px -20px rgba(30, 41, 99, .45) !important;
+}
+.sn-body .sn-dialog .sn-dlg-head, .sn-body .sn-dialog .sn-dlg-foot { border-color: rgba(255, 255, 255, .8); }
+.sn-body .sn-dialog .sn-dlg-icon { box-shadow: 0 12px 26px -10px rgba(37, 99, 235, .7), inset 0 1px 0 rgba(255, 255, 255, .4); }
+.sn-fill { flex: 1 1 auto; }
+
+/* ---- window opening: slides up with a soft spring, sections follow one after another ---- */
+.sn-body .sn-dialog[open] { animation: snSlideUp .5s cubic-bezier(.16, 1, .3, 1) both; }
+.sn-body .sn-dialog[open] .sn-dlg-head,
+.sn-body .sn-dialog[open] .sn-about-head { animation: snRise .45s .06s cubic-bezier(.16, 1, .3, 1) both; }
+.sn-body .sn-dialog[open] .sn-dlg-body > *,
+.sn-body .sn-dialog[open] .sn-form-grid > * { animation: snRise .5s cubic-bezier(.16, 1, .3, 1) both; }
+.sn-body .sn-dialog[open] .sn-form-grid > *:nth-child(1) { animation-delay: .1s; }
+.sn-body .sn-dialog[open] .sn-form-grid > *:nth-child(2) { animation-delay: .17s; }
+.sn-body .sn-dialog[open] .sn-dlg-body > *:nth-child(2) { animation-delay: .16s; }
+.sn-body .sn-dialog[open] .sn-dlg-body > *:nth-child(3) { animation-delay: .22s; }
+.sn-body .sn-dialog[open] .sn-dlg-foot { animation: snRise .45s .24s cubic-bezier(.16, 1, .3, 1) both; }
+/* closing: slides down and fades (added by shankhnaad.js) */
+.sn-body .sn-dialog.sn-closing { animation: snSlideDown .26s cubic-bezier(.4, 0, 1, 1) both !important; }
+.sn-body .sn-dialog.sn-closing::backdrop { animation: snFadeOut .26s ease both; }
+
+@keyframes snSlideUp {
+    0% { opacity: 0; transform: translateY(46px) scale(.96); filter: blur(10px); }
+    55% { opacity: 1; filter: blur(0); }
+    100% { opacity: 1; transform: none; filter: none; }
+}
+@keyframes snSlideDown { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(30px) scale(.97); filter: blur(6px); } }
+@keyframes snRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes snFadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+/* Template 1 message boxes: same slide */
+.sn-body .mb-dialog, .auth-body .mb-dialog { animation: snSlideUp .5s cubic-bezier(.16, 1, .3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+    .sn-body .sn-dialog[open], .sn-body .sn-dialog[open] *, .sn-body .sn-dialog.sn-closing, .sn-body .mb-dialog { animation: none !important; }
+}
+
+/* =====================================================================
+   Round 6: professional windows, solid pop-ups, Admin page layout
+   ===================================================================== */
+
+/* ---------- every pop-up list / calendar / menu is solid white (nothing shows through) ---------- */
+.sn-body .ddwl-menu, .sn-body .mt-col-panel, .sn-body .mt-toolbar-dd .dd-menu, .sn-body .flatpickr-calendar,
+html body .strip-user-dropdown[data-strip-user-dropdown] {
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(15, 23, 42, .10) !important;
+    box-shadow: 0 18px 40px -14px rgba(15, 23, 42, .30), 0 3px 8px rgba(15, 23, 42, .06) !important;
+}
+.sn-body .ddwl-menu { border-radius: 14px !important; padding: 6px !important; }
+.sn-body .ddwl-option { border-radius: 10px; color: #1e293b; font-weight: 500; }
+.sn-body .ddwl-option:hover, .sn-body .ddwl-option.ddwl-active { background: #F1F5F9; }
+.sn-body .ddwl-option.selected { background: #EFF6FF; color: #1D4ED8; font-weight: 700; }
+.sn-body .flatpickr-calendar { border-radius: 16px !important; }
+.sn-body .flatpickr-calendar.arrowTop::before, .sn-body .flatpickr-calendar.arrowTop::after,
+.sn-body .flatpickr-calendar.arrowBottom::before, .sn-body .flatpickr-calendar.arrowBottom::after { display: none; }
+
+/* an open list must sit above everything that comes after it (next field, next panel) */
+.sn-body .modern-dropdown-with-label.open { z-index: 90; }
+.sn-body .sn-form-grid > *:has(.modern-dropdown-with-label.open, .flatpickr-calendar.open),
+.sn-body .sn-form-grid > *:focus-within,
+.sn-body .cee-group-box:has(.modern-dropdown-with-label.open, .flatpickr-calendar.open),
+.sn-body .sn-inspector:has(.modern-dropdown-with-label.open),
+.sn-body .sn-insp-section:has(.modern-dropdown-with-label.open) { position: relative; z-index: 40; }
+
+/* ---------- windows (dialogs): clean white, no colour bar, no glows ---------- */
+.sn-body .sn-dialog,
+.sn-body .sn-dialog.glass-strong {
+    width: min(600px, calc(100vw - 24px));
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(15, 23, 42, .08) !important;
+    border-radius: 20px;
+    box-shadow: 0 40px 90px -24px rgba(15, 23, 42, .45), 0 8px 24px -8px rgba(15, 23, 42, .12) !important;
+    color: var(--sn-ink);
+}
+.sn-body .sn-dialog.wide { width: min(1080px, calc(100vw - 24px)); }
+.sn-body .sn-dialog::backdrop { background: rgba(15, 23, 42, .38); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.sn-body .sn-dialog .sn-dlg-head::before, .sn-body .sn-dialog .sn-about-head::before,
+.sn-body .sn-dialog[open] > :first-child::after { display: none !important; content: none !important; }
+
+.sn-body .sn-dialog .sn-dlg-head { padding: 20px 22px 18px 24px; border-bottom: 1px solid #EEF1F6; background: #fff; border-radius: 20px 20px 0 0; }
+.sn-body .sn-dialog .sn-dlg-title { gap: 14px; }
+.sn-body .sn-dialog .sn-dlg-title h2 { font-size: 18px; font-weight: 700; color: #0B1220; }
+.sn-body .sn-dialog .sn-dlg-title p { font-size: 13px; color: #64748B; margin-top: 3px; }
+.sn-body .sn-dialog .sn-dlg-icon { width: 42px; height: 42px; border-radius: 12px; background: #EFF6FF; color: #1D4ED8; font-size: 18px; box-shadow: inset 0 0 0 1px rgba(37, 99, 235, .14) !important; }
+.sn-body .sn-dialog .sn-close { width: 36px; height: 36px; border-radius: 10px; background: transparent; color: #64748B; border: 1px solid transparent; font-size: 16px; transition: background .15s ease, color .15s ease; }
+.sn-body .sn-dialog .sn-close:hover { background: #F1F5F9; color: #0B1220; }
+.sn-body .sn-dialog .sn-close:focus-visible { outline: 2px solid #93C5FD; outline-offset: 2px; }
+
+.sn-body .sn-dialog .sn-dlg-body { padding: 20px 24px; gap: 16px; background: #fff; }
+.sn-body .sn-dialog .sn-dlg-foot { padding: 14px 24px; background: #F8FAFC; border-top: 1px solid #EEF1F6; border-radius: 0 0 20px 20px; }
+.sn-body .sn-dialog .sn-about-head { border-bottom: 1px solid #EEF1F6; background: linear-gradient(180deg, #F8FAFF, #fff); border-radius: 20px 20px 0 0; }
+
+/* sections inside a window: plain bordered blocks */
+.sn-body .sn-dialog .cee-group-box {
+    background: #fff !important;
+    backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+    border: 1px solid #E6EAF1 !important;
+    border-radius: 14px !important;
+    box-shadow: none !important;
+}
+.sn-body .sn-dialog .cee-group-header { border-bottom: 1px solid #EEF1F6 !important; padding: 10px 16px !important; }
+.sn-body .sn-dialog .cee-group-title { font-size: 13px !important; font-weight: 700 !important; letter-spacing: .02em; }
+.sn-body .sn-dialog .cee-group-title .part-primary { color: #0B1220; }
+.sn-body .sn-dialog .cee-group-title .part-accent { color: #64748B; font-weight: 600; }
+.sn-body .sn-dialog .cee-group-content { padding: 16px !important; }
+.sn-body .sn-dialog .sn-kv, .sn-body .sn-dialog .sn-perks > div, .sn-body .sn-dialog .sn-steps, .sn-body .sn-dialog .sn-verse-box,
+.sn-body .sn-dialog .sn-pick .modern-checkbox-wrapper { background: #F8FAFC; border-color: #E6EAF1; }
+/* fields inside a window: white with a clear grey edge */
+.sn-body .sn-dialog .mi-input, .sn-body .sn-dialog .ddwl-toggle, .sn-body .sn-dialog .mdpwl-input { background: #fff; border-color: #D5DCE6; box-shadow: none; }
+.sn-body .sn-dialog .mi-input:focus, .sn-body .sn-dialog .mdpwl-input:focus { border-color: #2563EB; box-shadow: 0 0 0 4px rgba(37, 99, 235, .12); }
+
+/* opening and closing: one calm slide, no blur, no stagger (stagger trapped the drop-down lists) */
+.sn-body .sn-dialog[open] { animation: snWinIn .32s cubic-bezier(.2, .8, .2, 1) both; }
+.sn-body .sn-dialog[open]::backdrop { animation: snFade .25s ease both; }
+.sn-body .sn-dialog[open] .sn-dlg-head, .sn-body .sn-dialog[open] .sn-about-head,
+.sn-body .sn-dialog[open] .sn-dlg-body > *, .sn-body .sn-dialog[open] .sn-form-grid > *,
+.sn-body .sn-dialog[open] .sn-dlg-foot { animation: none !important; }
+.sn-body .sn-dialog.sn-closing { animation: snWinOut .2s cubic-bezier(.4, 0, 1, 1) both !important; }
+@keyframes snWinIn { from { opacity: 0; transform: translateY(16px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes snWinOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(10px) scale(.985); } }
+
+/* Template 1 message boxes: same white window */
+.sn-body .mb-dialog, .auth-body .mb-dialog {
+    background: #fff !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(15, 23, 42, .08) !important; border-radius: 18px;
+    box-shadow: 0 40px 90px -24px rgba(15, 23, 42, .45), 0 8px 24px -8px rgba(15, 23, 42, .12) !important;
+    animation: snWinIn .32s cubic-bezier(.2, .8, .2, 1) both;
+}
+.sn-body .mb-body, .auth-body .mb-body { background: #fff; }
+.sn-body .mb-overlay, .auth-body .mb-overlay { --mb-backdrop: rgba(15, 23, 42, .38); }
+@media (prefers-reduced-motion: reduce) { .sn-body .sn-dialog[open], .sn-body .sn-dialog.sn-closing, .sn-body .mb-dialog { animation: none !important; } }
+
+/* small screens: windows become bottom sheets */
+@media (max-width: 640px) {
+    .sn-body .sn-dialog, .sn-body .sn-dialog.glass-strong, .sn-body .sn-dialog.wide {
+        width: 100vw; max-width: 100vw; margin: auto 0 0; border-radius: 20px 20px 0 0;
+        max-height: 92dvh; overflow: auto;
+    }
+    .sn-body .sn-dialog .sn-dlg-foot { border-radius: 0; position: sticky; bottom: 0; }
+    .sn-body .sn-dialog .sn-dlg-head { position: sticky; top: 0; z-index: 2; }
+    .sn-body .sn-dialog .sn-form-grid { grid-template-columns: 1fr; }
+    .sn-body .sn-dialog .sn-dlg-foot > span:last-child { width: 100%; }
+    .sn-body .sn-dialog .sn-dlg-foot .cee-btn { flex: 1 1 0; }
+    @keyframes snWinIn { from { transform: translateY(100%); } to { transform: none; } }
+    @keyframes snWinOut { from { transform: none; } to { transform: translateY(100%); } }
+}
+
+/* ---------- page header (action-header): its phone pop-up menu is solid and above the page ---------- */
+.sn-body .sn-head { position: relative; z-index: 25; }
+@media (max-width: 768px) {
+    .sn-body .sn-head [id] > .hdr-right, .sn-body .sn-head .hdr-right {
+        background: #fff !important; border: 1px solid rgba(15, 23, 42, .1) !important;
+        box-shadow: 0 18px 40px -14px rgba(15, 23, 42, .3), 0 3px 8px rgba(15, 23, 42, .06) !important;
+        border-radius: 14px !important;
+    }
+    .sn-body .sn-head .hdr-menu-toggle { border-radius: 12px !important; background: #fff !important; }
+}
+

@@ -1,0 +1,185 @@
+/* ShankhNaad app styles 16/22 · Out of office.
+   Part of the old shankhnaad.css, split in the same order (the bundle loads 01 → 22, so which rule wins is unchanged). */
+/* =====================================================================
+   Out of office (purple) · edit your message
+   ===================================================================== */
+.sn-body .dot.st-ooo, .dot.st-ooo { background: radial-gradient(circle at 35% 30%, #E9D5FF 0%, #A855F7 50%, #7E22CE 100%) !important; animation: none; transform: none; position: relative; }
+.sn-body .dot.st-ooo::after, .dot.st-ooo::after { content: "\f08b"; font-family: FontAwesome; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 7px; }
+.sn-status-menu .dot.st-ooo { display: inline-block; width: 14px; height: 14px; border-radius: 50%; }
+/* on an avatar: pinned to the bottom-right corner like the green "available" dot, a little bigger, with a plane and a purple ring */
+.sn-body .avatar .dot.st-ooo { position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; border: 3px solid var(--sn-dot-ring); z-index: 2;
+    animation: snDotOoo 2.6s ease-in-out infinite; }
+.sn-body .av-44 .dot.st-ooo, .sn-body .av-56 .dot.st-ooo { width: 21px; height: 21px; }
+.sn-body .avatar .dot.st-ooo::after { content: "\f072"; font-size: 8px; line-height: 1; transform: rotate(-45deg); }
+.sn-body .av-44 .dot.st-ooo::after, .sn-body .av-56 .dot.st-ooo::after { font-size: 9.5px; }
+.sn-body .avatar.is-ooo { box-shadow: 0 0 0 2px var(--sn-dot-ring), 0 0 0 3.5px rgba(168, 85, 247, .75), 0 0 14px rgba(168, 85, 247, .35); }
+@keyframes snDotOoo {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, .55), 0 0 6px rgba(168, 85, 247, .7); }
+    50%      { box-shadow: 0 0 0 5px rgba(168, 85, 247, 0), 0 0 11px rgba(168, 85, 247, .95); }
+}
+@media (prefers-reduced-motion: reduce) { .sn-body .avatar .dot.st-ooo { animation: none; } }
+.sn-ooo-off[hidden] { display: none !important; }
+/* the dialog */
+.sn-ooo-dlg { width: min(560px, calc(100vw - 24px)); }
+.sn-ooo-ic { background: linear-gradient(135deg, #A855F7, #7E22CE) !important; color: #fff !important; }
+.sn-ooo-body { display: flex; flex-direction: column; gap: 8px; }
+.sn-ooo-body .sn-field-label { margin: 8px 0 0; }
+.sn-ooo-msg { font-family: Roboto, system-ui, sans-serif; font-size: 14px; }
+.sn-ooo-when { display: flex; flex-wrap: wrap; gap: 8px; }
+.sn-ooo-when button { height: 36px; padding: 0 14px; border-radius: 999px; cursor: pointer; font: 600 13.5px Roboto, system-ui, sans-serif;
+    color: var(--sn-ink); background: var(--sn-field); border: 1px solid var(--sn-field-edge); }
+.sn-ooo-when button[aria-checked="true"] { color: #fff; border-color: transparent; background: linear-gradient(135deg, #A855F7, #7E22CE); box-shadow: 0 8px 18px -10px rgba(126, 34, 206, .9); }
+.sn-ooo-date { width: auto !important; max-width: 220px; font-family: Roboto, system-ui, sans-serif !important; }
+.sn-ooo-date[hidden] { display: none; }
+.sn-ooo-preview { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 16px; background: rgba(168, 85, 247, .08); border: 1px solid rgba(168, 85, 247, .22); }
+.sn-ooo-preview-l { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--sn-text-2); }
+.sn-ooo-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; }
+.sn-ooo-chip .dot, .sn-ooo-bar .dot, .sn-pc-ooo .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.sn-ooo-preview q, .sn-ooo-bar q, .sn-pc-ooo q { display: block; font-size: 13px; font-style: italic; color: var(--sn-text-2); }
+.sn-ooo-preview q[hidden], .sn-pc-ooo q[hidden] { display: none; }
+/* above the message box: the person you're writing to is out of office */
+.sn-ooo-bar { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 8px; padding: 10px 14px; border-radius: 16px; font-size: 13.5px;
+    background: rgba(168, 85, 247, .1); border: 1px solid rgba(168, 85, 247, .25); color: var(--sn-ink); }
+.sn-ooo-bar[hidden] { display: none; }
+.sn-ooo-bar .dot { margin-top: 3px; }
+.sn-ooo-bar q { margin-top: 2px; }
+/* profile card */
+.sn-pc-ooo { margin: 2px 0 0; display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #7E22CE; }
+.sn-pc-ooo[hidden] { display: none; }
+.sn-pc-ooo .dot { margin-top: 2px; }
+.sn-pc-tag#pcStatus[data-status="Out of office"] { color: #7E22CE; background: rgba(168, 85, 247, .14); }
+.sn-pc-tag#pcStatus[data-status="Out of office"] i { background: #A855F7; }
+html[data-theme="dark"] .sn-ooo-bar, html[data-theme="dark"] .sn-ooo-preview { background: rgba(168, 85, 247, .12); border-color: rgba(192, 132, 252, .3); }
+html[data-theme="dark"] .sn-pc-ooo, html[data-theme="dark"] .sn-pc-tag#pcStatus[data-status="Out of office"] { color: #D8B4FE; }
+
+/* edit: ✏️ next to 🗑 on your own messages, the editor in place of the bubble, "· Edited" */
+.msg-edit {
+    position: absolute; top: 50%; left: -80px; width: 32px; height: 32px; margin-top: -16px; border-radius: 10px;
+    border: 1px solid rgba(15, 23, 42, .1); background: rgba(255, 255, 255, .9); color: #2563EB; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+    opacity: 0; transform: scale(.85); transition: opacity .15s ease, transform .15s ease, background .15s ease;
+}
+.msg:hover .msg-edit, .msg-edit:focus-visible { opacity: 1; transform: none; }
+.msg-edit:hover { background: #DBEAFE; }
+.msg.msg-editing .msg-edit, .msg.msg-editing .msg-del, .msg.msg-editing .msg-quick { display: none !important; }
+@media (hover: none) { .msg-edit { opacity: .75; transform: none; } }
+html[data-theme="dark"] .msg-edit { background: rgba(22, 28, 48, .95); border-color: rgba(255, 255, 255, .1); color: #93C5FD; }
+html[data-theme="dark"] .msg-edit:hover { background: rgba(96, 165, 250, .18); }
+.msg-edited { font-style: italic; opacity: .8; }
+.msg-editor { width: min(560px, 70vw); display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 18px;
+    background: var(--sn-field); border: 1.5px solid #2563EB; box-shadow: 0 0 0 4px rgba(37, 99, 235, .14); }
+.msg-editor textarea { width: 100%; box-sizing: border-box; border: 0; outline: none; resize: none; background: transparent; color: var(--sn-ink);
+    font: 14.5px/1.45 Roboto, system-ui, sans-serif; padding: 4px 6px; }
+.msg-editor-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.msg-editor-row small { font-size: 11.5px; color: var(--sn-text-2); }
+.msg-editor-row span { display: flex; gap: 6px; }
+.msg-editor-row button { height: 30px; padding: 0 12px; border-radius: 10px; cursor: pointer; font: 700 12.5px Roboto, system-ui, sans-serif; border: 1px solid var(--sn-field-edge); background: transparent; color: var(--sn-ink); }
+.msg-editor-row .msg-editor-save { border: 0; color: #fff; background: linear-gradient(135deg, #2563EB, #7C3AED); }
+.msg-editor-row button:disabled { opacity: .6; }
+@media (max-width: 900px) {
+    .sn-body .msg-edit { left: 26px; top: -10px; margin: 0; width: 28px; height: 28px; }
+    .msg.show-acts .msg-edit { opacity: 1; transform: none; }
+    .msg-editor { width: calc(100vw - 80px); }
+}
+
+/* =====================================================================
+   Out of office: from / to (the scheduler's date boxes), quick picks, email to the team
+   ===================================================================== */
+.sn-ooo-dlg { width: min(620px, calc(100vw - 24px)); }
+.sn-ooo-when button { transition: background .15s ease, border-color .15s ease, color .15s ease; }
+.sn-ooo-when button:hover { border-color: #A855F7; color: #7E22CE; }
+.sn-ooo-range { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; gap: 10px; }
+.sn-ooo-range .mdpwl-outer { width: 100%; }
+.sn-ooo-arrow { height: 42px; display: grid; place-items: center; color: #A855F7; font-size: 18px; }
+.sn-ooo-range-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.sn-ooo-noend { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; color: var(--sn-ink); }
+.sn-ooo-noend input { width: 16px; height: 16px; accent-color: #9333EA; margin: 0; }
+.sn-ooo-count { font-size: 12.5px; font-weight: 700; color: #7E22CE; }
+.sn-ooo-dp .mdpwl-field.mdpwl-disabled { opacity: .5; }
+/* only part of the day: Leave at → Back at (same rounded boxes as the dates) */
+.sn-ooo-hours { display: flex; flex-direction: column; gap: 10px; }
+.sn-ooo-times[hidden], #oooToTimeBox[hidden] { display: none !important; }
+.sn-ooo-tsel { width: 100%; height: 42px; padding: 0 40px 0 18px; border-radius: 30px; font: 500 15px Roboto, system-ui, sans-serif; color: var(--sn-ink);
+    background: var(--sn-field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath fill='%23A855F7' d='M8 11 3 6h10z'/%3E%3C/svg%3E") no-repeat right 16px center;
+    border: 1.5px solid var(--sn-field-edge); appearance: none; -webkit-appearance: none; cursor: pointer; }
+.sn-ooo-tsel:focus { outline: none; border-color: #A855F7; box-shadow: 0 0 0 4px rgba(168, 85, 247, .18); }
+html[data-theme="dark"] .sn-body .sn-ooo-tsel { background-color: #0D1220 !important; border-color: rgba(148, 163, 184, .22) !important; color: #E2E8F0; }
+html[data-theme="dark"] .sn-body .sn-ooo-tsel option { background: #0D1220; color: #E2E8F0; }
+/* Meetings calendar: colleagues who are away that day */
+.sn-ooo-who { display: flex; align-items: center; gap: 5px; min-width: 0; margin: 2px 0; padding: 2px 8px; border-radius: 999px; font: 600 11px Roboto, system-ui, sans-serif;
+    color: #7E22CE; background: rgba(168, 85, 247, .12); box-shadow: inset 0 0 0 1px rgba(168, 85, 247, .3); white-space: nowrap; overflow: hidden; }
+.sn-ooo-who span { overflow: hidden; text-overflow: ellipsis; }
+.sn-ooo-who small { font-size: 10.5px; font-weight: 500; opacity: .85; }
+html[data-theme="dark"] .sn-ooo-who { color: #E9D5FF; background: rgba(168, 85, 247, .18); }
+.sn-mcell .sn-ooo-whos { display: flex; flex-direction: column; gap: 2px; margin: 0 0 3px; }
+.sn-sched-col .sn-ooo-whos { position: absolute; left: 4px; right: 4px; top: 4px; z-index: 1; display: flex; flex-direction: column; gap: 2px; pointer-events: none; }
+.sn-sched-col.sn-ooo-day .sn-ooo-whos { top: 32px; }
+/* week / day: hours away drawn at their time (e.g. 4:00 pm – 5:00 pm) */
+.sn-ooo-block { position: absolute; left: 2px; right: 2px; z-index: 0; pointer-events: none; border-radius: 8px; min-height: 18px; padding: 2px 6px; overflow: hidden;
+    background: repeating-linear-gradient(135deg, rgba(168, 85, 247, .16) 0 8px, rgba(168, 85, 247, .07) 8px 16px); box-shadow: inset 0 0 0 1px rgba(168, 85, 247, .45);
+    font: 600 10.5px/1.35 Roboto, system-ui, sans-serif; color: #7E22CE; }
+.sn-ooo-block b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-theme="dark"] .sn-ooo-block { color: #E9D5FF; }
+/* your own out-of-office days can't be booked: no "add" cursor or slot hint there */
+.sn-mcell.sn-ooo-day, .sn-sched-col.sn-ooo-day, .sn-allday-cell.sn-ooo-day { cursor: not-allowed !important; }
+.sn-mcell.sn-ooo-day .sn-madd, .sn-sched-col.sn-ooo-day .sn-slot-hint { display: none !important; }
+/* email: Don't email · Whole team · Pick people */
+.sn-ooo-seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 999px; background: var(--sn-field); border: 1px solid var(--sn-field-edge); align-self: flex-start; }
+.sn-ooo-seg button { height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--sn-ink); cursor: pointer; font: 600 13px Roboto, system-ui, sans-serif; display: inline-flex; align-items: center; gap: 7px; }
+.sn-ooo-seg button i { opacity: .7; }
+.sn-ooo-seg button[aria-checked="true"] { color: #fff; background: linear-gradient(135deg, #A855F7, #7E22CE); box-shadow: 0 8px 18px -10px rgba(126, 34, 206, .9); }
+.sn-ooo-seg button[aria-checked="true"] i { opacity: 1; }
+.sn-ooo-mailnote { margin: 0; font-size: 12.5px; color: #B45309; }
+.sn-ooo-mailnote[hidden] { display: none; }
+.sn-ooo-people { border-radius: 18px; border: 1px solid var(--sn-field-edge); background: var(--sn-field); overflow: hidden; }
+.sn-ooo-people[hidden] { display: none; }
+.sn-ooo-people-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--sn-field-edge); font-size: 12.5px; color: var(--sn-text-2); }
+.sn-ooo-search { flex: 1 1 180px; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 999px; background: rgba(148, 163, 184, .1); }
+.sn-ooo-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--sn-ink); font: 14px Roboto, system-ui, sans-serif; }
+.sn-ooo-linkbtn { border: 0; background: none; cursor: pointer; font: 700 12.5px Roboto, system-ui, sans-serif; color: #2563EB; padding: 0; }
+.sn-ooo-linkbtn.sn-ooo-clear { color: #DC2626; }
+.sn-ooo-list { max-height: 220px; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.sn-ooo-empty { margin: 0; padding: 14px; font-size: 13px; color: var(--sn-text-2); }
+.sn-ooo-person { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 10px; border: 0; border-radius: 12px; background: transparent; color: var(--sn-ink); cursor: pointer; text-align: left; font: 600 14px Roboto, system-ui, sans-serif; }
+.sn-ooo-person:hover:not(:disabled) { background: rgba(168, 85, 247, .08); }
+.sn-ooo-person:disabled { opacity: .5; cursor: not-allowed; }
+.sn-ooo-person .avatar { flex: none; }
+.sn-ooo-pname { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sn-ooo-pname small { font-weight: 400; font-size: 11.5px; color: var(--sn-text-2); }
+.sn-ooo-tick { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(148, 163, 184, .6); display: grid; place-items: center; color: transparent; font-size: 11px; flex: none; }
+.sn-ooo-person.on { background: rgba(168, 85, 247, .12); }
+.sn-ooo-person.on .sn-ooo-tick { border-color: transparent; background: linear-gradient(135deg, #A855F7, #7E22CE); color: #fff; }
+.sn-ooo-prev-mail { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--sn-text-2); }
+.sn-ooo-prev-mail[hidden] { display: none; }
+html[data-theme="dark"] .sn-ooo-when button:hover { color: #D8B4FE; }
+html[data-theme="dark"] .sn-ooo-count { color: #D8B4FE; }
+html[data-theme="dark"] .sn-ooo-mailnote { color: #FBBF24; }
+html[data-theme="dark"] .sn-ooo-linkbtn { color: #93C5FD; }
+html[data-theme="dark"] .sn-ooo-linkbtn.sn-ooo-clear { color: #FCA5A5; }
+@media (max-width: 560px) {
+    .sn-ooo-range { grid-template-columns: 1fr; }
+    .sn-ooo-arrow { display: none; }
+    .sn-ooo-seg { width: 100%; }
+    .sn-ooo-seg button { flex: 1; justify-content: center; padding: 0 8px; }
+}
+/* chat: they will be out of office soon */
+.sn-ooo-bar.planned { background: rgba(168, 85, 247, .06); border-style: dashed; }
+
+/* meetings calendar: my out of office days */
+.sn-ooo-band { display: flex; align-items: center; gap: 6px; font: 700 11.5px Roboto, system-ui, sans-serif; color: #fff;
+    background: linear-gradient(135deg, #A855F7, #7E22CE); border-radius: 8px; padding: 3px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.sn-ooo-band span { overflow: hidden; text-overflow: ellipsis; }
+.sn-mcell.sn-ooo-day { background-image: repeating-linear-gradient(135deg, rgba(168, 85, 247, .08) 0 8px, transparent 8px 16px) !important; box-shadow: inset 0 0 0 1.5px rgba(168, 85, 247, .45); }
+.sn-mcell .sn-ooo-band { margin: 2px 0 4px; }
+.sn-sched-col.sn-ooo-day::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(135deg, rgba(168, 85, 247, .09) 0 10px, transparent 10px 20px); }
+.sn-sched-col .sn-ooo-band { position: absolute; top: 4px; left: 4px; right: 4px; z-index: 1; justify-content: center; opacity: .92; }
+.sn-sched-dayhead.sn-ooo-day { box-shadow: inset 0 -3px 0 #A855F7; }
+.sn-sched-dayhead .sn-ooo-band, .sn-allday-cell .sn-ooo-band { display: none; }
+.sn-allday-cell.sn-ooo-day { background: rgba(168, 85, 247, .1); }
+/* schedule dialog */
+.sn-free.ooo { color: #7E22CE !important; background: rgba(168, 85, 247, .12) !important; }
+.sn-pp-ooo { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: #7E22CE; }
+.sn-pp-ooo .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.sn-pp-row.is-ooo .sn-pp-state { display: none; }
+html[data-theme="dark"] .sn-free.ooo, html[data-theme="dark"] .sn-pp-ooo { color: #D8B4FE !important; }
+

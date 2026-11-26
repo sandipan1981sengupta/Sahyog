@@ -1,0 +1,212 @@
+/* ShankhNaad app styles 10/22 · Avatars and status, incoming call card, new message pop-ups.
+   Part of the old shankhnaad.css, split in the same order (the bundle loads 01 → 22, so which rule wins is unchanged). */
+/* =====================================================================
+   People avatars: a bit bigger, and a status you can't miss
+   green = available (breathing glow) · red = on a call (spinning ring + phone) · grey = offline
+   ===================================================================== */
+.sn-body .av-34 { width: 42px; height: 42px; font-size: 14px; }
+.sn-body .av-38 { width: 46px; height: 46px; font-size: 15px; }
+.sn-body .av-44 { width: 54px; height: 54px; font-size: 17px; }
+.sn-body .chat-side .side-item.person { padding-top: 6px !important; padding-bottom: 6px !important; }
+
+:root { --sn-dot-ring: #fff; }
+html[data-theme="dark"] { --sn-dot-ring: #151B2E; }
+
+.sn-body .avatar .dot {
+    right: -2px; bottom: -2px; width: 15px; height: 15px; border: 3px solid var(--sn-dot-ring);
+    background: #94A3B8; box-sizing: border-box; z-index: 2;
+    transition: background .3s ease, transform .3s cubic-bezier(.34, 1.56, .64, 1);
+}
+.sn-body .av-44 .dot, .sn-body .av-56 .dot { width: 17px; height: 17px; }
+
+/* available */
+.sn-body .avatar .dot.on {
+    background: radial-gradient(circle at 35% 30%, #86EFAC 0%, #22C55E 45%, #15803D 100%);
+    animation: snDotBreath 2.4s ease-in-out infinite;
+}
+.sn-body .avatar.is-on { box-shadow: 0 0 0 2px var(--sn-dot-ring), 0 0 0 3.5px rgba(34, 197, 94, .55); }
+@keyframes snDotBreath {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, .55), 0 0 6px rgba(34, 197, 94, .7); }
+    50%      { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0), 0 0 10px rgba(34, 197, 94, .9); }
+}
+
+/* on a call */
+.sn-body .avatar .dot.busy {
+    background: radial-gradient(circle at 35% 30%, #FCA5A5 0%, #EF4444 45%, #B91C1C 100%);
+    transform: scale(1.12);
+    animation: snDotBusy 1.1s ease-in-out infinite;
+}
+.sn-body .avatar .dot.busy::after {          /* tiny phone inside the red dot */
+    content: "\f095"; font-family: FontAwesome; position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: 7px; color: #fff; line-height: 1; transform: rotate(-12deg);
+}
+.sn-body .av-44 .dot.busy::after, .sn-body .av-56 .dot.busy::after { font-size: 8px; }
+@keyframes snDotBusy {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, .6), 0 0 6px rgba(239, 68, 68, .8); }
+    50%      { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0), 0 0 12px rgba(239, 68, 68, 1); }
+}
+/* a red-orange ring spins around someone on a call */
+.sn-body .avatar.is-busy::before {
+    content: ""; position: absolute; inset: -4px; border-radius: 50%; padding: 2.5px; pointer-events: none; z-index: 1;
+    background: conic-gradient(#EF4444, #F97316 25%, rgba(239, 68, 68, 0) 50%, #EF4444 75%, #F97316);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: snBusySpin 1.6s linear infinite;
+}
+@keyframes snBusySpin { to { transform: rotate(360deg); } }
+
+/* status name on hover */
+.sn-body .avatar[data-status]:hover::after {
+    content: attr(data-status); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
+    padding: 4px 9px; border-radius: 999px; white-space: nowrap; font: 600 11px Roboto, sans-serif; letter-spacing: .01em;
+    background: #0F172A; color: #fff; -webkit-text-fill-color: #fff; box-shadow: 0 6px 16px -6px rgba(0, 0, 0, .5); z-index: 20; pointer-events: none;
+}
+.sn-body .avatar.is-busy[data-status]:hover::after { background: #B91C1C; }
+.sn-body .avatar.is-on[data-status]:hover::after { background: #15803D; }
+
+@media (prefers-reduced-motion: reduce) {
+    .sn-body .avatar .dot.on, .sn-body .avatar .dot.busy, .sn-body .avatar.is-busy::before { animation: none; }
+}
+
+/* Team grid: photo / initials with live status before each name */
+#TeamTable .sn-grid-name { display: inline-flex; align-items: center; gap: 12px; vertical-align: middle; }
+#TeamTable .sn-grid-av { flex: none; }
+
+/* top bar: the photo fills your round avatar (the theme's background rule used to reset its size) */
+.sn-topbar .strip-user-avatar.has-photo { background-size: cover !important; background-position: center !important; background-repeat: no-repeat !important; }
+
+/* =====================================================================
+   Incoming call: a ringing card at the bottom right (like Microsoft Teams)
+   ===================================================================== */
+.sn-call, .sn-call[popover] {
+    position: fixed; inset: auto 22px 22px auto; margin: 0; z-index: 2147483600;
+    width: min(360px, calc(100vw - 24px)); padding: 16px 16px 18px; border-radius: 24px; overflow: hidden;
+    color: #fff; border: 1px solid rgba(255, 255, 255, .16);
+    background:
+        radial-gradient(120% 90% at 0% 0%, rgba(124, 58, 237, .55), transparent 60%),
+        radial-gradient(120% 90% at 100% 100%, rgba(219, 39, 119, .45), transparent 60%),
+        linear-gradient(160deg, #141A33, #1B1440);
+    box-shadow: 0 30px 70px -20px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .04), 0 0 40px -6px rgba(124, 58, 237, .55);
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    animation: snCallIn .55s cubic-bezier(.2, 1.2, .3, 1) both;
+}
+.sn-call[hidden] { display: none; }
+.sn-call[popover]:not(:popover-open):not([hidden]) { display: block; }
+.sn-call.leaving { animation: snCallOut .28s ease-in forwards; }
+@keyframes snCallIn { 0% { opacity: 0; transform: translateY(40px) scale(.92); } 70% { opacity: 1; transform: translateY(-4px) scale(1.01); } 100% { transform: none; } }
+@keyframes snCallOut { to { opacity: 0; transform: translateY(30px) scale(.95); } }
+/* gentle shake every ring, so it catches the eye */
+.sn-call:not(.silenced):not(.leaving) { animation: snCallIn .55s cubic-bezier(.2, 1.2, .3, 1) both, snCallNudge 2.6s ease-in-out .6s infinite; }
+@keyframes snCallNudge { 0%, 70%, 100% { transform: none; } 74% { transform: rotate(-1.2deg); } 78% { transform: rotate(1.2deg); } 82% { transform: rotate(-.8deg); } 86% { transform: rotate(.6deg); } }
+
+.sn-call-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.sn-call-app { display: inline-flex; align-items: center; gap: 8px; font: 700 12px Roboto, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #C4B5FD; }
+.sn-call-app i { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; background: linear-gradient(135deg, #2563EB, #7C3AED 55%, #DB2777); color: #fff; font-size: 11px; }
+.sn-call-mute { width: 30px; height: 30px; border-radius: 50%; border: 0; cursor: pointer; background: rgba(255, 255, 255, .1); color: #E2E8F0; }
+.sn-call-mute:hover { background: rgba(255, 255, 255, .2); }
+.sn-call.silenced .sn-call-mute { background: #F59E0B; color: #111827; }
+
+.sn-call-who { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.sn-call-rings { position: relative; width: 56px; height: 56px; flex: none; }
+.sn-call-rings .avatar { position: relative; z-index: 2; box-shadow: 0 0 0 3px rgba(255, 255, 255, .9); font-size: 18px; }
+.sn-call-rings > i { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(74, 222, 128, .8); animation: snCallRing 2s ease-out infinite; }
+.sn-call-rings > i:nth-child(2) { animation-delay: .6s; }
+.sn-call-rings > i:nth-child(3) { animation-delay: 1.2s; }
+.sn-call.silenced .sn-call-rings > i { animation-play-state: paused; opacity: 0; }
+@keyframes snCallRing { from { transform: scale(1); opacity: .9; } to { transform: scale(2); opacity: 0; } }
+.sn-call-text { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sn-call-text b { font: 800 19px Roboto, sans-serif; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sn-call-text small { font-size: 13px; color: #CBD5E1; }
+
+.sn-call-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sn-call-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px; height: 46px; border-radius: 999px; border: 0; cursor: pointer;
+    font: 700 14.5px Roboto, sans-serif; color: #fff !important; text-decoration: none !important;
+    transition: transform .2s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s ease, filter .2s ease;
+}
+.sn-call-btn i { font-size: 16px; }
+.sn-call-btn.decline { background: linear-gradient(135deg, #EF4444, #B91C1C); box-shadow: 0 10px 22px -10px rgba(239, 68, 68, .9); }
+.sn-call-btn.decline i { transform: rotate(135deg); }
+.sn-call-btn.accept { background: linear-gradient(135deg, #22C55E, #15803D); box-shadow: 0 10px 22px -10px rgba(34, 197, 94, .9); animation: snAcceptGlow 1.4s ease-in-out infinite; }
+.sn-call-btn:hover { transform: translateY(-2px) scale(1.03); filter: brightness(1.08); }
+.sn-call-btn:active { transform: scale(.96); }
+@keyframes snAcceptGlow { 0%, 100% { box-shadow: 0 10px 22px -10px rgba(34, 197, 94, .9), 0 0 0 0 rgba(34, 197, 94, .5); } 50% { box-shadow: 0 10px 22px -10px rgba(34, 197, 94, .9), 0 0 0 8px rgba(34, 197, 94, 0); } }
+
+/* 30-second countdown along the bottom edge */
+.sn-call-timer { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: linear-gradient(90deg, #22C55E, #A78BFA, #DB2777); transform-origin: left; }
+.sn-call.counting .sn-call-timer { animation: snCallTimer var(--sn-call-ms, 30000ms) linear forwards; }
+@keyframes snCallTimer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+@media (max-width: 600px) { .sn-call, .sn-call[popover] { inset: auto 12px 12px 12px; width: auto; } }
+@media (prefers-reduced-motion: reduce) { .sn-call, .sn-call-rings > i, .sn-call-btn.accept, .sn-call.counting .sn-call-timer { animation: none !important; } }
+
+/* "video call" card in the chat (instead of a raw link) */
+.bubble.msg-call { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 10px !important; min-width: 260px; }
+.msg-call-ic { width: 40px; height: 40px; border-radius: 14px; flex: none; display: grid; place-items: center; color: #fff; font-size: 16px;
+    background: linear-gradient(135deg, #22C55E, #0EA5E9); box-shadow: 0 6px 14px -6px rgba(14, 165, 233, .7); }
+.msg-call-txt { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.msg-call-txt b { font-size: 13.5px; }
+.msg-call-txt small { font-size: 11.5px; opacity: .75; }
+.msg-call-join { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; font: 700 12.5px Roboto, sans-serif;
+    background: #16A34A; color: #fff !important; text-decoration: none !important; box-shadow: 0 6px 14px -6px rgba(22, 163, 74, .8); }
+.msg-call-join:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+/* call card states: ringing · in progress · ended · missed */
+.msg-call-ic.ringing { background: linear-gradient(135deg, #6366F1, #A855F7); animation: snCallIcPulse 1.2s ease-in-out infinite; }
+.msg-call-ic.live { background: linear-gradient(135deg, #22C55E, #16A34A); animation: snCallIcPulse 1.6s ease-in-out infinite; }
+.msg-call-ic.ended { background: linear-gradient(135deg, #64748B, #475569); box-shadow: none; }
+.msg-call-ic.missed { background: linear-gradient(135deg, #EF4444, #B91C1C); box-shadow: 0 6px 14px -6px rgba(239, 68, 68, .8); }
+.msg-call-ic.ended i, .msg-call-ic.missed i { transform: rotate(135deg); }
+@keyframes snCallIcPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, .35); } 50% { box-shadow: 0 0 0 7px rgba(255, 255, 255, 0); } }
+.msg-call-back { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; border: 0; cursor: pointer;
+    font: 700 12.5px Roboto, sans-serif; background: rgba(255, 255, 255, .14); color: inherit; }
+.msg-call-back:hover { background: rgba(255, 255, 255, .24); }
+.sn-body:not(.dark) .msg:not(.mine) .msg-call-back, [data-theme="light"] .msg:not(.mine) .msg-call-back { background: rgba(15, 23, 42, .08); }
+@media (prefers-reduced-motion: reduce) { .msg-call-ic { animation: none !important; } }
+
+/* =====================================================================
+   New messages: count on the Chat icon, message pop-up with photo, new row flash
+   ===================================================================== */
+.sn-rail-badge {
+    position: absolute; top: 4px; right: 8px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px;
+    display: grid; place-items: center; font: 800 11px/1 Roboto, sans-serif; color: #fff; pointer-events: none;
+    background: linear-gradient(135deg, #EF4444, #DB2777); box-shadow: 0 0 0 2px #0F172A, 0 6px 14px -4px rgba(239, 68, 68, .9); z-index: 3;
+}
+.sn-rail-badge[hidden] { display: none; }
+.sn-rail-badge.pop { animation: snBadgePop .5s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes snBadgePop { 0% { transform: scale(.3); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+
+.sn-toast.message { border-left: 4px solid #8B5CF6 !important; }
+.sn-toast.message .sn-toast-ic.sn-toast-av { background: none !important; box-shadow: none !important; width: auto; height: auto; padding: 0; }
+.sn-toast.message .sn-toast-ic.sn-toast-av > i { display: none; }
+.sn-toast.message .sn-toast-ic .avatar { box-shadow: 0 0 0 2px rgba(255, 255, 255, .85); }
+.sn-toast.clickable { cursor: pointer; }
+.sn-toast.clickable:hover { filter: brightness(1.06); }
+
+.sn-person-row.sn-new-msg { animation: snRowFlash 1.6s ease-out; }
+@keyframes snRowFlash {
+    0% { background: rgba(139, 92, 246, .55); transform: translateX(-6px); }
+    25% { transform: none; }
+    100% { background: transparent; }
+}
+.sn-person-row.unread .grow { font-weight: 800; }
+@media (prefers-reduced-motion: reduce) { .sn-rail-badge.pop, .sn-person-row.sn-new-msg { animation: none; } }
+
+/* ringing card: decline with a message */
+.sn-call-decline-wrap { display: flex; gap: 6px; }
+.sn-call-decline-wrap .sn-call-btn { flex: 1; }
+.sn-call-more { width: 46px; height: 46px; flex: none; border-radius: 50%; border: 0; cursor: pointer; color: #fff;
+    background: rgba(255, 255, 255, .12); transition: background .2s ease, transform .2s ease; }
+.sn-call-more:hover, .sn-call-more[aria-expanded="true"] { background: rgba(239, 68, 68, .45); transform: scale(1.05); }
+.sn-call-replies { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; animation: snRepliesIn .25s ease-out; }
+.sn-call-replies[hidden] { display: none; }
+@keyframes snRepliesIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.sn-call-reply { text-align: left; padding: 9px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .12); cursor: pointer;
+    background: rgba(255, 255, 255, .07); color: #F1F5F9; font: 500 13px Roboto, sans-serif; transition: background .15s ease; }
+.sn-call-reply:hover { background: rgba(255, 255, 255, .16); }
+.sn-call-own { display: flex; gap: 6px; }
+.sn-call-own input { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .18);
+    background: rgba(15, 23, 42, .6); color: #fff; font: 14px Roboto, sans-serif; outline: none; }
+.sn-call-own input:focus { border-color: #A78BFA; }
+.sn-call-own button { width: 38px; height: 38px; border-radius: 12px; border: 0; cursor: pointer; color: #fff; background: linear-gradient(135deg, #EF4444, #B91C1C); }
+

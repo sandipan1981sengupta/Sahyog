@@ -79,7 +79,7 @@
         }
         return true;
     }
-    SN.location = { checkIn, setSharing, howToFix, get state() { return state; }, get lastError() { return lastError; } };
+    SN.location = { checkIn, setSharing, howToFix, showMyData: () => showMyData(), get state() { return state; }, get lastError() { return lastError; } };
 
     const start = () => { clearInterval(timer); timer = setInterval(() => { if (!document.hidden) checkIn(false); }, 60 * 1000); };
     const stop = () => clearInterval(timer);
@@ -98,7 +98,17 @@
             <div class="sn-loc-ask-txt">
                 <b id="snLocAskT">Share your location with your team?</b>
                 <p>Your company uses team location in ShankhNaad. If you agree, your team sees whether you're <b>in the office or remote</b> and your <b>city</b>; your workspace admins also see it on a map.</p>
-                <small>Only your latest location is kept. You can stop any time from your menu (top right).</small>
+                <details class="sn-loc-notice">
+                    <summary>What exactly is shared, and for how long</summary>
+                    <ul>
+                        <li><b>What:</b> your internet address (to tell office from remote) and, if your browser allows it, your map position and the address it points to.</li>
+                        <li><b>Why:</b> so colleagues know whether you're in the office or working remotely.</li>
+                        <li><b>Who sees it:</b> everyone in your company sees <i>In office / Remote</i> and your city; only workspace admins (and you) see the map and street address.</li>
+                        <li><b>How long:</b> only your latest location is kept. It is erased automatically if it isn't refreshed for <b>${days()} days</b>, and straight away when you stop sharing.</li>
+                        <li><b>Your choice:</b> saying no changes nothing else in ShankhNaad. You can change your mind any time from your menu (top right), where <i>My location data</i> shows everything stored about you.</li>
+                    </ul>
+                </details>
+                <small>Only your latest location is kept, for ${days()} days at most. You can stop any time from your menu (top right).</small>
                 <div class="sn-loc-ask-acts">
                     <button type="button" class="cee-btn cee-btn-gradient" data-a="yes"><i class="bi bi-geo-alt" aria-hidden="true"></i> Share my location</button>
                     <button type="button" class="cee-btn sn-btn-light" data-a="later">Not now</button>
@@ -115,6 +125,69 @@
         });
     }
 
+    const days = () => (state && state.retentionDays) || 30;
+    const esc = (t) => String(t == null ? "" : t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    const when = (iso) => {
+        if (!iso) return "—";
+        const d = new Date(iso);
+        return isNaN(d) ? "—" : d.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    };
+
+    // ---- "My location data": everything stored about me, my yes / no, and when it will be erased ----
+    let dataDlg = null;
+    async function showMyData() {
+        let d = null;
+        try { const r = await fetch("/location/mine", { headers: { Accept: "application/json" } }); d = r.ok ? await r.json() : null; } catch { }
+        if (!d) { toast("Couldn't load your location data. Try again.", "error", "Location"); return; }
+        if (!dataDlg) {
+            dataDlg = document.createElement("dialog");
+            dataDlg.className = "sn-dialog glass-strong sn-loc-data";
+            dataDlg.setAttribute("aria-labelledby", "snLocDataT");
+            document.body.appendChild(dataDlg);
+            dataDlg.addEventListener("click", async (e) => {
+                if (e.target === dataDlg || e.target.closest("[data-close]")) { dataDlg.close(); return; }
+                const a = e.target.closest("[data-loc]")?.dataset.loc;
+                if (a === "stop" && await setSharing(false)) dataDlg.close();
+                if (a === "start" && await setSharing(true)) dataDlg.close();
+            });
+        }
+        const sharing = d.sharing === true;
+        const rows = [];
+        const row = (label, value) => rows.push(`<div class="sn-loc-kv"><span>${label}</span><b>${value}</b></div>`);
+        row("Your choice", sharing ? "Sharing" : d.sharing === false ? "Not sharing" : "Not decided yet");
+        if (d.decidedUtc) row("Decided on", esc(when(d.decidedUtc)) + (d.noticeSeen ? ` · notice ${esc(d.noticeSeen)}` : ""));
+        if (d.stored) {
+            row("Office or remote", d.inOffice === true ? "In office" : d.inOffice === false ? "Remote" : "—");
+            row("Internet address", esc(d.ip || "—"));
+            row("City", esc([d.city, d.region, d.country].filter(Boolean).join(", ") || "—"));
+            row("Street address", esc(d.address || "—"));
+            row("Map position", d.lat != null ? `${Number(d.lat).toFixed(5)}, ${Number(d.lng).toFixed(5)}${d.accuracyM ? ` (± ${d.accuracyM} m)` : ""}` : "—");
+            row("Map position taken", esc(when(d.preciseUtc)));
+            row("Last check-in", esc(when(d.seenUtc)));
+            row("Erased automatically on", esc(when(d.erasedOnUtc)) + " <small>(unless it's refreshed)</small>");
+        }
+        dataDlg.innerHTML = `
+            <div class="sn-dlg-head">
+                <div class="sn-dlg-title"><span class="sn-dlg-icon"><i class="bi bi-shield-lock-fill" aria-hidden="true"></i></span>
+                    <div><h2 id="snLocDataT">My location data</h2><p>Everything ShankhNaad keeps about where you are.</p></div></div>
+                <button type="button" class="sn-close" data-close aria-label="Close"><i class="fa fa-times" aria-hidden="true"></i></button>
+            </div>
+            <div class="sn-dlg-body">
+                ${d.stored ? "" : `<p class="sn-loc-none"><i class="bi bi-check-circle-fill" aria-hidden="true"></i> Nothing about where you are is stored right now.</p>`}
+                <div class="sn-loc-kvs">${rows.join("")}</div>
+                <p class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> Only your latest location is kept. Your company keeps it for <b>${d.retentionDays} days</b> without a new check-in, then it's erased. Stopping erases it straight away; your yes / no and its date are kept as a record of your choice.</p>
+            </div>
+            <div class="sn-dlg-foot">
+                <span style="display:flex;gap:10px;margin-left:auto">
+                    <button type="button" class="cee-btn sn-btn-light" data-close>Close</button>
+                    ${sharing
+                ? `<button type="button" class="cee-btn sn-btn-danger-soft" data-loc="stop"><i class="bi bi-geo-alt" aria-hidden="true"></i> Stop sharing and erase</button>`
+                : `<button type="button" class="cee-btn cee-btn-gradient" data-loc="start"><i class="bi bi-geo-alt-fill" aria-hidden="true"></i> Share my location</button>`}
+                </span>
+            </div>`;
+        if (!dataDlg.open) dataDlg.showModal();
+    }
+
     // ---- "Share my location" in the user menu ----
     function paintMenu() {
         const dd = document.querySelector(".strip-user-dropdown[data-strip-user-dropdown]");
@@ -128,13 +201,20 @@
             item.innerHTML = '<i class="bi bi-geo-alt-fill" aria-hidden="true" style="width:18px;text-align:center;font-size:15px"></i><span class="sn-loc-menu-t">Share my location</span><span class="sn-loc-menu-sw" aria-hidden="true"><i></i></span>';
             const logout = dd.querySelector("[data-strip-action='logout']");
             dd.insertBefore(item, logout);
+            const data = document.createElement("div");
+            data.className = "strip-user-dropdown-item sn-loc-data-item";
+            data.setAttribute("data-strip-action", "location-data");
+            data.setAttribute("role", "menuitem");
+            data.innerHTML = '<i class="bi bi-shield-lock" aria-hidden="true" style="width:18px;text-align:center;font-size:15px"></i><span>My location data</span>';
+            dd.insertBefore(data, logout);
         }
         item.classList.toggle("on", state.sharing === true);
         item.setAttribute("aria-checked", state.sharing === true ? "true" : "false");
     }
     document.addEventListener("strip-header:action", (e) => {
-        if (e.target !== document || !e.detail || e.detail.action !== "location" || !state) return;
-        setSharing(state.sharing !== true);
+        if (e.target !== document || !e.detail || !state) return;
+        if (e.detail.action === "location") setSharing(state.sharing !== true);
+        else if (e.detail.action === "location-data") showMyData();
     });
 
     async function init() {

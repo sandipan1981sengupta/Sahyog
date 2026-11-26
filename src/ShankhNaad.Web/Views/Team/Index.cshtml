@@ -461,6 +461,17 @@
                 <label class="sn-field-label" for="ofIps">Office addresses <small>(one per line)</small></label>
                 <textarea id="ofIps" class="sn-textarea" rows="3" spellcheck="false" placeholder="None yet"></textarea>
                 <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> Not at the office right now? Open this later from an office computer and press <b>Yes, this is our office</b>. Don't do it from home: your home would count as the office. If the office has more than one internet connection, add each one.</span>
+                @* privacy: how long a location is kept without a new check-in, then erased automatically *@
+                <div class="sn-of-keep">
+                    <div class="sn-field-label" id="ofKeepL"><i class="bi bi-shield-lock" aria-hidden="true"></i> Keep locations for</div>
+                    <div class="sn-of-keep-opts" role="radiogroup" aria-labelledby="ofKeepL" id="ofKeep">
+                        @foreach (var d in new[] { 7, 14, 30, 90, 180, 365 })
+                        {
+                            <button type="button" role="radio" aria-checked="false" data-keep="@d">@(d < 365 ? d + " days" : "1 year")</button>
+                        }
+                    </div>
+                    <span class="sn-hint"><i class="fa fa-info-circle" aria-hidden="true"></i> A location that isn't refreshed for this long is erased automatically. Only each person's latest location is ever kept. Saved as soon as you choose.</span>
+                </div>
             </div>
             <div class="sn-dlg-foot">
                 <span class="muted small" id="ofFoot"></span>
@@ -1027,10 +1038,28 @@
         function snOfficeSettings() {
             fetch("/location/office", { headers: { Accept: "application/json" } })
                 .then(function (r) { return r.json(); })
-                .then(function (d) { snOffice = d; $("#ofIps").val(d.ips || ""); snPaintOffice(); SN.open("officeDialog"); })
+                .then(function (d) { snOffice = d; $("#ofIps").val(d.ips || ""); snPaintOffice(); snPaintKeep(d.retentionDays || 30); SN.open("officeDialog"); })
                 .catch(function () { Sahyog.toast("Couldn't load the office settings.", { kind: "error" }); });
         }
         $("#ofIps").on("input", snPaintOffice);
+        // privacy: "Keep locations for" (saved straight away; a shorter period erases older locations at once)
+        function snPaintKeep(days) {
+            $("#ofKeep [data-keep]").each(function () { var on = +this.getAttribute("data-keep") === +days; $(this).toggleClass("on", on).attr("aria-checked", on); });
+        }
+        $("#ofKeep").on("click", "[data-keep]", function () {
+            var days = +this.getAttribute("data-keep"), before = snOffice && snOffice.retentionDays;
+            snPaintKeep(days);
+            var fd = new FormData(); fd.append("days", days);
+            fetch("/location/retention", { method: "POST", body: fd, headers: { "RequestVerificationToken": Sahyog.antiforgery() } })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+                .then(function (x) {
+                    if (!x.ok) { snPaintKeep(before); Sahyog.toast(x.d.error || "Not saved.", { kind: "error", title: "Keep locations for" }); return; }
+                    if (snOffice) snOffice.retentionDays = x.d.retentionDays;
+                    var gone = (x.d.erased || 0) + (x.d.mapsErased || 0);
+                    Sahyog.toast("Locations are kept for " + (x.d.retentionDays < 365 ? x.d.retentionDays + " days" : "1 year") + " without a new check-in." + (gone ? " " + gone + " older " + (gone === 1 ? "entry was" : "entries were") + " erased now." : ""), { kind: "success", title: "Keep locations for" });
+                })
+                .catch(function () { snPaintKeep(before); Sahyog.toast("Not saved. Check your connection.", { kind: "error" }); });
+        });
         // one click: this computer's address becomes (one of) the office address(es), saved straight away
         $("#ofYes").on("click", function () {
             var list = snOfficeList(), ip = snOffice && snOffice.myIp;

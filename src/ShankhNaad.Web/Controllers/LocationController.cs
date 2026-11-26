@@ -31,13 +31,25 @@ public sealed class LocationController : Controller
     private Guid Me => Guid.Parse(User.UserId());
     private bool IsAdmin => User.IsInRole(AppRoles.TenantAdmin);
 
+    /// <summary>
+    /// The version of the notice people see before they decide (location.js shows its text). Change it whenever
+    /// that text changes in a way that matters; each person's yes / no records the version they saw.
+    /// </summary>
+    public const string NoticeVersion = "2026-11";
+    /// <summary>What "Keep locations for" offers (days).</summary>
+    private static readonly int[] RetentionChoices = { 7, 14, 30, 90, 180, 365 };
+
     /// <summary>For this page: is location on for my company, and have I said yes / no?</summary>
     [HttpGet("me")]
     public async Task<IActionResult> MyState()
     {
         var t = await _location.GetTenantAsync(TenantId);
         if (!t.Enabled) return Json(new { enabled = false });
-        return Json(new { enabled = true, sharing = await _location.GetSharingAsync(TenantId, Me), officeSet = t.OfficeList.Count > 0 });
+        return Json(new
+        {
+            enabled = true, sharing = await _location.GetSharingAsync(TenantId, Me), officeSet = t.OfficeList.Count > 0,
+            retentionDays = await _location.GetRetentionDaysAsync(TenantId), notice = NoticeVersion
+        });
     }
 
     /// <summary>Yes / no to sharing. No erases what was stored.</summary>
@@ -45,8 +57,40 @@ public sealed class LocationController : Controller
     public async Task<IActionResult> SetSharing(bool on)
     {
         if (!(await _location.GetTenantAsync(TenantId)).Enabled) return BadRequest(new { error = "Location isn't switched on for your company." });
-        await _location.SetSharingAsync(TenantId, Me, on);
+        await _location.SetSharingAsync(TenantId, Me, on, NoticeVersion);
         return Json(new { sharing = on });
+    }
+
+    /// <summary>"What's stored about me": everything kept about my location, my yes / no and how long it's kept.</summary>
+    [HttpGet("mine")]
+    public async Task<IActionResult> Mine()
+    {
+        await _location.PurgeAsync(TenantId);      // never show anything older than the company's setting
+        var m = await _location.GetMineAsync(TenantId, Me);
+        var days = m?.RetentionDays ?? await _location.GetRetentionDaysAsync(TenantId);
+        if (m is null) return Json(new { stored = false, retentionDays = days, notice = NoticeVersion });
+        return Json(new
+        {
+            stored = m.SeenUtc is not null || m.Lat is not null,
+            sharing = m.Sharing, decidedUtc = m.DecidedUtc, noticeSeen = m.NoticeVersion, notice = NoticeVersion,
+            inOffice = m.InOffice, ip = m.Ip,
+            lat = m.Lat, lng = m.Lng, accuracyM = m.AccuracyM,
+            address = m.Address, area = m.Area, city = m.City, region = m.Region, country = m.Country,
+            preciseUtc = m.PreciseUtc, seenUtc = m.SeenUtc,
+            retentionDays = days,
+            erasedOnUtc = m.SeenUtc?.AddDays(days)
+        });
+    }
+
+    /// <summary>Workspace admin: how long a location is kept without being refreshed.</summary>
+    [HttpPost("retention")]
+    [Authorize(Roles = AppRoles.TenantAdmin)]
+    public async Task<IActionResult> SetRetention(int days)
+    {
+        if (Array.IndexOf(RetentionChoices, days) < 0) return BadRequest(new { error = "Choose 7, 14, 30, 90, 180 or 365 days." });
+        var saved = await _location.SetRetentionDaysAsync(TenantId, days);
+        var r = await _location.PurgeAsync(TenantId);      // a shorter period takes effect straight away
+        return Json(new { retentionDays = saved, erased = r.Erased, mapsErased = r.MapsErased });
     }
 
     public sealed record CheckInInput(double? Lat, double? Lng, double? Accuracy);
@@ -123,7 +167,8 @@ public sealed class LocationController : Controller
         return Json(new
         {
             enabled = t.Enabled, ips = t.OfficeIps ?? "", myIp = ip?.ToString(), myIpInOffice = TeamLocation.InOffice(ip, t.OfficeList),
-            suggestIp = s?.Ip, suggestPeople = s?.People
+            suggestIp = s?.Ip, suggestPeople = s?.People,
+            retentionDays = await _location.GetRetentionDaysAsync(TenantId), retentionChoices = RetentionChoices
         });
     }
 

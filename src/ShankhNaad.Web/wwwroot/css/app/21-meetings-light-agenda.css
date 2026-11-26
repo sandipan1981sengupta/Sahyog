@@ -1,0 +1,75 @@
+/* ShankhNaad app styles 21/22 · Meetings in the light themes, Agenda buttons.
+   Part of the old shankhnaad.css, split in the same order (the bundle loads 01 → 22, so which rule wins is unchanged). */
+/* ===== Meetings · light themes: a more prominent calendar (Light, and Kesari through gen_kesari) =====
+   The toolbar above (‹ Today ›, the month button, the view tabs) is unchanged. */
+html[data-theme="light"] body .sn-view.sn-sched,
+html[data-theme="light"] body .sn-view.sn-month,
+html[data-theme="light"] body .sn-view.sn-agenda {
+    background: rgba(255, 255, 255, .9) !important;
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, .1), 0 12px 32px -16px rgba(15, 23, 42, .28) !important;
+}
+/* week / day */
+html[data-theme="light"] .sn-sched-head { background: linear-gradient(180deg, #F8FAFC, #EEF2F6); border-bottom-color: rgba(15, 23, 42, .13); }
+html[data-theme="light"] .sn-sched-dayhead { border-left-color: rgba(15, 23, 42, .09); }
+html[data-theme="light"] .sn-sched-dayhead span { color: #475569; }
+html[data-theme="light"] .sn-sched-dayhead:not(.today) b { color: #0F172A; font-weight: 800; }
+html[data-theme="light"] .sn-sched-dayhead.today b { color: #fff; font-weight: 800; }
+html[data-theme="light"] .sn-sched-dayhead.weekend span { color: #BE185D; }
+html[data-theme="light"] .sn-sched-dayhead.today { background: rgba(37, 99, 235, .08); }
+html[data-theme="light"] .sn-sched-dayhead.today span { color: #1D4ED8; }
+html[data-theme="light"] .sn-sched-dayhead em { background: #2563EB; color: #fff; }
+html[data-theme="light"] .sn-allday { background: #FAFBFC; border-bottom-color: rgba(15, 23, 42, .11); }
+html[data-theme="light"] .sn-sched-times { border-right-color: rgba(15, 23, 42, .11); }
+html[data-theme="light"] .sn-sched-times span { color: #475569; }
+html[data-theme="light"] .sn-sched-col { border-left-color: rgba(15, 23, 42, .09);
+    background-image: linear-gradient(to bottom, rgba(15, 23, 42, .11) 1px, transparent 1px), linear-gradient(to bottom, rgba(15, 23, 42, .045) 1px, transparent 1px); }
+html[data-theme="light"] .sn-sched-col.weekend { background-color: #FAFAFB; }
+html[data-theme="light"] .sn-sched-col.today { background-color: rgba(37, 99, 235, .055); }
+/* meetings: same colours, deeper fill, coloured edge and a small shadow */
+html[data-theme="light"] .sn-sched-col .sn-ev.sn-ev { --ev-bg: color-mix(in srgb, var(--ev) 17%, #fff); --ev-solid: var(--ev-bg); --ev-line: color-mix(in srgb, var(--ev) 34%, transparent);
+    box-shadow: inset 3px 0 0 var(--ev), 0 2px 6px -2px color-mix(in srgb, var(--ev) 40%, transparent); }
+html[data-theme="light"] .sn-sched-col .sn-ev.sn-ev.st-ended { --ev-bg: #EEF1F5; box-shadow: inset 3px 0 0 #94A3B8; }
+/* month */
+html[data-theme="light"] .sn-month-head { background: linear-gradient(180deg, #F8FAFC, #EEF2F6); border-bottom-color: rgba(15, 23, 42, .13); }
+html[data-theme="light"] .sn-month-head span { color: #475569; }
+html[data-theme="light"] .sn-mcell { border-right-color: rgba(15, 23, 42, .09); border-bottom-color: rgba(15, 23, 42, .09); }
+html[data-theme="light"] .sn-mcell.weekend { background: #FAFAFB; }
+html[data-theme="light"] .sn-mcell.outside { background: repeating-linear-gradient(135deg, #F4F6F8 0 8px, #FAFBFC 8px 16px); }
+html[data-theme="light"] .sn-mcell.outside .sn-mday { color: #A3ADBD; }
+html[data-theme="light"] .sn-mcell:not(.today):not(.outside) .sn-mday { color: #0F172A; font-weight: 800; }
+html[data-theme="light"] .sn-mcell.today { background: rgba(37, 99, 235, .06); box-shadow: inset 0 0 0 2px #2563EB; }
+html[data-theme="light"] .sn-mev:not(.allday) { box-shadow: inset 3px 0 0 #2563EB; }
+html[data-theme="light"] .sn-mev.tone-pink:not(.allday) { box-shadow: inset 3px 0 0 #DB2777; }
+html[data-theme="light"] .sn-mev.tone-slate:not(.allday) { box-shadow: inset 3px 0 0 #64748B; }
+/* agenda */
+html[data-theme="light"] .sn-ag-day { border-bottom-color: rgba(15, 23, 42, .1); }
+html[data-theme="light"] .sn-ag-date { background: #F1F5F9; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .1); }
+html[data-theme="light"] .sn-ag-day.today .sn-ag-date { background: #EFF6FF; box-shadow: inset 0 0 0 2px #2563EB; }
+html[data-theme="light"] .sn-ag-date small { color: #475569; opacity: 1; }
+html[data-theme="light"] .sn-ag-ev { background: #fff; border: 1px solid rgba(15, 23, 42, .1); box-shadow: inset 4px 0 0 #2563EB, 0 2px 8px -4px rgba(15, 23, 42, .2); }
+html[data-theme="light"] .sn-ag-ev.tone-pink { box-shadow: inset 4px 0 0 #DB2777, 0 2px 8px -4px rgba(15, 23, 42, .2); }
+html[data-theme="light"] .sn-ag-ev.tone-slate { box-shadow: inset 4px 0 0 #64748B, 0 2px 8px -4px rgba(15, 23, 42, .2); }
+
+/* ===== Agenda: Edit / Cancel / Delete as labelled buttons beside Join (all themes) ===== */
+.sn-ag-acts .sn-ag-btn.sn-ag-btn { position: static; opacity: 1; transform: none; width: auto; height: 34px; padding: 0 12px; border-radius: 10px; display: inline-flex; align-items: center; gap: 6px;
+    font: 700 12.5px Roboto, sans-serif; cursor: pointer; background: #F5F3FF; color: #6D28D9; border: 1px solid rgba(124, 58, 237, .35); box-shadow: none; }
+.sn-ag-acts .sn-ag-btn.sn-ev-del { background: #FEF2F2; color: #B91C1C; border-color: rgba(220, 38, 38, .35); }
+.sn-ag-acts .sn-ag-btn.act-hide { background: #F1F5F9; color: #475569; border-color: rgba(100, 116, 139, .35); }
+.sn-ag-acts .sn-ag-btn:hover { transform: translateY(-1px) !important; box-shadow: 0 4px 10px -4px rgba(15, 23, 42, .3); filter: brightness(.98); }
+.sn-ag-acts .sn-ag-btn.sn-ev-del:hover { background: #FEE2E2; }
+.sn-ag-acts .sn-ag-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.sn-ag-acts .sn-ag-join { background: #F0FDF4 !important; color: #15803D !important; border: 1px solid rgba(22, 163, 74, .4) !important; }
+.sn-ag-badge.mine { background: #FFF7ED; color: #C2410C; border: 1px solid rgba(234, 88, 12, .25); }
+html[data-theme="dark"] .sn-ag-acts .sn-ag-btn.sn-ag-btn { background: rgba(124, 58, 237, .16); color: #C4B5FD; border-color: rgba(167, 139, 250, .35); }
+html[data-theme="dark"] .sn-ag-acts .sn-ag-btn.sn-ev-del { background: rgba(220, 38, 38, .16); color: #FCA5A5; border-color: rgba(248, 113, 113, .35); }
+html[data-theme="dark"] .sn-ag-acts .sn-ag-btn.act-hide { background: rgba(255, 255, 255, .06); color: #CBD5E1; border-color: rgba(255, 255, 255, .14); }
+html[data-theme="dark"] .sn-ag-acts .sn-ag-join { background: rgba(22, 163, 74, .16) !important; color: #86EFAC !important; border-color: rgba(74, 222, 128, .35) !important; }
+html[data-theme="dark"] .sn-ag-badge.mine { background: rgba(234, 88, 12, .16); color: #FDBA74; border-color: rgba(251, 146, 60, .3); }
+@media (max-width: 1100px) { .sn-ag-acts .sn-ag-btn > span { display: none; } .sn-ag-acts .sn-ag-btn.sn-ag-btn { width: 34px; padding: 0; justify-content: center; } }
+
+/* ===== Top bar shortcuts: Files, Team and Org beside Team chat · Calls · Meetings ===== */
+.sn-app-tag.files .sn-app-ic { background: linear-gradient(135deg, #14B8A6, #0F766E); }
+.sn-app-tag.team .sn-app-ic { background: linear-gradient(135deg, #F59E0B, #D97706); }
+.sn-app-tag.org .sn-app-ic { background: linear-gradient(135deg, #06B6D4, #0E7490); }
+@media (max-width: 1500px) { .sn-app-tag:is(.files, .team, .org) .sn-app-lb { display: none; } .sn-app-tag:is(.files, .team, .org) { padding: 0 4px; } }
+

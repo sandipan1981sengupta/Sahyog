@@ -8,7 +8,7 @@ function mdpwlFloat(selectedDates, dateStr, instance) {
     function cbOf(el) {   // the box position: fixed is measured from (a transform / filter / backdrop-filter ancestor, else the window)
         for (var a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
             var cs = getComputedStyle(a);
-            if (cs.transform !== "none" || cs.filter !== "none" || (cs.backdropFilter && cs.backdropFilter !== "none") ||
+            if (cs.transform !== "none" || (cs.translate && cs.translate !== "none") || cs.filter !== "none" || (cs.backdropFilter && cs.backdropFilter !== "none") ||
                 (cs.webkitBackdropFilter && cs.webkitBackdropFilter !== "none") || cs.perspective !== "none" ||
                 /transform|filter/.test(cs.willChange) || /paint|layout|strict|content/.test(cs.contain)) return a;
         }

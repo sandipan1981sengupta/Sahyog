@@ -1,0 +1,65 @@
+/* ShankhNaad app styles 02/22 · Top bar, About / Install windows, desktop app.
+   Part of the old shankhnaad.css, split in the same order (the bundle loads 01 → 22, so which rule wins is unchanged). */
+/* =====================================================================
+   Top bar (Template 1 strip-header) + About / Install dialogs + desktop app
+   ===================================================================== */
+.sn-col { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.sn-body-row { flex: 1 1 auto; min-height: 0; display: flex; gap: 16px; }
+.sn-body-row > .sn-page { padding: 2px; }
+.sn-topbar { position: relative; z-index: 30; flex: none; height: 66px; border-radius: 24px; padding: 0 8px 0 10px; display: flex; align-items: center; }
+.sn-topbar > div { flex: 1 1 auto; width: 100%; height: 100%; }
+.sn-topbar .strip-icon-frame { border-radius: 14px !important; }
+.sn-topbar .strip-extra { margin-left: auto; display: flex; align-items: center; gap: 10px; padding-right: 10px; }
+.sn-topbar .strip-user-panel[data-strip-user-panel] { margin-left: 0; height: 50px; padding: 4px 6px 4px 5px; border-radius: 999px; background: rgba(255, 255, 255, .55); border: 1px solid rgba(255, 255, 255, .95); box-shadow: 0 6px 16px -10px rgba(30, 41, 99, .45); }
+.sn-topbar .strip-user-panel[data-strip-user-panel]:hover { background: rgba(255, 255, 255, .8); }
+.sn-topbar .strip-user-avatar { background: #334155 !important; border: 2px solid #fff; }
+.strip-user-initials { color: #fff; font: 800 14px Roboto, sans-serif; }
+.sn-topbar .strip-user-name { font: 700 13.5px Roboto, sans-serif !important; color: var(--sn-ink) !important; margin: 0; }
+.sn-topbar .strip-user-time { font: 500 11.5px Roboto, sans-serif !important; color: var(--sn-text-2) !important; margin: 3px 0 0; }
+.sn-topbar .strip-user-chevron { background: var(--sn-grad) !important; }
+html body .strip-user-dropdown[data-strip-user-dropdown] { background: rgba(255, 255, 255, .92); backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%); border: 1px solid rgba(255, 255, 255, .95); border-radius: 20px; box-shadow: 0 30px 60px -20px rgba(30, 41, 99, .45); padding: 6px; min-width: 240px; }
+html body .strip-user-dropdown[data-strip-user-dropdown] .strip-user-dropdown-item { border-radius: 12px; font: 600 13.5px Roboto, sans-serif; padding: 11px 12px; color: var(--sn-ink); border-top: 0; }
+html body .strip-user-dropdown[data-strip-user-dropdown] .strip-user-dropdown-item:hover { background: rgba(37, 99, 235, .08); }
+html body .strip-user-dropdown[data-strip-user-dropdown] .strip-user-dropdown-item[data-strip-action="logout"] { color: #b91c1c; border-top: 1px solid rgba(15, 23, 42, .08); margin-top: 4px; }
+html body .strip-user-dropdown[data-strip-user-dropdown] .strip-user-dropdown-item[data-strip-action="logout"] svg { stroke: #b91c1c; }
+html body .strip-user-dropdown[data-strip-user-dropdown] .strip-user-dropdown-item[hidden] { display: none; }
+
+.sn-pill { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 999px; background: rgba(255, 255, 255, .5); border: 1px solid rgba(255, 255, 255, .85); font: 600 12.5px Roboto, sans-serif; color: #1e293b; white-space: nowrap; }
+.sn-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; }
+.sn-pill[data-state="on"] .sn-pill-dot { background: #16a34a; box-shadow: 0 0 0 3px rgba(22, 163, 74, .18); }
+.sn-pill[data-state="off"] .sn-pill-dot { background: #dc2626; }
+
+.sn-about-head { position: relative; padding: 28px 28px 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; border-bottom: 1px solid rgba(255, 255, 255, .7); }
+.sn-about-logo { border-radius: 26px; box-shadow: 0 18px 34px -14px rgba(37, 99, 235, .7); }
+.sn-about-title { margin: 4px 0 0; font-size: 30px; font-weight: 900; letter-spacing: .04em; background: var(--sn-grad); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+.sn-kv { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; background: rgba(255, 255, 255, .45); border: 1px solid rgba(255, 255, 255, .85); font-size: 13px; }
+.sn-kv span { flex: 1; color: var(--sn-text-2); }
+.sn-kv b { font-weight: 600; }
+.sn-verse-box { margin-top: 6px; padding: 12px 14px; border-radius: 16px; background: rgba(255, 255, 255, .4); border: 1px solid rgba(255, 255, 255, .8); font-size: 13px; line-height: 1.5; color: #1e3a8a; text-align: center; display: flex; flex-direction: column; gap: 2px; }
+.sn-verse-box em { font-weight: 600; }
+.sn-verse-box span { font-size: 11.5px; color: var(--sn-text-2); }
+.sn-perks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.sn-perks > div { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 16px; background: rgba(255, 255, 255, .45); border: 1px solid rgba(255, 255, 255, .85); }
+.sn-perks b { display: block; font-size: 13.5px; }
+.sn-perks small { display: block; font-size: 12px; color: var(--sn-text-2); }
+.sn-perk-ic { width: 34px; height: 34px; border-radius: 11px; background: rgba(37, 99, 235, .10); color: var(--sn-blue-dark); display: flex; align-items: center; justify-content: center; flex: none; }
+.sn-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px 14px; border-radius: 16px; background: rgba(255, 255, 255, .4); border: 1px solid rgba(255, 255, 255, .85); }
+.sn-steps span { display: flex; align-items: center; gap: 9px; font-size: 12.5px; font-weight: 600; }
+.sn-steps b { width: 24px; height: 24px; border-radius: 50%; background: var(--sn-grad); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; flex: none; }
+
+/* ---------- running as the desktop app ---------- */
+/* Window Controls Overlay: the top bar becomes the window's title bar. */
+@media (display-mode: window-controls-overlay) {
+    .sn-shell { padding-top: max(16px, env(titlebar-area-y, 0px)); }
+    .sn-topbar { app-region: drag; -webkit-app-region: drag; padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) - 16px + 8px); }
+    .sn-topbar .strip-user-panel, .sn-topbar .sn-pill, .sn-topbar button, .sn-topbar a { app-region: no-drag; -webkit-app-region: no-drag; }
+}
+body.sn-app .sn-topbar .strip-extra .sn-pill:last-child { display: none; }  /* the taskbar already shows the time */
+
+@media (max-width: 900px) {
+    .sn-body-row { flex-wrap: wrap; }
+    .sn-topbar .strip-extra { display: none; }
+    .sn-perks, .sn-steps { grid-template-columns: 1fr; }
+}
+
+

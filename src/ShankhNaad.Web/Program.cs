@@ -43,6 +43,7 @@ builder.Services.AddSingleton<AssetBundles>();
 // our .js / .css / .svg: minified safely and compressed once at the best level, kept in memory (Infrastructure/OptimizedAssets.cs)
 builder.Services.AddSingleton<OptimizedAssets>();
 builder.Services.AddSingleton<ShankhNaad.Web.Infrastructure.ReverseGeocoder>();   // team location: map position → place name
+builder.Services.AddHostedService<ShankhNaad.Web.Infrastructure.LocationRetention>();   // team location: erase locations older than each company's "keep for" setting
 
 // Compress CSS / JS / SVG (about 1.6 MB → about 300 KB per first visit). HTML pages are deliberately NOT
 // compressed: they carry the anti-forgery token, and compressing secrets over HTTPS opens the BREACH attack.

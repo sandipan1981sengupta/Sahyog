@@ -5333,3 +5333,12 @@ html[data-theme="dark"] .sn-ooo-linkbtn.sn-ooo-clear { color: #FCA5A5; }
     .sn-ooo-dlg .sn-dlg-foot { flex-wrap: wrap; }
     .sn-ooo-footsum { width: 100%; }
 }
+
+/* ===== Pop-up windows: drag by the header on a desktop (see shankhnaad.js, "drag any pop-up window") ===== */
+@media (pointer: fine) and (min-width: 761px) {
+    .sn-body dialog[open] :is(.sn-dlg-head, .sn-md-head, .sn-about-head, .mb-header) { cursor: grab; user-select: none; -webkit-user-select: none; }
+    .sn-body dialog[open] :is(.sn-dlg-head, .sn-md-head, .sn-about-head, .mb-header) :is(button, a, input, textarea, select, label, [role=button]) { cursor: pointer; }
+    .sn-body dialog[open] :is(.sn-dlg-head, .sn-md-head, .sn-about-head, .mb-header) :is(input, textarea) { cursor: text; user-select: text; }
+    .sn-body dialog.sn-dlg-dragging, .sn-body dialog.sn-dlg-dragging * { cursor: grabbing !important; }
+    .sn-body dialog.sn-dlg-dragging { transition: none !important; }
+}

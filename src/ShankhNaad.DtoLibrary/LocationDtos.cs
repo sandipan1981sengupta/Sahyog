@@ -28,3 +28,13 @@ public sealed record LocationCheckIn(
 
 /// <summary>How many people connected from one internet address (the office suggestion).</summary>
 public sealed record LocationIpCount(string Ip, int People);
+
+/// <summary>"What's stored about me": the person's own record, the yes / no they gave and how long it is kept.</summary>
+public sealed record MyLocationRecord(
+    bool? Sharing, bool? InOffice, string? Ip,
+    double? Lat, double? Lng, int? AccuracyM,
+    string? Address, string? Area, string? City, string? Region, string? Country,
+    DateTime? PreciseUtc, DateTime? SeenUtc, DateTime? DecidedUtc, string? NoticeVersion, int RetentionDays);
+
+/// <summary>What one clean-up erased: whole locations not refreshed in time, and old map positions.</summary>
+public sealed record LocationPurgeResult(int Erased, int MapsErased);

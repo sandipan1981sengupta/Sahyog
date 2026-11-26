@@ -22,6 +22,18 @@ public interface ILocationService
     /// <summary>0 saved, 1 the client has it off, 2 this person doesn't share.</summary>
     Task<int> SaveAsync(Guid tenantId, Guid userId, LocationCheckIn checkIn);
     Task<List<UserLocationDto>> ListAsync(Guid tenantId);
+
+    // ---- privacy (44_LocationPrivacy.sql). Each falls back quietly when that script hasn't been run yet. ----
+    /// <summary>How many days a location is kept without being refreshed (30 by default).</summary>
+    Task<int> GetRetentionDaysAsync(Guid tenantId);
+    /// <summary>Workspace admin: 1 to 365 days. Returns the value saved.</summary>
+    Task<int> SetRetentionDaysAsync(Guid tenantId, int days);
+    /// <summary>Yes / no with a record of when, and which version of the notice the person saw.</summary>
+    Task SetSharingAsync(Guid tenantId, Guid userId, bool sharing, string noticeVersion);
+    /// <summary>Erases locations older than each client's retention (tenantId null = every client).</summary>
+    Task<LocationPurgeResult> PurgeAsync(Guid? tenantId = null);
+    /// <summary>The person's own stored record (null when nothing was ever stored).</summary>
+    Task<MyLocationRecord?> GetMineAsync(Guid tenantId, Guid userId);
     /// <summary>How many sharing people connected from each internet address since a time, most first (31_OfficeSuggestion.sql).
     /// Empty when that script hasn't been run yet.</summary>
     Task<List<LocationIpCount>> IpCountsAsync(Guid tenantId, DateTime sinceUtc);
@@ -89,8 +101,61 @@ public sealed class LocationService : ILocationService
         catch (SqlException) { return new(); }      // 31_OfficeSuggestion.sql not run yet: simply no suggestion
     }
 
-    public Task<List<UserLocationDto>> ListAsync(Guid tenantId) =>
-        _db.QueryAsync("dbo.sahyog_Location_List", p => p.With("@TenantId", tenantId), r => new UserLocationDto(
+    public async Task<int> GetRetentionDaysAsync(Guid tenantId)
+    {
+        try
+        {
+            var rows = await _db.QueryAsync("dbo.sahyog_Location_GetRetention", p => p.With("@TenantId", tenantId), r => r.I("RetentionDays"));
+            return rows.Count == 0 ? 30 : rows[0];
+        }
+        catch (SqlException) { return 30; }      // 44_LocationPrivacy.sql not run yet
+    }
+
+    public async Task<int> SetRetentionDaysAsync(Guid tenantId, int days)
+    {
+        var rows = await _db.QueryAsync("dbo.sahyog_Location_SetRetention",
+            p => p.With("@TenantId", tenantId).With("@Days", Math.Clamp(days, 1, 365)), r => r.I("RetentionDays"));
+        return rows.FirstOrDefault();
+    }
+
+    public async Task SetSharingAsync(Guid tenantId, Guid userId, bool sharing, string noticeVersion)
+    {
+        try
+        {
+            await _db.ExecAsync("dbo.sahyog_Location_UserSetSharing2",
+                p => p.With("@TenantId", tenantId).With("@UserId", userId).With("@Sharing", sharing).AddText("@NoticeVersion", noticeVersion, 20));
+        }
+        catch (SqlException) { await SetSharingAsync(tenantId, userId, sharing); }   // old database: yes / no without the record
+    }
+
+    public async Task<LocationPurgeResult> PurgeAsync(Guid? tenantId = null)
+    {
+        try
+        {
+            var rows = await _db.QueryAsync("dbo.sahyog_Location_Purge",
+                p => p.With("@TenantId", tenantId), r => new LocationPurgeResult(r.I("Erased"), r.I("MapsErased")));
+            return rows.FirstOrDefault() ?? new LocationPurgeResult(0, 0);
+        }
+        catch (SqlException) { return new LocationPurgeResult(0, 0); }
+    }
+
+    public async Task<MyLocationRecord?> GetMineAsync(Guid tenantId, Guid userId)
+    {
+        try
+        {
+            return await _db.QueryFirstAsync("dbo.sahyog_Location_Mine", p => p.With("@TenantId", tenantId).With("@UserId", userId), r => new MyLocationRecord(
+                BN(r, "Sharing"), BN(r, "InOffice"), r.SN("Ip"), D(r, "Lat"), D(r, "Lng"), r.IN("AccuracyM"),
+                r.SN("Address"), r.SN("Area"), r.SN("City"), r.SN("Region"), r.SN("Country"),
+                r.UtcN("PreciseUtc"), r.UtcN("SeenUtc"), r.UtcN("DecidedUtc"), r.SN("NoticeVersion"), r.I("RetentionDays")));
+        }
+        catch (SqlException) { return null; }
+    }
+
+    public async Task<List<UserLocationDto>> ListAsync(Guid tenantId)
+    {
+        await PurgeAsync(tenantId);      // never show a location older than the company's "keep for" setting
+        return await _db.QueryAsync("dbo.sahyog_Location_List", p => p.With("@TenantId", tenantId), r => new UserLocationDto(
             r.G("UserId"), BN(r, "Sharing"), BN(r, "InOffice"), D(r, "Lat"), D(r, "Lng"), r.IN("AccuracyM"),
             r.SN("Address"), r.SN("Area"), r.SN("City"), r.SN("Region"), r.SN("Country"), r.UtcN("PreciseUtc"), r.UtcN("SeenUtc")));
+    }
 }

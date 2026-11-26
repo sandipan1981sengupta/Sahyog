@@ -1098,3 +1098,71 @@ window.addEventListener("pageshow", () => {
         setTimeout(() => plus.classList.remove("sn-burst"), 600);
     });
 })();
+
+/* ---------- Desktop: drag any pop-up window by its header ----------
+   Hold the header (title bar) of a window and move it anywhere inside the browser window (never past its edges). Buttons, links and fields in the header still work.
+   Double-click the header to put the window back in the middle; it is also back in the middle the next time it opens.
+   Phones and tablets keep their bottom-sheet windows, so this is only for a mouse / trackpad on a wide screen. */
+(function () {
+    "use strict";
+    const HEAD = ".sn-dlg-head, .sn-md-head, .sn-about-head, .mb-header";
+    const desk = () => window.matchMedia("(pointer: fine) and (min-width: 761px)").matches;
+    let drag = null;
+
+    const offsetOf = (dlg) => {
+        const t = (dlg.style.translate || "0px 0px").split(" ");
+        return { x: parseFloat(t[0]) || 0, y: parseFloat(t[1] || t[0]) || 0 };
+    };
+    const place = (dlg, x, y) => {
+        // the whole window stays inside the browser window (8 px from each edge); a window taller or wider
+        // than the browser keeps its top / left edge in view, so its header can always be grabbed
+        const r = dlg.getBoundingClientRect(), cur = offsetOf(dlg), m = 8;
+        const baseL = r.left - cur.x, baseT = r.top - cur.y;
+        const minX = m - baseL, maxX = Math.max(minX, innerWidth - m - r.width - baseL);
+        const minY = m - baseT, maxY = Math.max(minY, innerHeight - m - r.height - baseT);
+        x = Math.min(Math.max(x, minX), maxX);
+        y = Math.min(Math.max(y, minY), maxY);
+        dlg.style.translate = Math.round(x) + "px " + Math.round(y) + "px";
+    };
+    const reset = (dlg) => { dlg.style.translate = ""; dlg.classList.remove("sn-dlg-moved"); };
+
+    document.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0 || !desk()) return;
+        const head = e.target.closest(HEAD);
+        const dlg = head && head.closest("dialog[open]");
+        if (!dlg || dlg.classList.contains("sn-no-drag")) return;
+        if (e.target.closest("button, a, input, textarea, select, label, [role=button], [contenteditable], .sn-close, [data-close]")) return;
+        const o = offsetOf(dlg);
+        drag = { dlg, head, id: e.pointerId, sx: e.clientX, sy: e.clientY, ox: o.x, oy: o.y, moved: false };
+        e.preventDefault();   // no text selection while dragging
+        head.setPointerCapture(e.pointerId);
+    });
+    document.addEventListener("pointermove", (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+        if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 4) return;   // a click is not a drag
+        if (!drag.moved) { drag.moved = true; drag.dlg.classList.add("sn-dlg-dragging", "sn-dlg-moved"); }
+        e.preventDefault();
+        place(drag.dlg, drag.ox + dx, drag.oy + dy);
+    });
+    const end = (e) => {
+        if (!drag || (e && e.pointerId !== drag.id)) return;
+        drag.dlg.classList.remove("sn-dlg-dragging");
+        try { drag.head.releasePointerCapture(drag.id); } catch (_) { }
+        drag = null;
+    };
+    document.addEventListener("pointerup", end);
+    document.addEventListener("pointercancel", end);
+    // double-click the header: back to the middle
+    document.addEventListener("dblclick", (e) => {
+        const head = e.target.closest(HEAD);
+        const dlg = head && head.closest("dialog[open]");
+        if (dlg && desk() && !e.target.closest("button, a, input, textarea, select")) reset(dlg);
+    });
+    // closing a window puts it back in the middle for next time ("close" doesn't bubble, so listen while it travels down)
+    document.addEventListener("close", (e) => { if (e.target && e.target.tagName === "DIALOG") reset(e.target); }, true);
+    // a smaller window (or a screen change) must not leave a moved window off screen
+    window.addEventListener("resize", () => {
+        document.querySelectorAll("dialog[open].sn-dlg-moved").forEach((d) => { if (!desk()) reset(d); else { const o = offsetOf(d); place(d, o.x, o.y); } });
+    });
+})();
