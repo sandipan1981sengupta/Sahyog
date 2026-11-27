@@ -165,6 +165,8 @@
                     @* who reports to whom, departments; admins edit it and import a CSV (OrgController) *@
                     <rail-item key="org" label="Org" icon="sitemap" href="/org" active="@(section == "org")"></rail-item>
                 }
+                @* Help Center: video guides and the PDF user manual (HelpController) *@
+                <rail-item key="help" label="Help" icon="life-ring" href="/help" active="@(section == "help")"></rail-item>
                 @if (isSuperAdmin)
                 {
                     <rail-item key="admin" label="Clients" icon="shield" href="/admin" active="@(section == "admin")"></rail-item>

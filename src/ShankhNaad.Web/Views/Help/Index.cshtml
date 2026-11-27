@@ -1,0 +1,179 @@
+@{
+    ViewData["Title"] = "Help Center";
+    ViewData["Section"] = "help";
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/help-page.css" asp-append-version="true" />
+}
+<main class="sn-page snh-page">
+
+<div class="snh is-boot" id="snhRoot" style="opacity:0">
+
+    <!-- ===================== HERO WINDOW (glass header / body / glass footer, like the list windows) ===================== -->
+    <section class="snh-win">
+        <span class="snh-win-blob b1"></span><span class="snh-win-blob b2"></span><span class="snh-win-blob b3"></span>
+
+        <header class="snh-win-head">
+            <div class="GlassIconBadge snh-badge"><div class="badge-orb"></div><div class="badge-glass"></div><i class="fa fa-life-ring"></i></div>
+            <div class="snh-win-titles">
+                <h2 class="glow-title">Help Center</h2>
+                <small>ShankhNaad video user guides</small>
+            </div>
+            <div class="snh-win-tools">
+                <label class="snh-search">
+                    <i class="fa fa-search"></i>
+                    <input type="text" id="snhSearch" placeholder="Search guides, e.g. reply, group, meeting, leave…" autocomplete="off" />
+                    <kbd>/</kbd>
+                </label>
+                <a class="snh-pdf" href="~/HelpVideos/ShankhNaad_User_Manual.pdf" target="_blank" rel="noopener" title="Open the User manual (PDF)">
+                    <span class="snh-pdf-ico"><i class="fa fa-file-pdf-o"></i></span>
+                    <span class="snh-pdf-text"><b>User manual (PDF)</b><small>All pages, step by step</small></span>
+                    <i class="fa fa-download snh-pdf-dl"></i>
+                </a>
+            </div>
+        </header>
+
+        <div class="snh-win-body">
+            <div class="snh-win-left">
+                <span class="snh-eyebrow"><i></i>ShankhNaad Academy · narrated video guides</span>
+                <h1 class="snh-h1">Master every page of <em>ShankhNaad</em></h1>
+                <p class="snh-lead">Short, narrated walkthroughs of every page: how to open it and use every button on it, from your first chat and call to meetings, the Work pages and running your workspace.</p>
+                <div class="snh-cta">
+                    <button type="button" class="snh-btn snh-btn-primary" id="snhStart"><span class="snh-btn-ico"><i class="fa fa-play"></i></span><span id="snhStartText">Start watching</span></button>
+                    <a class="snh-btn snh-btn-ghost" href="~/HelpVideos/ShankhNaad_User_Manual.pdf" target="_blank" rel="noopener"><i class="fa fa-file-pdf-o"></i> User manual (PDF)</a>
+                </div>
+                <div class="snh-stats">
+                    <div class="snh-stat"><span class="snh-stat-ico"><i class="fa fa-film"></i></span><div><b id="snhStatVideos">–</b><span>Video guides</span></div></div>
+                    <div class="snh-stat"><span class="snh-stat-ico"><i class="fa fa-th-large"></i></span><div><b id="snhStatMenus">–</b><span>Menus covered</span></div></div>
+                    <div class="snh-stat"><span class="snh-stat-ico"><i class="fa fa-clock-o"></i></span><div><b id="snhStatTime">–</b><span>Total runtime</span></div></div>
+                    <div class="snh-stat snh-stat-ring">
+                        <svg viewBox="0 0 44 44" aria-hidden="true"><defs><linearGradient id="snhRingG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff5fd2"/><stop offset="1" stop-color="#5aa8ff"/></linearGradient></defs>
+                            <circle cx="22" cy="22" r="18" class="trk"/><circle cx="22" cy="22" r="18" class="bar" id="snhRing"/></svg>
+                        <div><b id="snhStatWatched">0%</b><span>Your progress</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="snh-win-right">
+                <div class="snh-feature is-skel" id="snhContinue" tabindex="0" role="button">
+                    <i class="snh-stack s2"></i><i class="snh-stack s1"></i>
+                    <div class="snh-feature-card">
+                        <div class="snh-feature-thumb"><img alt="" /><span class="snh-feature-play"><i class="fa fa-play"></i></span><span class="snh-feature-dur"></span></div>
+                        <div class="snh-feature-body">
+                            <small class="snh-feature-label">Continue watching</small>
+                            <b class="snh-feature-title"></b>
+                            <span class="snh-feature-meta"></span>
+                            <div class="snh-continue-bar"><span></span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="snh-win-foot">
+            <nav class="snh-tabs" data-snh-tabs role="tablist"></nav>
+        </footer>
+    </section>
+
+    <!-- the same tabs, pinned to the top once the window above scrolls away -->
+    <div class="snh-pin" id="snhPin"><nav class="snh-tabs" data-snh-tabs role="tablist"></nav></div>
+
+    <!-- ===================== LIBRARY ===================== -->
+    <div class="snh-library" id="snhLibrary">
+        <section class="snh-section snh-skelsec"><div class="snh-shead"><i class="snh-skel s-ico"></i><div class="snh-stitle"><i class="snh-skel s-st"></i><i class="snh-skel s-ss"></i></div></div><div class="snh-shelfwrap"><div class="snh-grid shelf"><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div></div></div></section><section class="snh-section snh-skelsec"><div class="snh-shead"><i class="snh-skel s-ico"></i><div class="snh-stitle"><i class="snh-skel s-st"></i><i class="snh-skel s-ss"></i></div></div><div class="snh-shelfwrap"><div class="snh-grid shelf"><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div><div class="snh-card snh-skelcard"><div class="snh-thumb snh-skel"></div><div class="snh-cbody"><i class="snh-skel s-tag"></i><i class="snh-skel s-h"></i><i class="snh-skel s-p"></i><i class="snh-skel s-p2"></i><i class="snh-skel s-acts"></i><i class="snh-skel s-foot"></i></div></div></div></div></section>
+    </div>
+    <div class="snh-empty" id="snhEmpty" style="display:none">
+        <i class="fa fa-film"></i>
+        <b>No guides match your search</b>
+        <span>Try another word, or clear the search.</span>
+    </div>
+
+    <!-- ===================== PLAYER ===================== -->
+    <div class="snh-player" id="snhPlayer" aria-hidden="true">
+        <div class="snh-pwin" role="dialog" aria-modal="true" aria-labelledby="snhPTitle">
+            <div class="snh-pglass" aria-hidden="true"></div>
+            <i class="snh-ptopbar" aria-hidden="true"><span id="snhPTopBar"></span></i>
+            <header class="snh-phead">
+                <div class="GlassIconBadge snh-pbadge"><div class="badge-orb"></div><div class="badge-glass"></div><i class="fa fa-play"></i></div>
+                <div class="snh-pcrumb"><span id="snhPMenu"></span><i class="fa fa-angle-right"></i><span id="snhPNo"></span></div>
+                <h2 id="snhPTitle"></h2>
+                <span class="snh-pclock" id="snhPClock"></span>
+                <button type="button" class="snh-pclose" id="snhPClose" title="Close (Esc)" aria-label="Close"><i class="fa fa-times"></i></button>
+            </header>
+            <div class="snh-pbody">
+                <div class="snh-pmain">
+                    <div class="snh-pstagewrap" id="snhStageWrap">
+                        <canvas class="snh-ambi" id="snhAmbi" width="48" height="27" aria-hidden="true"></canvas>
+                        <i class="snh-pring" aria-hidden="true"></i>
+                        <div class="snh-pstage" id="snhStage">
+                            <video id="snhVideo" playsinline preload="metadata"></video>
+                            <div class="snh-vclick" id="snhVClick" aria-hidden="true"></div>
+                            <div class="snh-bigplay" id="snhBigPlay" aria-hidden="true"><i class="fa fa-play"></i></div>
+                            <div class="snh-flash" id="snhFlash" aria-hidden="true"><i class="fa fa-play"></i></div>
+                            <div class="snh-seekfx" id="snhSeekFx" aria-hidden="true"></div>
+                            <div class="snh-chtoast" id="snhChToast" aria-live="polite"><small></small><b></b></div>
+                            <div class="snh-cc" id="snhCC" aria-live="off"><span></span></div>
+                            <div class="snh-ctrl" id="snhCtrl">
+                                <div class="snh-scrub" id="snhScrub" role="slider" aria-label="Seek" tabindex="-1">
+                                    <div class="snh-scrub-segs" id="snhScrubSegs"></div>
+                                    <div class="snh-scrub-knob" id="snhKnob"></div>
+                                    <div class="snh-scrub-tip" id="snhTip"><canvas width="192" height="108"></canvas><b></b><span></span></div>
+                                </div>
+                                <div class="snh-cbar">
+                                    <button type="button" class="snh-cb snh-cb-play" id="snhCPlay" title="Play / pause (Space)"><i class="fa fa-play"></i></button>
+                                    <button type="button" class="snh-cb" id="snhCBack" title="Back 10 s (J)"><i class="fa fa-undo"></i><em>10</em></button>
+                                    <button type="button" class="snh-cb" id="snhCFwd" title="Forward 10 s (L)"><i class="fa fa-repeat"></i><em>10</em></button>
+                                    <div class="snh-vol"><button type="button" class="snh-cb" id="snhCMute" title="Mute (M)"><i class="fa fa-volume-up"></i></button><input type="range" id="snhCVol" min="0" max="1" step="0.05" value="1" aria-label="Volume" /></div>
+                                    <span class="snh-ctime" id="snhCTime">0:00 / 0:00</span>
+                                    <span class="snh-cchap" id="snhCChap"></span>
+                                    <span class="snh-cspace"></span>
+                                    <button type="button" class="snh-cb snh-cb-txt" id="snhCCBtn" title="Captions (C)">CC</button>
+                                    <div class="snh-speed"><button type="button" class="snh-cb snh-cb-txt" id="snhCSpeed" title="Playback speed">1×</button>
+                                        <div class="snh-speedmenu" id="snhSpeedMenu"><button data-r="0.75">0.75×</button><button data-r="1" class="on">1×</button><button data-r="1.25">1.25×</button><button data-r="1.5">1.5×</button><button data-r="2">2×</button></div></div>
+                                    <button type="button" class="snh-cb" id="snhCTheatre" title="Theatre mode (T)"><i class="fa fa-arrows-h"></i></button>
+                                    <button type="button" class="snh-cb" id="snhCPip" title="Picture in picture"><i class="fa fa-clone"></i></button>
+                                    <button type="button" class="snh-cb" id="snhCFull" title="Fullscreen (F)"><i class="fa fa-expand"></i></button>
+                                    <button type="button" class="snh-cb snh-cb-txt" id="snhCKeys" title="Keyboard shortcuts (?)">?</button>
+                                </div>
+                            </div>
+                            <div class="snh-keys" id="snhKeys">
+                                <h4><i class="fa fa-keyboard-o"></i> Keyboard shortcuts</h4>
+                                <dl><dt>Space / K</dt><dd>Play or pause</dd><dt>← / →</dt><dd>Back / forward 5 s</dd><dt>J / L</dt><dd>Back / forward 10 s</dd><dt>↑ / ↓</dt><dd>Volume</dd>
+                                    <dt>M</dt><dd>Mute</dd><dt>C</dt><dd>Captions</dd><dt>T</dt><dd>Theatre mode</dd><dt>F</dt><dd>Fullscreen</dd><dt>N / P</dt><dd>Next / previous video</dd><dt>Esc</dt><dd>Close</dd></dl>
+                            </div>
+                            <canvas class="snh-confetti" id="snhConfetti" aria-hidden="true"></canvas>
+                            <div class="snh-upnext" id="snhUpNext">
+                                <div class="snh-done-badge"><i class="fa fa-check"></i></div>
+                                <h3>Guide complete!</h3>
+                                <p id="snhDoneMenu"></p>
+                                <div class="snh-done-bar"><span id="snhDoneBar"></span></div>
+                                <div class="snh-upnext-next" id="snhUpNextBox">
+                                    <img id="snhUpNextImg" alt="" />
+                                    <div class="snh-upnext-txt"><small>UP NEXT</small><b id="snhUpNextTitle"></b></div>
+                                    <div class="snh-upnext-ring"><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19"/><circle class="snh-ring" cx="22" cy="22" r="19"/></svg><span id="snhUpNextSec">5</span></div>
+                                </div>
+                                <div class="snh-upnext-btns"><button type="button" id="snhUpNextPlay"><i class="fa fa-play"></i> Play next</button><button type="button" id="snhReplay"><i class="fa fa-repeat"></i> Watch again</button><button type="button" id="snhUpNextCancel">Stay here</button></div>
+                            </div>
+                        </div>
+                    </div>
+                    <video id="snhPrevVid" class="snh-prevvid" muted preload="auto" aria-hidden="true"></video>
+                </div>
+                <aside class="snh-pside">
+                    <p class="snh-pdesc" id="snhPDesc"></p>
+                    <div class="snh-stabs" role="tablist"><button type="button" class="on" data-pane="ch"><i class="fa fa-list-ol"></i> Chapters</button><button type="button" data-pane="tr"><i class="fa fa-align-left"></i> Transcript</button><i class="snh-stabs-pill"></i></div>
+                    <div class="snh-pane on" data-pane="ch"><ol class="snh-chapters" id="snhChapters"></ol></div>
+                    <div class="snh-pane" data-pane="tr"><ol class="snh-trans" id="snhTrans"></ol></div>
+                </aside>
+            </div>
+            <footer class="snh-pfoot">
+                <button type="button" class="snh-nav" id="snhPrev"><i class="fa fa-step-backward"></i><img class="snh-navthumb" alt="" /><span class="snh-navtxt"><small>Previous</small><span>Previous</span></span></button>
+                <label class="snh-auto"><input type="checkbox" id="snhAuto" checked /><span class="snh-switch"></span>Autoplay next</label>
+                <button type="button" class="snh-nav snh-nav-next" id="snhNext"><span class="snh-navtxt"><small>Up next</small><span>Next</span></span><img class="snh-navthumb" alt="" /><i class="fa fa-step-forward"></i></button>
+            </footer>
+        </div>
+    </div>
+</div>
+
+</main>
+@section Scripts {
+    <script src="~/js/Help/helpJS.js" asp-append-version="true"></script>
+}
