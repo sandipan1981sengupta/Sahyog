@@ -1595,3 +1595,20 @@ html[data-skin="kesari"] .snh-mini-eq i { background: linear-gradient(180deg, #F
 html[data-skin="kesari"] .snh-mini-bar span { background: linear-gradient(90deg, #EA580C, #F59E0B, #16A34A) !important; }
 html[data-skin="kesari"] .snh-mini-tools button:hover { background: rgba(234,88,12,.75) !important; }
 html[data-skin="kesari"] .snh-card:hover { box-shadow: 0 22px 44px -20px rgba(234,88,12,.45); }
+
+/* ---------------------------------------------------------------------------------------------------------------
+   Hero window corners (all themes). The window clips its layers with overflow:hidden + border-radius, but with
+   frosted glass (backdrop-filter) Chromium / WebView2 (the desktop app) often does not apply that clip, so the top
+   colour line and the header band showed square corners. Each layer now carries the rounded corners itself.
+   --------------------------------------------------------------------------------------------------------------- */
+.snh .snh-win::before { border-radius: inherit; }
+.snh .snh-win-head { border-top-left-radius: inherit; border-top-right-radius: inherit; }
+.snh .snh-win::after { left: 26px; right: 26px; border-radius: 0 0 2px 2px; }
+
+/* App dialogs over the Help page (light themes). ShankhNaad dialogs are 40% white glass, made for light pages; on Help
+   they sit over the dark hero, which made their grey text and the close button unreadable. While Help is open they
+   use a nearly solid background (the --pop-bg every dialog and menu is drawn with). Other pages are not affected. */
+html[data-theme="light"]:has(.snh-page) body,
+html[data-theme="light"]:has(.snh-page) body .sn-dialog { --pop-bg: linear-gradient(160deg, rgba(255,255,255,.94), rgba(255,255,255,.88)) !important; }
+html[data-skin="kesari"]:has(.snh-page) body,
+html[data-skin="kesari"]:has(.snh-page) body .sn-dialog { --pop-bg: linear-gradient(160deg, rgba(255,255,255,.94), rgba(255,247,237,.9)) !important; }
