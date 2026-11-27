@@ -193,8 +193,8 @@
     // =====================================================================
     // 3. Which addresses load partially
     // =====================================================================
-    const PAGE_RE = /^\/(?:|chat(?:\/[0-9a-f-]{36})?|calls|files|meetings|team|org|admin|work(?:\/(?:decisions|standup|approvals|roles|visitors))?)\/?$/i;
-    const PREFETCH_RE = /^\/(?:chat|calls|files|meetings|team|org|admin|work(?:\/(?:decisions|standup|approvals|roles|visitors))?)\/?$/i;
+    const PAGE_RE = /^\/(?:|chat(?:\/[0-9a-f-]{36})?|calls|files|meetings|team|org|admin|help|work(?:\/(?:decisions|standup|approvals|roles|visitors))?)\/?$/i;
+    const PREFETCH_RE = /^\/(?:chat|calls|files|meetings|team|org|admin|help|work(?:\/(?:decisions|standup|approvals|roles|visitors))?)\/?$/i;
     const hasShell = () => !!document.querySelector(".sn-body-row") && !!document.getElementById("sn-page-scripts");
     const toUrl = (u) => (u instanceof URL ? u : new URL(u, location.href));
     nav.canGo = (u) => {

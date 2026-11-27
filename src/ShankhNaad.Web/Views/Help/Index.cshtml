@@ -2,9 +2,8 @@
     ViewData["Title"] = "Help Center";
     ViewData["Section"] = "help";
 }
-@section Head {
-    <link rel="stylesheet" href="~/css/help-page.css" asp-append-version="true" />
-}
+@* styles: css/help-page.css is part of /bundles/layout.css (Infrastructure/AssetBundles.cs), so they are there
+   however you arrive here, including SN.nav page swaps, which do not load a page's own <head> links *@
 <main class="sn-page snh-page">
 
 <div class="snh is-boot" id="snhRoot" style="opacity:0">

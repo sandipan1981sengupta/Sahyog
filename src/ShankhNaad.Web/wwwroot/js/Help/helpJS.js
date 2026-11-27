@@ -662,16 +662,23 @@
             });
     }
 
-    // Page scripts run when the page is injected into .main-panel (loadIntoMainPanel) or on a full load.
+    // Page scripts run on a full load and again each time SN.nav swaps this page in.
     if (document.readyState === "loading") $(init); else init();
 
-    // Leaving the page (another menu item loads into .main-panel): stop the video and remove the player.
-    $(document).off("ajaxComplete.snhLeave").on("ajaxComplete.snhLeave", function () {
+    // Leaving the page (SN.nav swaps in another page without a reload): the player sits on <body>, outside the swapped
+    // part, so stop its video and remove it. sn-nav removes this page's own handlers by itself, so this one listener is
+    // added outside the page (SN.nav.unscoped) and added only once per browser tab; it always cleans up the latest player.
+    window.__snhLeave = function () {
         if ($player && !document.getElementById("snhRoot")) {
             if (video) video.pause();
-            $player.remove(); $player = null; $(document).off(NS).off("ajaxComplete.snhLeave"); $(window).off(NS); $("body").css("overflow", "");
+            $player.remove(); $player = null; $(document).off(NS); $(window).off(NS); $("body").css("overflow", "");
         }
-    });
+    };
+    if (!window.__snhLeaveBound) {
+        window.__snhLeaveBound = true;
+        var addLeave = function () { document.addEventListener("sn:page", function () { if (window.__snhLeave) window.__snhLeave(); }); };
+        (window.SN && SN.nav && SN.nav.unscoped ? SN.nav.unscoped(addLeave) : addLeave)();
+    }
 })();
 
 // =======================================================================================
@@ -689,7 +696,8 @@
     }
     function build() {
         // keep the styles once the Help page (and its <link>) is replaced by another page
-        if (!document.getElementById("snhMiniCss")) {
+        // the styles normally come with /bundles/layout.css; only add them when neither the bundle nor the file is on the page
+        if (!document.getElementById("snhMiniCss") && !document.querySelector('link[href*="/bundles/layout.css"], link[href*="help-page.css"]')) {
             var src = document.querySelector('link[href*="help-page.css"]'), l = document.createElement("link");
             l.rel = "stylesheet"; l.id = "snhMiniCss"; l.href = src ? src.getAttribute("href") : "/css/help-page.css"; document.head.appendChild(l);
         }
@@ -719,7 +727,7 @@
         if (document.getElementById("snhRoot") && typeof api.onExpand === "function") api.onExpand(st.id, st.t);
         else {
             try { sessionStorage.setItem("shankhnaad.help.resume", JSON.stringify(st)); } catch (e) { }
-            if (typeof window.loadIntoMainPanel === "function") window.loadIntoMainPanel("/help"); else location.href = "/help";
+            if (window.SN && typeof SN.navigate === "function") SN.navigate("/help"); else location.href = "/help";
         }
     }
     var api = {
@@ -740,5 +748,10 @@
             setTimeout(function () { if (!el.classList.contains("on")) { vid.removeAttribute("src"); vid.load(); } }, quick ? 50 : 450);
         }
     };
+    // The mini player must keep working on every page you move to. sn-nav (partial page loads) switches off all the
+    // handlers and timers a page's scripts added when you leave that page, so build and drive the mini player outside
+    // any page (SN.nav.unscoped); otherwise its buttons would stop working on the next page while the video plays on.
+    var free = window.SN && SN.nav && SN.nav.unscoped;
+    if (free) { api.show = free(api.show); api.hide = free(api.hide); expand = free(expand); }
     window.SnhMini = api;
 })();
