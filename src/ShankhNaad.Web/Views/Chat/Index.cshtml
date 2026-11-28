@@ -228,8 +228,8 @@
         </section>
 
         <form class="composer" id="composer" autocomplete="off">
-            <input type="file" id="fileInput" hidden />
-            <button type="button" class="btn-icon soft" id="attachBtn" aria-label="Attach a file" title="Attach a file">
+            <input type="file" id="fileInput" multiple hidden />
+            <button type="button" class="btn-icon soft" id="attachBtn" aria-label="Attach files" title="Attach files (pick several, or drop them on the chat)">
                 <i class="fa fa-paperclip" style="font-size:18px" aria-hidden="true"></i>
             </button>
             <button type="button" class="btn-icon soft" id="emojiBtn" data-emoji-for="composer" aria-label="Add an emoji" title="Emoji">
@@ -242,6 +242,7 @@
             <textarea id="messageBox" rows="1" maxlength="4000" placeholder="Message @c.Name"></textarea>
             <button type="submit" class="cee-btn cee-btn-gradient sn-send-btn" aria-label="Send" title="Send"><i class="fa fa-paper-plane" aria-hidden="true"></i></button>
         </form>
+        <div class="chat-drop" id="chatDrop" hidden><span><i class="fa fa-cloud-upload" aria-hidden="true"></i><b>Drop to send</b><small>All the files go together</small></span></div>
         <div class="upload-progress" id="uploadProgress" hidden><span id="uploadName"></span><div class="bar"><i id="uploadBar"></i></div></div>
     }
 </main>

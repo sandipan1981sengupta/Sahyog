@@ -1047,34 +1047,96 @@
     const bar = document.getElementById("uploadBar");
     document.getElementById("attachBtn").addEventListener("click", () => fileInput.click());
 
-    fileInput.addEventListener("change", () => {
-        const file = fileInput.files[0];
-        fileInput.value = "";
-        if (!file) return;
-        if (file.size > maxMb * 1024 * 1024) {
-            S.toast(`Files can be up to ${maxMb} MB.`);
+    // several files at once: pick them with the clip (Ctrl / Shift), drop them on the chat, or paste them.
+    // They all go together, one after another in the order picked (each file is its own message, like before),
+    // with one progress bar: "Sending 2 of 5 · name.pdf".
+    const MAX_FILES = 20;
+    const queue = [];
+    let sending = false, batchTotal = 0, batchDone = 0, failed = 0;
+
+    function sendFiles(list) {
+        let files = [...(list || [])].filter((f) => f && f.size >= 0);
+        if (!files.length) return;
+        const big = files.filter((f) => f.size > maxMb * 1024 * 1024);
+        if (big.length) {
+            S.toast(big.length === 1 ? `${big[0].name} is too big. Files can be up to ${maxMb} MB.` : `${big.length} files are too big and were skipped. Files can be up to ${maxMb} MB.`);
+            files = files.filter((f) => !big.includes(f));
+        }
+        const empty = files.filter((f) => f.size === 0);
+        if (empty.length) { S.toast(empty.length === 1 ? `${empty[0].name} is empty (or a folder) and was skipped.` : `${empty.length} empty files or folders were skipped.`); files = files.filter((f) => f.size > 0); }
+        const room = MAX_FILES - queue.length - (sending ? 1 : 0);
+        if (files.length > room) { S.toast(`You can send up to ${MAX_FILES} files at once. The first ${Math.max(room, 0)} are being sent.`); files = files.slice(0, Math.max(room, 0)); }
+        if (!files.length) return;
+        if (!sending) { batchTotal = 0; batchDone = 0; failed = 0; }
+        batchTotal += files.length;
+        queue.push(...files);
+        if (!sending) next();
+    }
+
+    function next() {
+        const file = queue.shift();
+        if (!file) {
+            sending = false;
+            progress.hidden = true;
+            if (failed && batchTotal > 1) S.toast(`${batchTotal - failed} of ${batchTotal} files sent. ${failed} couldn't be sent.`);
             return;
         }
+        sending = true;
         const data = new FormData();
         data.append("file", file);
         const xhr = new XMLHttpRequest();
         xhr.open("POST", `/chat/${channelId}/upload`);
         xhr.setRequestHeader("RequestVerificationToken", S.antiforgery());
-        document.getElementById("uploadName").textContent = `Uploading ${file.name}…`;
+        document.getElementById("uploadName").textContent = batchTotal > 1 ? `Sending ${batchDone + 1} of ${batchTotal} · ${file.name}` : `Uploading ${file.name}…`;
         bar.style.width = "0";
         progress.hidden = false;
         xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) bar.style.width = `${(ev.loaded / ev.total) * 100}%`; };
         xhr.onload = () => {
-            progress.hidden = true;
+            batchDone++;
             if (xhr.status >= 200 && xhr.status < 300) append(JSON.parse(xhr.responseText));
             else {
+                failed++;
                 let msg = "Upload failed.";
                 try { msg = JSON.parse(xhr.responseText).error || msg; } catch { }
-                S.toast(msg);
+                S.toast(batchTotal > 1 ? `${file.name}: ${msg}` : msg);
+                if (/storage full/i.test(msg)) { failed += queue.length; batchDone += queue.length; queue.length = 0; }   // the rest can't fit either
             }
+            next();
         };
-        xhr.onerror = () => { progress.hidden = true; S.toast("Upload failed. Check your connection."); };
+        xhr.onerror = () => {
+            batchDone++; failed++;
+            S.toast(`${file.name}: upload failed. Check your connection.`);
+            next();
+        };
         xhr.send(data);
+    }
+
+    fileInput.addEventListener("change", () => {
+        const files = [...fileInput.files];
+        fileInput.value = "";
+        sendFiles(files);
+    });
+
+    // drop files anywhere on the chat
+    const chatBox = document.getElementById("chat");
+    const dropHint = document.getElementById("chatDrop");
+    const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+    let depth = 0;
+    chatBox.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); depth++; if (dropHint) dropHint.hidden = false; });
+    chatBox.addEventListener("dragover", (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+    chatBox.addEventListener("dragleave", () => { depth = Math.max(0, depth - 1); if (!depth && dropHint) dropHint.hidden = true; });
+    chatBox.addEventListener("drop", (e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        depth = 0; if (dropHint) dropHint.hidden = true;
+        sendFiles(e.dataTransfer.files);
+    });
+    // paste files (e.g. a screenshot) into the message box
+    document.getElementById("messageBox")?.addEventListener("paste", (e) => {
+        const files = [...(e.clipboardData?.files || [])];
+        if (!files.length) return;
+        e.preventDefault();
+        sendFiles(files);
     });
 })();
 

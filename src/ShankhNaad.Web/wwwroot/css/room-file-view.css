@@ -1,0 +1,56 @@
+/* ShankhNaad · the meeting room: View and Download for shared files (js/file-view.js)
+   The room doesn't load the app's style bundle, so the viewer's styles (from css/app/22-latest.css) are repeated here,
+   plus the View / Download buttons of the room's two chats (the call's Chat and "Your chats"). Loaded by Views/Meetings/Room.cshtml only. */
+
+/* ---------- the call's Chat (cc-…) ---------- */
+.cc-fv { display: inline-flex; gap: 6px; }
+.cc-fv .cc-dl { border: 0; cursor: pointer; text-decoration: none; }
+.cc-fv .cc-dl.cc-view { background: linear-gradient(135deg, #2563EB, #7C3AED); }
+.cc-fv .cc-dl[download] { background: linear-gradient(135deg, #22C55E, #15803D); }
+.cc-fv .cc-dl:hover { filter: brightness(1.1); }
+button.cc-thumb { width: calc(100% + 4px); padding: 0; border: 0; background: none; cursor: zoom-in; }
+
+/* ---------- "Your chats" inside the room (mx-…) ---------- */
+#mxMsgs .mx-file { flex-wrap: wrap; }
+.mx-img-card { display: inline-flex; flex-direction: column; gap: 6px; max-width: 260px; }
+button.mx-img { padding: 0; border: 0; cursor: zoom-in; }
+.mx-fv { display: inline-flex; gap: 6px; flex: none; }
+.mx-fv-btn { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 999px; border: 0; cursor: pointer;
+    font: 700 11.5px Inter, system-ui, sans-serif; color: #fff !important; text-decoration: none !important;
+    background: linear-gradient(135deg, #22C55E, #15803D); transition: transform .15s ease, filter .15s ease; }
+.mx-fv-btn.view { background: linear-gradient(135deg, #2563EB, #7C3AED); }
+.mx-fv-btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
+.mx-fv-btn svg { width: 13px; height: 13px; }
+@media (hover: none), (max-width: 520px) { .mx-fv-btn span { display: none; } .mx-fv-btn { width: 30px; padding: 0; justify-content: center; } }
+html[data-skin="kesari"] .mx-fv-btn.view, html[data-skin="kesari"] .cc-fv .cc-dl.cc-view { background: linear-gradient(135deg, #EA580C, #B45309); }
+
+/* ---------- the viewer (same as css/app/22-latest.css) ---------- */
+dialog.sn-fv { width: min(1200px, 96vw); height: min(860px, 92vh); max-width: none; max-height: none; padding: 0; border: 0; border-radius: 22px; overflow: hidden;
+    display: none; flex-direction: column; color: #E2E8F0; background: #0B1020; box-shadow: 0 40px 120px -30px rgba(0, 0, 0, .8); font-family: Inter, system-ui, sans-serif; }
+dialog.sn-fv[open] { display: flex; }
+dialog.sn-fv::backdrop { background: rgba(2, 6, 23, .78); backdrop-filter: blur(4px); }
+.sn-fv-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px 12px 20px; border-bottom: 1px solid rgba(255, 255, 255, .08); background: rgba(255, 255, 255, .03); }
+.sn-fv-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sn-fv-name b { font: 800 15px Inter, system-ui, sans-serif; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sn-fv-name small { font-size: 12px; color: #94A3B8; }
+/* the room has no buttons.css: the viewer's Download / Open in a new tab buttons get their look here */
+.sn-fv-btn { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 999px; font: 700 13px Inter, system-ui, sans-serif;
+    color: #fff !important; text-decoration: none !important; border: 1px solid rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .08); }
+.sn-fv-btn.cee-btn-gradient { border: 0; background: linear-gradient(135deg, #22C55E, #15803D); }
+.sn-fv-btn:hover { filter: brightness(1.1); }
+.sn-fv-btn[hidden] { display: none !important; }
+.sn-fv-x { width: 38px; height: 38px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .06); color: #fff; cursor: pointer; font-size: 16px; }
+.sn-fv-x:hover { background: rgba(255, 255, 255, .14); }
+.sn-fv-stage { flex: 1; min-height: 0; display: grid; place-items: center; overflow: auto; padding: 14px; }
+.sn-fv-stage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 10px; cursor: zoom-in; }
+.sn-fv-stage img.full { max-width: none; max-height: none; cursor: zoom-out; }
+.sn-fv-stage iframe { width: 100%; height: 100%; border: 0; border-radius: 10px; background: #fff; }
+.sn-fv-stage video { max-width: 100%; max-height: 100%; border-radius: 10px; background: #000; }
+.sn-fv-audio { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.sn-fv-audio .fa { font-size: 64px; color: #A78BFA; }
+.sn-fv-none { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.sn-fv-none .fa { font-size: 56px; color: #64748B; }
+.sn-fv-none span { color: #94A3B8; font-size: 13px; }
+.sn-fv-none .cee-btn { display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 16px; border-radius: 999px; color: #fff !important; text-decoration: none !important;
+    font: 700 13px Inter, system-ui, sans-serif; background: linear-gradient(135deg, #22C55E, #15803D); }
+@media (max-width: 640px) { dialog.sn-fv { width: 100vw; height: 100dvh; border-radius: 0; } .sn-fv-btn span { display: none; } .sn-fv-btn { width: 38px; padding: 0; justify-content: center; } }

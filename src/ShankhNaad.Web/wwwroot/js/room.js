@@ -641,6 +641,9 @@
         if (["zip", "rar", "7z"].includes(ext)) return "🗜️";
         return "📎";
     };
+    // View / Download icons for shared files (the room has no icon font for these)
+    const FV_EYE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>`;
+    const FV_DL = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M5 20h14" /></svg>`;
     let lastSender = null;
     function scrollChat(force) {
         const near = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
@@ -657,13 +660,19 @@
         el.className = `cc-msg ${m.mine ? "mine" : ""} ${same ? "same" : ""}`;
         let content = "";
         if (m.file) {
-            const isImg = (m.file.type || "").startsWith("image/") && m.file.id;
-            const href = m.file.id ? `/meetings/chat/file/${m.file.id}` : null;
-            content = `<div class="cc-file">`
-                + (isImg ? `<a class="cc-thumb" href="${href}" target="_blank" rel="noopener"><img src="${href}" alt="${esc(m.file.name)}" loading="lazy" /></a>` : "")
-                + `<span class="cc-fic" aria-hidden="true">${fileIcon(m.file.name, m.file.type)}</span>`
-                + `<span class="cc-fmeta"><b>${esc(m.file.name)}</b><small>${fmtSize(m.file.size)}${href ? "" : " · open the call as a team member to download"}</small></span>`
-                + (href ? `<a class="cc-dl" href="${href}" download title="Download"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M5 20h14" /></svg></a>` : "")
+            // View (in the app, js/file-view.js) and Download, separately, like the Chat page
+            const f = m.file, href = f.id ? `/meetings/chat/file/${f.id}` : null;
+            const canView = !!href && !!window.SN?.canView?.(f.type);
+            const isImg = canView && (f.type || "").startsWith("image/");
+            const data = href ? ` data-fv-url="${href}" data-fv-name="${esc(f.name)}" data-fv-type="${esc(f.type || "")}" data-fv-size="${Number(f.size) || 0}"` : "";
+            content = `<div class="cc-file"${data}>`
+                + (isImg ? `<button type="button" class="cc-thumb" data-fv-view title="View ${esc(f.name)}"><img src="${href}" alt="${esc(f.name)}" loading="lazy" /></button>` : "")
+                + `<span class="cc-fic" aria-hidden="true">${fileIcon(f.name, f.type)}</span>`
+                + `<span class="cc-fmeta"><b>${esc(f.name)}</b><small>${fmtSize(f.size)}${href ? "" : " · open the call as a team member to download"}</small></span>`
+                + (href ? `<span class="cc-fv">`
+                    + (canView ? `<button type="button" class="cc-dl cc-view" data-fv-view title="View" aria-label="View ${esc(f.name)}">${FV_EYE}</button>` : "")
+                    + `<a class="cc-dl" href="${href}?dl=1" download="${esc(f.name)}" title="Download" aria-label="Download ${esc(f.name)}">${FV_DL}</a>`
+                    + `</span>` : "")
                 + `</div>`;
         } else content = `<div class="cc-bubble">${linkify(m.body || "")}</div>`;
         el.innerHTML = (same ? "" : `<div class="cc-head">${m.mine ? "" : `<span class="avatar av-22 tone-${m.tone ?? 3}">${esc(initials(m.name))}</span>`}<b>${m.mine ? "You" : esc(m.name)}</b>${m.guest ? '<span class="cc-guest">Guest</span>' : ""}<time>${fmtTime(m.at || Date.now())}</time></div>`) + content;
@@ -762,7 +771,7 @@
         chatPane.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; drop.hidden = true; } });
         chatPane.addEventListener("drop", (e) => { e.preventDefault(); depth = 0; drop.hidden = true; [...(e.dataTransfer?.files || [])].forEach(uploadFile); });
         // paste a screenshot straight into the message box
-        input.addEventListener("paste", (e) => { const f = [...(e.clipboardData?.files || [])][0]; if (f) { e.preventDefault(); uploadFile(f); } });
+        input.addEventListener("paste", (e) => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length) { e.preventDefault(); fs.forEach(uploadFile); } });
     }
 
     // history and live messages (team members)
@@ -1499,12 +1508,22 @@
             if (e) return emojiBig(e);
             return `<div class="mx-bub">${linkify(esc(body)).replace(/\n/g, "<br>")}</div>`;
         };
+        // a shared file: View (in the app, js/file-view.js) and Download, separately, like the Chat page
+        const mxFileHtml = (a) => {
+            const name = esc(a.fileName), url = esc(a.url), type = a.contentType || "";
+            const canView = !!window.SN?.canView?.(type);
+            const data = `data-fv-url="${url}" data-fv-name="${name}" data-fv-type="${esc(type)}" data-fv-size="${Number(a.sizeBytes) || 0}"`;
+            const acts = `<span class="mx-fv">`
+                + (canView ? `<button type="button" class="mx-fv-btn view" data-fv-view title="View" aria-label="View ${name}">${FV_EYE}<span>View</span></button>` : "")
+                + `<a class="mx-fv-btn" href="${url}?dl=1" download="${name}" title="Download" aria-label="Download ${name}">${FV_DL}<span>Download</span></a>`
+                + `</span>`;
+            if (canView && /^image\//i.test(type))
+                return `<div class="mx-img-card" ${data}><button type="button" class="mx-img" data-fv-view title="View ${name}"><img src="${url}" alt="${name}" loading="lazy" /></button>${acts}</div>`;
+            return `<div class="mx-file" ${data}><span class="mx-file-ext">${esc((a.fileName.split(".").pop() || "file").slice(0, 4))}</span><span class="mx-file-n">${name}</span>${acts}</div>`;
+        };
         const msgHtml = (m) => {
             const mine = isMineMsg(m);
-            const isImg = m.attachment && /^image\//i.test(m.attachment.contentType || "");
-            const file = !m.attachment ? "" : isImg
-                ? `<a class="mx-img" href="${esc(m.attachment.url)}" target="_blank" rel="noopener" title="${esc(m.attachment.fileName)}"><img src="${esc(m.attachment.url)}" alt="${esc(m.attachment.fileName)}" loading="lazy" /></a>`
-                : `<a class="mx-file" href="${esc(m.attachment.url)}" target="_blank" rel="noopener"><span class="mx-file-ext">${esc((m.attachment.fileName.split(".").pop() || "file").slice(0, 4))}</span><span class="mx-file-n">${esc(m.attachment.fileName)}</span></a>`;
+            const file = m.attachment ? mxFileHtml(m.attachment) : "";
             const where = m.fromGroup && open && open.isDirect ? `<span class="mx-where">in ${esc(m.fromGroup)}</span>` : "";
             const quote = m.replyToId
                 ? `<button type="button" class="mx-q" data-jump="${esc(m.replyToId)}" title="Show the message this replies to"><b>${esc(m.replyToSender || "Deleted message")}</b><span>${esc(m.replyToSender ? (m.replyToText || "") : "The original was deleted")}</span></button>` : "";

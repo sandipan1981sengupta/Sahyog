@@ -910,13 +910,19 @@ public sealed class MeetingsController : Controller
     }
 
     /// <summary>Downloads (or shows) a file shared in a call. Anyone in the workspace who was given the link.</summary>
+    /// <summary>
+    /// A file shared in a call's chat. dl=1: always download (the Download button). Otherwise the kinds a browser can show
+    /// open in place (the View button and the in-app viewer, js/file-view.js), the same list as the chat's files.
+    /// </summary>
     [HttpGet("chat/file/{fileId:guid}")]
-    public async Task<IActionResult> CallChatDownload(Guid fileId, [FromServices] ICallChatService callChat, [FromServices] IFileStorage files, [FromServices] ILogger<MeetingsController> log)
+    public async Task<IActionResult> CallChatDownload(Guid fileId, [FromServices] ICallChatService callChat, [FromServices] IFileStorage files, [FromServices] ILogger<MeetingsController> log, string? dl = null)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var f = await callChat.GetFileAsync(tenantId, fileId);
         if (f is null) return NotFound();
-        var inline = f.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) || f.ContentType == "application/pdf";
+        var download = dl is "1" or "true";                         // the Download button: ?dl=1
+        var inline = !download && ChatController.CanShowInPlace(f.ContentType);
+        Response.Headers["X-Content-Type-Options"] = "nosniff";      // the browser must not guess another kind
         Stream stream;
         try { stream = files.OpenRead(f.StoragePath); }
         catch (Exception ex) when (MissingFile.Is(ex)) { return MissingFile.Page(f.FileName, log, f.StoragePath); }
