@@ -445,24 +445,21 @@ public sealed partial class ChatController : Controller
         }
     }
 
-    // one ping per person every 15 seconds, so nobody can be spammed
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> LastPing = new();
+    // one ping per person every 15 seconds, so nobody can be spammed (Cluster.TryOnce: also across several web servers)
 
     /// <summary>
     /// "Ping": a quick nudge (sound + pop-up, and a desktop alert if the tab is in the background)
     /// with a button to open your chat. Called from the hover buttons in the conversations list.
     /// </summary>
     [HttpPost("ping/{userId:guid}")]
-    public async Task<IActionResult> Ping(Guid userId)
+    public async Task<IActionResult> Ping(Guid userId, [FromServices] Cluster cluster)
     {
         if (User.TenantId() is not Guid tenantId || userId == Me) return BadRequest();
-        var key = $"{Me:N}>{userId:N}";
-        if (LastPing.TryGetValue(key, out var last) && DateTime.UtcNow - last < TimeSpan.FromSeconds(15))
+        if (!cluster.TryOnce($"ping:{Me:N}>{userId:N}", TimeSpan.FromSeconds(15)))
             return StatusCode(429, new { error = "You just pinged them. Give it a few seconds." });
 
         var channelId = await _chat.GetOrCreateDirectAsync(tenantId, Me, userId);   // null: not an active teammate
         if (channelId is null) return NotFound(new { error = "That person isn't in this workspace any more." });
-        LastPing[key] = DateTime.UtcNow;
 
         await AddConnectionsToGroupAsync(channelId.Value, new[] { Me.ToString(), userId.ToString() });
         var online = _presence.OnlineUsers(tenantId).Contains(userId.ToString());

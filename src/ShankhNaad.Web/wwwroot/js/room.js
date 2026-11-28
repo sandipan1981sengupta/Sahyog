@@ -148,6 +148,10 @@
         team.observe(document.body);
     } else { team.loadPeople = () => { }; team.observe = () => { }; }
 
+    // ---------- long calls: pause every decoration while the tab or window is hidden (css/room-light.css) ----------
+    const away = () => document.documentElement.classList.toggle("sn-away", document.hidden);
+    document.addEventListener("visibilitychange", away); away();
+
     // ---------- JaaS ----------
     const api = new JitsiMeetExternalAPI(cfg.domain, {
         roomName: cfg.roomName,
@@ -177,7 +181,10 @@
             // and on phones the codecs their chips handle best. Jitsi's own bitrates and adaptive quality stay as they are.
             videoQuality: {
                 codecPreferenceOrder: ["VP9", "VP8", "H264"],
-                mobileCodecPreferenceOrder: ["VP8", "H264", "VP9"]
+                mobileCodecPreferenceOrder: ["VP8", "H264", "VP9"],
+                // when the computer is overloaded (long calls next to other apps), Jitsi lowers the video
+                // (a lighter codec, resolution or frame rate) instead of letting the whole computer hang
+                enableAdaptiveMode: true
             },
             disableShortcuts: false,
             enableNoisyMicDetection: true,
@@ -189,7 +196,12 @@
             // the top bar's signal bars replace it — and no thumbnail column, so no "‹" arrow to bring it back.
             // (Grid switches the column back on while it's showing: see "tileViewChanged".)
             conferenceInfo: { alwaysVisible: [], autoHide: [] },
-            filmstrip: { disabled: true, disableResizable: true }
+            filmstrip: { disabled: true, disableResizable: true },
+            // big calls: only the most recent speakers send video to everyone (Jitsi "last N").
+            // From 10 people: the 6 latest speakers' video; from 30: 5; from 60: 4. Everyone else shows as a picture/initials.
+            // Fewer people: everyone's video, as before. (See also "Big calls" below: the 720p limit.)
+            channelLastN: -1,
+            lastNLimits: { 10: 6, 30: 5, 60: 4 }
         },
         interfaceConfigOverwrite: {
             SHOW_JITSI_WATERMARK: false,
@@ -461,6 +473,26 @@
     const notePeople = () => { try { maxPeople = Math.max(maxPeople, api.getNumberOfParticipants?.() || 1); } catch { } };
     api.addListener("participantJoined", () => setTimeout(notePeople, 300));
     const othersInCall = () => { try { return Math.max(0, (api.getNumberOfParticipants?.() || 1) - 1); } catch { return 0; } };
+
+    // ---------- Big calls: from 10 people, video is limited to 720p (lighter on everyone's computer and the server) ----------
+    // Turns on by itself when the 10th person joins, and back off when the call is down to 8 or fewer
+    // (not 9, so it doesn't switch back and forth when someone hops in and out). Only matters on plans above 720p.
+    (function bigCall() {
+        const BIG_AT = 10, SMALL_AT = 8, BIG_HEIGHT = 720;
+        const full = Number(cfg.maxHeight) || 720;
+        if (full <= BIG_HEIGHT) return;
+        let big = false;
+        const check = () => {
+            let n = 1;
+            try { n = api.getNumberOfParticipants?.() || 1; } catch { }
+            const want = big ? n > SMALL_AT : n >= BIG_AT;
+            if (want === big) return;
+            big = want;
+            try { api.executeCommand("setVideoQuality", big ? BIG_HEIGHT : full); } catch { }
+            if (big) toast(`Big call (${n} people): video is set to ${BIG_HEIGHT}p and only recent speakers' video is shown, so it stays smooth for everyone.`);
+        };
+        ["videoConferenceJoined", "participantJoined", "participantLeft"].forEach((ev) => api.addListener(ev, () => setTimeout(check, 500)));
+    })();
 
     // ---------- Copy guest link: puts the link on the clipboard, to paste into WhatsApp, mail, Teams… ----------
     document.querySelectorAll("[data-copy]").forEach((btn) => {

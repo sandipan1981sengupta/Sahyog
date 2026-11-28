@@ -1,0 +1,22 @@
+/* ShankhNaad · the meeting room, lighter for long calls (loaded by Views/Meetings/Room.cshtml after site.css)
+   A call can run for hours next to other apps. The video already keeps the computer busy (camera, encoding,
+   decoding everyone's video), so the decoration around it must not add work on every frame. Same look, still. */
+
+/* 1. background lights: still (they were three half-screen blurred shapes moving all the time behind the video) */
+body.room-body .studio-bg i { animation: none !important; will-change: auto !important; }
+/* the film grain was blended (mix-blend-mode) over the whole screen: at 6 % it was hardly visible */
+body.room-body .studio-bg .grain { display: none !important; }
+
+/* 2. the glowing frame round the video: it turned all the time, and that kind of animation (a conic gradient
+      through a mask) is redrawn by the processor on every frame for the whole call. Now it stands still
+      and only brightens while someone talks, as before. */
+body.room-body .stage::before { animation: none !important; }
+
+/* 3. the sound bars while someone talks: they changed height (re-layout on every frame, for hours in a meeting);
+      now they stretch with a transform, which the graphics card does on its own */
+body.room-body .eq i { height: 100%; transform: scaleY(.3); transform-origin: 50% 100%; }
+body.room-body .stage-chip .eq i, body.room-body .people-row.speaking .eq i { animation-name: snEqT !important; }
+@keyframes snEqT { 0%, 100% { transform: scaleY(.25); } 50% { transform: scaleY(1); } }
+
+/* 4. the tab or window is hidden (minimised, another tab): every decoration pauses (js/room.js sets sn-away) */
+html.sn-away body.room-body *, html.sn-away body.room-body *::before, html.sn-away body.room-body *::after { animation-play-state: paused !important; }

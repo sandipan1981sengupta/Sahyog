@@ -25,9 +25,11 @@ public sealed class ChatHub : Hub
     private readonly IOutOfOfficeService _ooo;
 
     private readonly IAttendanceService _attendance;   // attendance sheet (42_MeetingAttendance.sql)
+    private readonly Cluster _cluster;                 // "once per window" checks shared by every web server
 
-    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls, IUserService users, ICallChatService callChat, IReactionService reactions, IOutOfOfficeService ooo, IAttendanceService attendance)
+    public ChatHub(IChatService chat, IMeetingService meetings, PresenceTracker presence, MeetingRoomTracker rooms, ICallLogService calls, IUserService users, ICallChatService callChat, IReactionService reactions, IOutOfOfficeService ooo, IAttendanceService attendance, Cluster cluster)
     {
+        _cluster = cluster;
         _attendance = attendance;
         _ooo = ooo;
         _reactions = reactions;
@@ -45,10 +47,8 @@ public sealed class ChatHub : Hub
     /// <summary>Everyone's meeting page in one call (for "Sandy left the call" notices).</summary>
     public static string MeetingGroup(Guid meetingId) => $"m:{meetingId}";
 
-    // when each scheduled meeting last rang its participants (a quick leave + rejoin doesn't ring them twice)
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> MeetingRungAt = new();
-    // "meeting started" emails: once per meeting per 3 hours (someone re-joining doesn't email everyone again)
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> MeetingMailedAt = new();
+    // A scheduled meeting rings its participants once per 2 minutes (a quick leave + rejoin doesn't ring them twice),
+    // and emails them once per 3 hours. Cluster.TryOnce keeps this true across several web servers too.
 
     private static string? CleanNote(string? note)
     {
@@ -468,10 +468,7 @@ public sealed class ChatHub : Hub
     private async Task RingMeetingStartedAsync(Guid tenantId, MeetingDto meeting)
     {
         var now = DateTime.UtcNow;
-        if (MeetingRungAt.TryGetValue(meeting.MeetingId, out var last) && now - last < TimeSpan.FromMinutes(2)) return;
-        MeetingRungAt[meeting.MeetingId] = now;
-        foreach (var old in MeetingRungAt.Where(kv => now - kv.Value > TimeSpan.FromHours(1)).Select(kv => kv.Key).ToList())
-            MeetingRungAt.TryRemove(old, out _);
+        if (!_cluster.TryOnce($"ring:{meeting.MeetingId:N}", TimeSpan.FromMinutes(2))) return;
 
         var me = Context.UserIdentifier!;
         var online = _presence.OnlineUsers(tenantId);
@@ -485,11 +482,8 @@ public sealed class ChatHub : Hub
             if (MeetingResponseDto.For(answers, key, today)?.Response == MeetingResponse.Declined) skip.Add(key);
 
         // everyone invited (team and guests, also people who are offline) gets an email with the link to join
-        if (!MeetingMailedAt.TryGetValue(meeting.MeetingId, out var mailed) || now - mailed > TimeSpan.FromHours(3))
+        if (_cluster.TryOnce($"mail:{meeting.MeetingId:N}", TimeSpan.FromHours(3)))
         {
-            MeetingMailedAt[meeting.MeetingId] = now;
-            foreach (var old in MeetingMailedAt.Where(kv => now - kv.Value > TimeSpan.FromHours(6)).Select(kv => kv.Key).ToList())
-                MeetingMailedAt.TryRemove(old, out _);
             try
             {
                 var inIt = new HashSet<string>(skip, StringComparer.OrdinalIgnoreCase);

@@ -10,6 +10,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddProvider(new ShankhNaad.Web.Infrastructure.FileLogProvider(builder.Environment.ContentRootPath));
 var config = builder.Configuration;
 
+// ---------- One web server, or several (appsettings "Redis") ----------
+// No Redis (the default): everything works on this one server, exactly as before.
+// With Redis:Connection set, several copies of the app can run behind a load balancer: who is online and in which call,
+// live updates (SignalR) and the login keys are shared through Redis (ServiceLibrary/Infrastructure/Cluster.cs).
+var cluster = new Cluster(Microsoft.Extensions.Options.Options.Create(config.GetSection("Redis").Get<RedisOptions>() ?? new RedisOptions()),
+    Microsoft.Extensions.Logging.Abstractions.NullLogger<Cluster>.Instance);
+builder.Services.AddSingleton(cluster);
+
 // ---------- All business functions (stored procedure calls, meetings, email, files, video) ----------
 builder.Services.AddShankhNaadServices(config);
 
@@ -33,20 +41,38 @@ builder.Services.AddAuthorization();
 // On IIS, keep the cookie-encryption keys in a fixed folder so users stay signed in after app pool recycles.
 var keysPath = config["App:DataProtectionKeysPath"];
 var dataProtection = builder.Services.AddDataProtection().SetApplicationName("Sahyog");   // keep "Sahyog": changing it would sign everyone out and break saved keys
-if (!string.IsNullOrWhiteSpace(keysPath))
+if (cluster.IsShared)
+    // several web servers: one set of keys for all of them, or a person would be signed out when the next request lands on another server
+    dataProtection.PersistKeysToStackExchangeRedis(() => cluster.Db, cluster.Key("dp-keys"));
+else if (!string.IsNullOrWhiteSpace(keysPath))
     dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
 
 builder.Services.AddControllersWithViews(o => o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
-builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 64 * 1024);
+var signalR = builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 64 * 1024);
+if (cluster.IsShared)
+{
+    // several web servers: a message, ring or status change on one server reaches people connected to the others
+    signalR.AddStackExchangeRedis(o =>
+    {
+        o.ConnectionFactory = _ => Task.FromResult(cluster.Multiplexer!);
+        o.Configuration.ChannelPrefix = StackExchange.Redis.RedisChannel.Literal(cluster.Prefix + "signalr");
+    });
+    builder.Services.AddHostedService<ShankhNaad.Web.Infrastructure.ClusterHeartbeat>();   // clean-up after a server stops
+}
 // CSS / JS bundles for the layouts (Infrastructure/AssetBundles.cs), served at /bundles/…
 builder.Services.AddSingleton<AssetBundles>();
 // our .js / .css / .svg: minified safely and compressed once at the best level, kept in memory (Infrastructure/OptimizedAssets.cs)
 builder.Services.AddSingleton<OptimizedAssets>();
 builder.Services.AddSingleton<ShankhNaad.Web.Infrastructure.ReverseGeocoder>();   // team location: map position → place name
-builder.Services.AddHostedService<ShankhNaad.Web.Infrastructure.LocationRetention>();   // team location: erase locations older than each company's "keep for" setting
-builder.Services.AddHostedService<ShankhNaad.Web.Infrastructure.ShankhReminders>();     // Shankh: remind managers of people who haven't pressed Seen
 builder.Services.AddScoped<ShankhNaad.Web.Infrastructure.ChatPoster>();              // posts into chats from the server (roles, approvals)
-builder.Services.AddHostedService<ShankhNaad.Web.Infrastructure.WorkJobs>();           // stand-up reminders, role-request escalation
+// Background jobs: with several web servers, set "App:RunBackgroundJobs": false on all but one,
+// or every reminder would go out once per server.
+if (config.GetValue("App:RunBackgroundJobs", true))
+{
+    builder.Services.AddHostedService<ShankhNaad.Web.Infrastructure.LocationRetention>();   // team location: erase locations older than each company's "keep for" setting
+    builder.Services.AddHostedService<ShankhNaad.Web.Infrastructure.ShankhReminders>();     // Shankh: remind managers of people who haven't pressed Seen
+    builder.Services.AddHostedService<ShankhNaad.Web.Infrastructure.WorkJobs>();           // stand-up reminders, role-request escalation
+}
 
 // Compress CSS / JS / SVG (about 1.6 MB → about 300 KB per first visit). HTML pages are deliberately NOT
 // compressed: they carry the anti-forgery token, and compressing secrets over HTTPS opens the BREACH attack.
@@ -61,6 +87,8 @@ builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.BrotliCompre
 builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
 
 var app = builder.Build();
+if (cluster.IsShared)
+    app.Logger.LogInformation("Several web servers: shared state in Redis, this server is {ServerId}", cluster.ServerId);
 
 if (!app.Environment.IsDevelopment())
 {

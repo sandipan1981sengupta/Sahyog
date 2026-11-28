@@ -5,9 +5,32 @@ namespace ShankhNaad.ServiceLibrary;
 
 public sealed class StorageOptions
 {
+    /// <summary>
+    /// "Local" (default): files on this server's disk (RootPath), as always. Also right for several web servers that
+    /// share one network folder (NFS / SMB) as RootPath.
+    /// "S3": an S3-style store shared by every web server (MinIO on your own server, Cloudflare R2, AWS S3, Wasabi …); see S3.
+    /// </summary>
+    public string Kind { get; set; } = "Local";
+
     /// <summary>Absolute path, or relative to the app folder. On IIS use a folder outside the site, e.g. D:\SahyogData\files.</summary>
     public string RootPath { get; set; } = "App_Data/files";
     public int MaxUploadMb { get; set; } = 50;
+
+    /// <summary>Only for Kind = "S3".</summary>
+    public S3StorageOptions S3 { get; set; } = new();
+}
+
+public sealed class S3StorageOptions
+{
+    /// <summary>The store's address, e.g. "https://files.yourcompany.com" (MinIO) or "https://&lt;account&gt;.r2.cloudflarestorage.com". Empty = AWS itself.</summary>
+    public string ServiceUrl { get; set; } = "";
+    public string Bucket { get; set; } = "";
+    public string AccessKey { get; set; } = "";
+    public string SecretKey { get; set; } = "";
+    /// <summary>AWS region, e.g. "ap-south-1" (Mumbai). Most other stores accept "us-east-1" or "auto".</summary>
+    public string Region { get; set; } = "us-east-1";
+    /// <summary>true for MinIO and most self-hosted stores (bucket in the path, not in the host name).</summary>
+    public bool ForcePathStyle { get; set; } = true;
 }
 
 /// <summary>Where uploaded files live. Swap LocalFileStorage for an R2 / Azure Blob version later without touching controllers.</summary>
@@ -67,7 +90,10 @@ public sealed class LocalFileStorage : IFileStorage
         return full;
     }
 
-    private static string SanitizeExtension(string extension)
+    private static string SanitizeExtension(string extension) => CleanExtension(extension);
+
+    /// <summary>".pdf", ".jpg" …: letters and digits only, at most 12 characters (also used by S3FileStorage).</summary>
+    internal static string CleanExtension(string extension)
     {
         if (string.IsNullOrWhiteSpace(extension)) return "";
         var clean = new string(extension.Where(c => char.IsLetterOrDigit(c) || c == '.').ToArray()).ToLowerInvariant();

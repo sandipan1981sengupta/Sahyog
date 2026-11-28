@@ -16,6 +16,11 @@
     <!-- Email over SMTP: supports port 465 (SSL on connect, used by Plesk / MilesWeb) and 587 (STARTTLS). -->
     <PackageReference Include="MailKit" Version="4.8.0" />
     <PackageReference Include="DnsClient" Version="1.7.0" />
+    <!-- Several web servers (optional, appsettings "Redis"): shared online / in-call state. Unused when Redis isn't set.
+         Kept on 2.x: the SignalR and login-key Redis packages (in ShankhNaad.Web) are built on it. -->
+    <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
+    <!-- Shared file storage (optional, appsettings "Storage:Kind" = "S3"): any S3-style store (MinIO, Cloudflare R2, AWS, Wasabi). -->
+    <PackageReference Include="AWSSDK.S3" Version="4.1.2.1" />
   </ItemGroup>
 
   <ItemGroup>

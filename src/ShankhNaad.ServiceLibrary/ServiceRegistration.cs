@@ -1,6 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using ShankhNaad.DtoLibrary;
 using ShankhNaad.ServiceLibrary.Data;
@@ -26,6 +27,7 @@ public static class ServiceRegistration
         services.Configure<JaasOptions>(config.GetSection("Jaas"));
         services.Configure<JitsiOptions>(config.GetSection("Jitsi"));       // your own Jitsi Meet server
         services.Configure<SmtpOptions>(config.GetSection("Smtp"));
+        services.Configure<RedisOptions>(config.GetSection("Redis"));       // several web servers (empty = one server, as before)
 
         services.AddSingleton<SqlDb>();
         services.AddScoped<ITenantService, TenantService>();
@@ -46,9 +48,14 @@ public static class ServiceRegistration
         services.AddScoped<IAccountEmailService, AccountEmailService>();
 
         services.AddSingleton<IEmailDomainCheck, EmailDomainCheck>();
+        services.TryAddSingleton<Cluster>();        // Program.cs registers its own instance first (SignalR and login keys share it)
         services.AddSingleton<PresenceTracker>();
         services.AddSingleton<MeetingRoomTracker>();
-        services.AddSingleton<IFileStorage, LocalFileStorage>();
+        // files: this server's disk (default), or an S3-style store shared by several web servers (Storage:Kind = "S3")
+        if (string.Equals(config["Storage:Kind"], "S3", StringComparison.OrdinalIgnoreCase))
+            services.AddSingleton<IFileStorage, S3FileStorage>();
+        else
+            services.AddSingleton<IFileStorage, LocalFileStorage>();
         services.AddSingleton<IVideoProvider, JaasVideoProvider>();
         services.AddSingleton<IVideoProvider, SelfHostedJitsiVideoProvider>();
         services.AddSingleton<IVideoProviderFactory, VideoProviderFactory>();
