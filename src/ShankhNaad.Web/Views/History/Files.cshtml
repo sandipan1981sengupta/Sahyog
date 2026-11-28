@@ -104,13 +104,22 @@
             {
                 var k = Kind(f);
                 var mine = f.UploaderId == me;
+                var canView = ShankhNaad.Web.Controllers.ChatController.CanShowInPlace(f.ContentType);
                 var where = f.IsDirect ? (f.OtherName ?? "Someone") : f.ChannelName;
-                <div class="sn-hrow sn-frow" data-id="@f.AttachmentId" data-label="@f.FileName" data-mine="@(mine ? "1" : "0")" data-kind="@(mine ? "mine" : "theirs")" data-type="@k.Key"
+                <div class="sn-hrow sn-frow" data-id="@f.AttachmentId" data-label="@f.FileName"
+                     data-fv-url="/chat/file/@f.AttachmentId" data-fv-name="@f.FileName" data-fv-type="@f.ContentType" data-fv-size="@f.SizeBytes" data-mine="@(mine ? "1" : "0")" data-kind="@(mine ? "mine" : "theirs")" data-type="@k.Key"
                      data-filter="@f.FileName @where @f.UploaderName" data-utc="@f.UploadedUtc.ToString("o")">
                     <label class="sn-hpick" title="Pick"><input type="checkbox" data-pick aria-label="Pick" /></label>
                     <span class="sn-ftile t-@k.Key"><i class="fa @k.Icon" aria-hidden="true"></i></span>
                     <div class="sn-hmain">
-                        <a class="ellipsis sn-fname" href="/chat/file/@f.AttachmentId" title="Download @f.FileName">@f.FileName</a>
+                        @if (canView)
+                        {
+                            <button type="button" class="ellipsis sn-fname" data-fv-view title="View @f.FileName">@f.FileName</button>
+                        }
+                        else
+                        {
+                            <a class="ellipsis sn-fname" href="/chat/file/@(f.AttachmentId)?dl=1" download="@f.FileName" title="Download @f.FileName">@f.FileName</a>
+                        }
                         <small class="sn-hstat dim">@k.Label · @UserExtensions.FormatBytes(f.SizeBytes) · @(mine ? "shared by you" : $"shared by {f.UploaderName}")</small>
                     </div>
                     <span class="sn-fwhere" title="@(f.IsDirect ? $"Your chat with {where}" : $"The group {where}")">
@@ -126,7 +135,11 @@
                     </span>
                     <time class="sn-htime" datetime="@f.UploadedUtc.ToString("o")" data-utc="@f.UploadedUtc.ToString("o")"></time>
                     <div class="sn-hact">
-                        <a class="sn-hbtn call" href="/chat/file/@f.AttachmentId" title="Download"><i class="fa fa-download" aria-hidden="true"></i><span>Download</span></a>
+                        @if (canView)
+                        {
+                            <button type="button" class="sn-hbtn view" data-fv-view title="View"><i class="fa fa-eye" aria-hidden="true"></i><span>View</span></button>
+                        }
+                        <a class="sn-hbtn call" href="/chat/file/@(f.AttachmentId)?dl=1" download="@f.FileName" title="Download"><i class="fa fa-download" aria-hidden="true"></i><span>Download</span></a>
                         <a class="sn-hbtn chat" href="/chat/@f.ChannelId" title="Open the chat it was shared in"><i class="fa fa-comment" aria-hidden="true"></i><span>Chat</span></a>
                         <button type="button" class="sn-hbtn del" data-del-one title="@(mine ? "Delete" : "Remove from my list")" aria-label="@(mine ? "Delete" : "Remove from my list")"><i class="fa @(mine ? "fa-trash-o" : "fa-eye-slash")" aria-hidden="true"></i></button>
                     </div>

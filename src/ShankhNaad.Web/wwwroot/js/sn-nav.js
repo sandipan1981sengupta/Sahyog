@@ -286,6 +286,9 @@
         row.querySelectorAll("*").forEach((el, i) => { if (el.scrollTop > 0) out.push([el.id || "", el.className || "", i, el.scrollTop]); });
         return out;
     }
+    // a soft switch (one chat to another) keeps only these scroll positions, e.g. the chat list
+    function keepState(sels) { return sels.map((s) => [s, document.querySelector(s)?.scrollTop || 0]); }
+    function keepRestore(state) { state.forEach(([s, top]) => { const el = document.querySelector(s); if (el) el.scrollTop = top; }); }
     function restoreScroll(row, state) {
         const all = row.querySelectorAll("*");
         state.forEach(([id, cls, i, top]) => {
@@ -298,7 +301,8 @@
         const row = document.querySelector(".sn-body-row");
         const doc = res.doc;
         const quiet = !!opts.quiet;
-        const keepScroll = quiet ? scrollState(row) : null;
+        const keep = opts.keep || null;                 // soft switch: keep just these, the rest starts fresh
+        const keepScroll = quiet ? (keep ? keepState(keep) : scrollState(row)) : null;
 
         // the page we are leaving: everything it hooked onto is removed
         kill(page);
@@ -355,7 +359,7 @@
         document.querySelector(".sn-topbar")?.querySelectorAll("[data-sn-page-title]").forEach((el) => { el.textContent = doc.title; });
 
         if (quiet) {
-            restoreScroll(row, keepScroll);
+            if (keep) keepRestore(keepScroll); else restoreScroll(row, keepScroll);
             root.setAttribute("data-arrived", "1");
             document.dispatchEvent(new Event("sn:arrived"));
         }
@@ -386,6 +390,8 @@
     /**
      * Goes to a page without reloading. opts:
      *   push (default true) · dir "next" | "prev" (slide direction) · quiet (refresh in place, no animation)
+     *   soft + keep (selectors): a new address without the page animation, keeping only those scroll positions
+     *   (one chat to another: the list stays where it was, the new conversation opens at its newest messages)
      *   method "POST" + body (FormData) · minLeave (ms the old page takes to leave) · hash (keep #part after a form post)
      */
     async function navigate(href, opts) {
@@ -397,7 +403,8 @@
         ctrl = new AbortController();
         const signal = ctrl.signal;
 
-        const quiet = !!opts.quiet;
+        const soft = !!opts.soft;
+        const quiet = !!opts.quiet || soft;
         const vt = !quiet && useVT();
         const leaving = !quiet && !vt && !reduce();
         const dir = opts.dir || "";
@@ -437,7 +444,12 @@
             return;
         }
 
-        if (quiet) { root.classList.add("sn-quiet"); await swap(res, { quiet: true, push: false }, res.prep); undoLeave(); await nextFrame(); await nextFrame(); root.classList.remove("sn-quiet"); return; }
+        if (quiet) {
+            root.classList.add("sn-quiet");
+            await swap(res, soft ? { quiet: true, push: opts.push, keep: opts.keep } : { quiet: true, push: false }, res.prep);
+            undoLeave(); await nextFrame(); await nextFrame(); root.classList.remove("sn-quiet");
+            return;
+        }
 
         if (vt) {
             root.classList.add("sn-arrive");
@@ -482,11 +494,16 @@
         return nav.canGo(u) ? { a, u } : null;
     }
     // on window (bubbling): runs after the page's own click handlers, so they can still cancel a click
+    // one chat to another (Chat page, list on the left): swap without the page animation and keep the list's scroll,
+    // so it feels like opening a conversation, not loading a new page
+    const CHAT_RE = /^\/chat(?:\/[0-9a-f-]{36})?\/?$/i;
     addEL.call(window, "click", (e) => {
         const t = linkTarget(e);
         if (!t) return;
         e.preventDefault();
-        navigate(t.u.href, { dir: t.a.dataset.snDir || "" });
+        if (CHAT_RE.test(location.pathname) && CHAT_RE.test(t.u.pathname) && document.querySelector(".side-scroll"))
+            navigate(t.u.href, { soft: true, keep: [".side-scroll"] });
+        else navigate(t.u.href, { dir: t.a.dataset.snDir || "" });
     });
 
     nav.wantsForm = (form, submitter) => {

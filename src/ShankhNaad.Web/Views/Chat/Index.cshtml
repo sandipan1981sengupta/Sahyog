@@ -287,10 +287,25 @@
         <div id="recentFiles" class="file-list">
             @foreach (var f in Model.RecentFiles)
             {
-                <a class="file-row" href="@f.Url" target="_blank" rel="noopener">
+                var canView = ShankhNaad.Web.Controllers.ChatController.CanShowInPlace(f.ContentType);
+                @* View (in the app, js/file-view.js) and Download, separately *@
+                <div class="file-row" data-fv-url="@f.Url" data-fv-name="@f.FileName" data-fv-type="@f.ContentType" data-fv-size="@f.SizeBytes">
                     <i class="fa fa-file-o" aria-hidden="true"></i>
-                    <span class="grow ellipsis">@f.FileName</span><span class="muted tiny">@UserExtensions.FormatBytes(f.SizeBytes)</span>
-                </a>
+                    @if (canView)
+                    {
+                        <button type="button" class="grow ellipsis fv-name" data-fv-view title="View @f.FileName">@f.FileName</button>
+                    }
+                    else
+                    {
+                        <a class="grow ellipsis fv-name" href="@(f.Url)?dl=1" download="@f.FileName" title="Download @f.FileName">@f.FileName</a>
+                    }
+                    <span class="muted tiny">@UserExtensions.FormatBytes(f.SizeBytes)</span>
+                    @if (canView)
+                    {
+                        <button type="button" class="fv-ico" data-fv-view title="View" aria-label="View @f.FileName"><i class="fa fa-eye" aria-hidden="true"></i></button>
+                    }
+                    <a class="fv-ico" href="@(f.Url)?dl=1" download="@f.FileName" title="Download" aria-label="Download @f.FileName"><i class="fa fa-download" aria-hidden="true"></i></a>
+                </div>
             }
             @if (Model.RecentFiles.Count == 0)
             {
@@ -627,12 +642,13 @@
         });
         $(document).on("click", "[data-del-chat]", function (e) {
             e.preventDefault(); e.stopPropagation();
-            var name = this.getAttribute("data-name");
-            SN.confirmPost("/chat/" + this.getAttribute("data-del-chat") + "/delete", {
+            var name = this.getAttribute("data-name"), cid = this.getAttribute("data-del-chat");
+            SN.confirmPost("/chat/" + cid + "/delete", {
                 title: "Delete chat",
-                text: "Delete your chat with " + name + "? All messages and shared files in it are removed for both of you. " + name + " stays in your team, and you can start a new chat any time.",
+                text: "Delete your chat with " + name + "? All messages and shared files in it are removed for both of you. " + name + " stays in your team (and stays pinned if you pinned them), and you can start a new chat any time.",
                 confirmText: "Delete chat",
-                danger: true
+                danger: true,
+                before: function () { window.__snDeleting = cid; }    // our own delete: chat.js ignores the live "deleted" note
             });
         });
 
@@ -785,7 +801,8 @@
                 .then(function (r) { return r.json().then(function (x) { return { ok: r.ok, x: x }; }); })
                 .then(function (res) {
                     if (!res.ok) { Sahyog.toast(res.x.error || "Couldn't pin.", { kind: "error" }); return; }
-                    SN.reload();   // they move up to "Pinned"
+                    // they move up to "Pinned": refresh in place (no page animation), the list keeps its place
+                    if (SN.nav && SN.nav.refresh) SN.nav.refresh(); else SN.reload();
                 })
                 .catch(function () { Sahyog.toast("Couldn't pin. Check your connection.", { kind: "error" }); });
         });
@@ -876,9 +893,10 @@
             function snDeleteChat() {
                 SN.confirmPost("/chat/@c.Id/delete", {
                     title: "Delete chat",
-                    text: "Delete your chat with @Html.Raw(Js(c.Name))? All messages and shared files are removed for both of you. This cannot be undone.",
+                    text: "Delete your chat with @Html.Raw(Js(c.Name))? All messages and shared files are removed for both of you. This cannot be undone. If you pinned them, they stay pinned.",
                     confirmText: "Delete chat",
-                    danger: true
+                    danger: true,
+                    before: function () { window.__snDeleting = "@c.Id"; }   // our own delete: chat.js ignores the live "deleted" note
                 });
             }
         </script>

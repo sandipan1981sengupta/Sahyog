@@ -105,6 +105,7 @@ public sealed class AssetBundles
             "js/site.js",
             "js/meeting-alerts.js", "js/location.js", "js/shankh.js", "js/nirnay.js",
             "js/shankhnaad.js",
+            "js/file-view.js",                                    // View / Download for shared files (chat, Files page)
             "js/work-kit.js", "js/work-live.js", "js/away.js",   // Work: stand-up, roles, visitors, approvals, stand-in
             "js/people-picker.js",
             "js/people-actions.js",

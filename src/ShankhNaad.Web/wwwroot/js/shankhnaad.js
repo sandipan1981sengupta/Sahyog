@@ -116,7 +116,7 @@
         form.remove();
     };
 
-    /** Asks first (Template 1 confirm box), then posts. */
+    /** Asks first (Template 1 confirm box), then posts. options.before: runs on Yes, just before the post. */
     SN.confirmPost = (url, options) => {
         const o = options || {};
         confirmMessageBox({
@@ -124,7 +124,7 @@
             text: o.text || "Are you sure?",
             confirmText: o.confirmText || "Yes",
             danger: !!o.danger,
-            onConfirm: () => SN.post(url, o.fields)
+            onConfirm: () => { try { o.before?.(); } catch (e) { } SN.post(url, o.fields); }
         });
     };
 

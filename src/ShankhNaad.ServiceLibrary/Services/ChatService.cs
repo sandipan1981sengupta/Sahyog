@@ -41,6 +41,9 @@ public interface IChatService
     /// <summary>Deletes a direct conversation (messages and files) for both people.</summary>
     /// <returns>Deleted = false when it isn't a direct chat this user is in; Files = storage paths to remove.</returns>
     Task<(bool Deleted, List<string> Files)> DeleteDirectAsync(Guid tenantId, Guid channelId, Guid userId);
+    /// <summary>Clears a one-to-one chat: every message and file goes for both people, but the chat stays (its pin and
+    /// place in the list too). Throws SqlException 2812 until 56_ClearPinnedChat.sql is run.</summary>
+    Task<(bool Cleared, List<string> Files)> ClearDirectAsync(Guid tenantId, Guid channelId, Guid userId);
     /// <summary>Adds people to a group (its creator or an admin). Status 0 ok, 1 not a group you can change (or Everyone),
     /// 2 not allowed, 3 nobody new, 9 script 29 not run. Returns who was added.</summary>
     /// <summary>
@@ -408,6 +411,17 @@ public sealed class ChatService : IChatService
     {
         SqlParameter? result = null;
         var files = await _db.QueryAsync("dbo.sahyog_Chat_DeleteDirect", p =>
+        {
+            p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", userId);
+            result = p.AddOutput("@Result", SqlDbType.Int);
+        }, r => r.S("StoragePath"));
+        return (result!.OutInt() == 1, files);
+    }
+
+    public async Task<(bool Cleared, List<string> Files)> ClearDirectAsync(Guid tenantId, Guid channelId, Guid userId)
+    {
+        SqlParameter? result = null;
+        var files = await _db.QueryAsync("dbo.sahyog_Chat_ClearDirect", p =>
         {
             p.With("@TenantId", tenantId).With("@ChannelId", channelId).With("@UserId", userId);
             result = p.AddOutput("@Result", SqlDbType.Int);

@@ -221,7 +221,7 @@
    "description": "The Files page shows every file shared with you or by you, and the chat it is in.",
    "video": "/HelpVideos/talk/05-files.mp4",
    "poster": "/HelpVideos/talk/05-files.jpg",
-   "duration": 67.1,
+   "duration": 73.2,
    "chapters": [
     {
      "title": "Introduction",
@@ -229,34 +229,34 @@
     },
     {
      "title": "Open the page",
-     "time": 17.0
+     "time": 17.4
     },
     {
      "title": "Overview",
-     "time": 20.6
+     "time": 21.0
     },
     {
      "title": "Find a file",
-     "time": 31.0
+     "time": 31.5
     },
     {
-     "title": "Open and download",
-     "time": 41.0
+     "title": "View and download",
+     "time": 41.4
     },
     {
      "title": "Free up space",
-     "time": 51.6
+     "time": 57.8
     },
     {
      "title": "Summary",
-     "time": 60.3
+     "time": 66.5
     }
    ],
    "topics": [
     "Open the page",
     "Overview",
     "Find a file",
-    "Open and download",
+    "View and download",
     "Free up space"
    ],
    "captions": "/HelpVideos/talk/05-files.captions.json"

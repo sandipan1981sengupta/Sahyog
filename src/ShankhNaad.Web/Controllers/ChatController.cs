@@ -525,6 +525,41 @@ public sealed partial class ChatController : Controller
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var members = (await _chat.GetMembersAsync(tenantId, id)).Select(m => m.Id.ToString()).ToList();
+        var people = members.Select(m => Guid.TryParse(m, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList();
+        // a pin belongs to the person, not to the messages: note who had this chat pinned, so they keep it after the delete
+        var pinnedBy = new List<Guid>();
+        foreach (var person in people)
+            if ((await _chat.GetSidebarAsync(tenantId, person)).Any(s => s.ChannelId == id && s.IsPinned)) pinnedBy.Add(person);
+
+        // pinned: CLEAR it instead (56_ClearPinnedChat.sql). Every message and file goes for both people, but the chat stays,
+        // so it keeps its pin and its place in the list instead of disappearing and coming back somewhere else.
+        if (pinnedBy.Count > 0)
+        {
+            try
+            {
+                var (cleared, gone) = await _chat.ClearDirectAsync(tenantId, id, Me);
+                if (!cleared)
+                {
+                    TempData["Error"] = "Only a one-to-one chat you are part of can be deleted.";
+                    return RedirectToAction(nameof(Index), new { id });
+                }
+                foreach (var path in gone)
+                {
+                    try { _files.Delete(path); } catch { /* the record is gone; a stray file is harmless */ }
+                }
+                if (members.Count > 0) await _hub.Clients.Users(members).SendAsync("ChannelCleared", id);
+                TempData["Message"] = "Chat deleted: every message and file is gone for both of you. It stays pinned.";
+                // back to where you were (the chat list, or the chat you had open)
+                var from = Request.Headers.Referer.ToString();
+                return Uri.TryCreate(from, UriKind.Absolute, out var back) && back.AbsolutePath.StartsWith("/chat", StringComparison.OrdinalIgnoreCase)
+                    ? LocalRedirect(back.PathAndQuery) : RedirectToAction(nameof(Index), new { id });
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 2812)
+            {
+                /* 56_ClearPinnedChat.sql not run yet: delete it, then pin a fresh chat again (below) */
+            }
+        }
+
         var (deleted, files) = await _chat.DeleteDirectAsync(tenantId, id, Me);
         if (!deleted)
         {
@@ -537,6 +572,19 @@ public sealed partial class ChatController : Controller
         }
         if (members.Count > 0)
             await _hub.Clients.Users(members).SendAsync("ChannelDeleted", id);
+        // (only before 56_ClearPinnedChat.sql) keep the pin: start a fresh, empty chat with the same person and pin it again
+        if (pinnedBy.Count > 0 && people.FirstOrDefault(p => p != Me) is Guid other && other != Guid.Empty)
+        {
+            try
+            {
+                if (await _chat.GetOrCreateDirectAsync(tenantId, Me, other) is Guid fresh)
+                {
+                    await AddConnectionsToGroupAsync(fresh, new[] { Me.ToString(), other.ToString() });
+                    foreach (var who in pinnedBy) await _chat.SetPinnedAsync(tenantId, fresh, who, true);
+                }
+            }
+            catch (Microsoft.Data.SqlClient.SqlException) { /* the chat is deleted either way; only the pin is lost */ }
+        }
         return RedirectToAction(nameof(Index));
     }
 
@@ -584,21 +632,36 @@ public sealed partial class ChatController : Controller
         return Json(await reactions.GetAsync(tenantId, Me, list));
     }
 
+    /// <summary>
+    /// A file from a chat. dl=1: always download (the Download button). Otherwise kinds a browser can show open in place
+    /// (the View button and the in-app viewer): pictures, PDF, plain text, audio and video. Everything else downloads.
+    /// SVG pictures are never shown in place, because an SVG file can carry script.
+    /// </summary>
     [HttpGet("file/{id:guid}")]
-    public async Task<IActionResult> Download(Guid id, [FromServices] ILogger<ChatController> log)
+    public async Task<IActionResult> Download(Guid id, [FromServices] ILogger<ChatController> log, string? dl = null)
     {
         if (User.TenantId() is not Guid tenantId) return Forbid();
         var attachment = await _chat.GetAttachmentAsync(tenantId, id, Me);
         if (attachment is null) return NotFound();
 
-        var inline = attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-                     || attachment.ContentType == "application/pdf";
+        var type = attachment.ContentType ?? "";
+        var download = dl is "1" or "true";                         // the Download button: ?dl=1
+        var inline = !download && CanShowInPlace(type);
+        Response.Headers["X-Content-Type-Options"] = "nosniff";      // the browser must not guess another kind
         Stream stream;
         try { stream = _files.OpenRead(attachment.StoragePath); }
         catch (Exception ex) when (MissingFile.Is(ex)) { return MissingFile.Page(attachment.FileName, log, attachment.StoragePath); }
         return inline
             ? File(stream, attachment.ContentType, enableRangeProcessing: true)
             : File(stream, attachment.ContentType, attachment.FileName, enableRangeProcessing: true);
+    }
+
+    /// <summary>Kinds of file the browser can show by itself (also what js/file-view.js offers "View" for).</summary>
+    internal static bool CanShowInPlace(string contentType)
+    {
+        var t = (contentType ?? "").Split(';')[0].Trim().ToLowerInvariant();
+        if (t == "image/svg+xml") return false;
+        return t.StartsWith("image/") || t.StartsWith("video/") || t.StartsWith("audio/") || t is "application/pdf" or "text/plain" or "text/csv";
     }
 
     private async Task AddConnectionsToGroupAsync(Guid channelId, IEnumerable<string> userIds)

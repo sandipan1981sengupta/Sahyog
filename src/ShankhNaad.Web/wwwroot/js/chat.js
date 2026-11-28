@@ -115,16 +115,25 @@
     }
     const shortText = (body) => /^\[\[approval:/.test(body || "") ? "📝 Approval request" : fwdOf(body) ? "↪ " + (fwdOf(body).rest ? shortText(fwdOf(body).rest) : "Forwarded") : isGif(body) ? "🎞️ GIF" : /^\[\[call:/i.test(body || "") ? "📞 Call" : (body || "").replace(/\s+/g, " ").trim();
 
+    // a shared file: View (in the app, js/file-view.js) and Download, separately
     function attachmentHtml(a) {
-        const name = S.escape(a.fileName);
-        if (a.contentType.startsWith("image/")) {
-            return `<a class="file-card img-card" href="${a.url}" target="_blank" rel="noopener"><img src="${a.url}" alt="${name}" loading="lazy"></a>`;
+        const name = S.escape(a.fileName), url = S.escape(a.url), type = S.escape(a.contentType || "");
+        const canView = window.SN?.canView ? SN.canView(a.contentType) : (a.contentType || "").startsWith("image/");
+        const data = `data-fv-url="${url}" data-fv-name="${name}" data-fv-type="${type}" data-fv-size="${a.sizeBytes || 0}"`;
+        const dl = `<a class="fv-act" href="${url}?dl=1" download="${name}" title="Download ${name}" aria-label="Download ${name}"><i class="fa fa-download" aria-hidden="true"></i><span>Download</span></a>`;
+        const view = canView ? `<button type="button" class="fv-act" data-fv-view title="View ${name}" aria-label="View ${name}"><i class="fa fa-eye" aria-hidden="true"></i><span>View</span></button>` : "";
+        if ((a.contentType || "").startsWith("image/") && canView) {
+            return `<div class="file-card img-card" ${data}>
+                        <button type="button" class="img-open" data-fv-view title="View ${name}"><img src="${url}" alt="${name}" loading="lazy"></button>
+                        <span class="fv-acts">${view}${dl}</span>
+                    </div>`;
         }
         const ext = S.escape((a.fileName.split(".").pop() || "file").slice(0, 4));
-        return `<a class="file-card" href="${a.url}" target="_blank" rel="noopener">
+        return `<div class="file-card" ${data}>
                     <span class="ext">${ext}</span>
                     <span class="grow"><span class="ellipsis" style="display:block;font-weight:500">${name}</span><span class="muted tiny">${formatBytes(a.sizeBytes)}</span></span>
-                </a>`;
+                    <span class="fv-acts">${view}${dl}</span>
+                </div>`;
     }
 
     // ---------- read ticks on your own messages: ✓ sent, ✓✓ grey read by some, ✓✓ blue read by everyone ----------
@@ -840,7 +849,16 @@
             document.querySelectorAll(`.side-item[data-channel="${cid}"]`).forEach((x) => x.remove());
         });
 
+        // a pinned chat was "deleted": it was cleared and stays in the list (56_ClearPinnedChat.sql)
+        hub.on("ChannelCleared", (cid) => {
+            if (cid === window.__snDeleting) { window.__snDeleting = null; return; }     // yours: the delete reloads the page itself
+            if (cid === channelId) { if (window.SN?.nav?.refresh) SN.nav.refresh(); else window.location.reload(); return; }
+            const row = document.querySelector(`.sn-person-row[data-channel="${cid}"]`);
+            row?.querySelectorAll(".badge, .sn-unread, [data-unread]").forEach((b) => b.remove());
+        });
         hub.on("ChannelDeleted", (cid) => {
+            // deleted by you: the delete itself is already taking you to /chat, so don't start a second page load
+            if (cid === window.__snDeleting) { window.__snDeleting = null; if (cid !== channelId) document.querySelector(`.side-item[data-channel="${cid}"]`)?.remove(); return; }
             if (cid === channelId) { window.SN?.go ? SN.go("/chat") : (window.location.href = "/chat"); return; }
             const item = document.querySelector(`.side-item[data-channel="${cid}"]`);
             if (item) item.remove();
