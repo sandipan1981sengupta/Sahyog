@@ -10,6 +10,25 @@
         : $"{Model.Members.Count} members{(string.IsNullOrWhiteSpace(Model.CurrentDescription) ? "" : " · " + Model.CurrentDescription)}";
     var isAdmin = User.IsInRole(AppRoles.TenantAdmin);
     string Js(string? text) => System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(text ?? "");
+    // "Files | shared" panel: an icon and colour for each kind of file (by its type and name)
+    (string Key, string Icon) FileKind(string fileName, string contentType)
+    {
+        var ext = System.IO.Path.GetExtension(fileName ?? "").TrimStart('.').ToLowerInvariant();
+        var ct = (contentType ?? "").ToLowerInvariant();
+        if (ct.StartsWith("image/") || ext is "png" or "jpg" or "jpeg" or "gif" or "webp" or "bmp" or "svg" or "heic") return ("image", "fa-file-image-o");
+        if (ct.StartsWith("video/")) return ("video", "fa-file-video-o");
+        if (ct.StartsWith("audio/")) return ("audio", "fa-file-audio-o");
+        if (ext == "pdf" || ct == "application/pdf") return ("pdf", "fa-file-pdf-o");
+        if (ext is "doc" or "docx" or "rtf" or "odt") return ("doc", "fa-file-word-o");
+        if (ext is "xls" or "xlsx" or "xlsm" or "csv" or "ods") return ("sheet", "fa-file-excel-o");
+        if (ext is "ppt" or "pptx" or "pps" or "ppsx" or "odp") return ("slide", "fa-file-powerpoint-o");
+        if (ext is "html" or "htm" or "xhtml") return ("html", "fa-html5");
+        if (ext is "txt" or "md" or "log" or "ini" or "cfg") return ("text", "fa-file-text-o");
+        if (ext is "zip" or "rar" or "7z" or "gz" or "tar") return ("zip", "fa-file-archive-o");
+        if (ext is "cs" or "js" or "ts" or "json" or "xml" or "sql" or "css" or "py" or "java" or "php") return ("code", "fa-file-code-o");
+        return ("other", "fa-file-o");
+    }
+    const int FilesShownFirst = 10;
 
     // the list: pinned chats first, then every other chat (groups and people) newest first
     var allChats = Model.Channels.Concat(Model.Directs).ToList();
@@ -286,12 +305,14 @@
 
     <modern-group-box title="Files | shared" header-bg-color="transparent" content-bg-color="transparent" border-color="rgba(255,255,255,.75)" radius="24px" content-layout="block">
         <div id="recentFiles" class="file-list">
-            @foreach (var f in Model.RecentFiles)
+            @for (var fi = 0; fi < Model.RecentFiles.Count; fi++)
             {
+                var f = Model.RecentFiles[fi];
                 var canView = ShankhNaad.Web.Controllers.ChatController.CanShowInPlace(f.ContentType);
-                @* View (in the app, js/file-view.js) and Download, separately *@
-                <div class="file-row" data-fv-url="@f.Url" data-fv-name="@f.FileName" data-fv-type="@f.ContentType" data-fv-size="@f.SizeBytes">
-                    <i class="fa fa-file-o" aria-hidden="true"></i>
+                var fk = FileKind(f.FileName, f.ContentType);
+                @* View (in the app, js/file-view.js) and Download, separately. The newest 10 show; "Show more" brings the rest, 10 at a time. *@
+                <div class="file-row" hidden="@(fi >= FilesShownFirst)" data-fv-url="@f.Url" data-fv-name="@f.FileName" data-fv-type="@f.ContentType" data-fv-size="@f.SizeBytes">
+                    <span class="fr-ico t-@fk.Key" aria-hidden="true"><i class="fa @fk.Icon"></i></span>
                     @if (canView)
                     {
                         <button type="button" class="grow ellipsis fv-name" data-fv-view title="View @f.FileName">@f.FileName</button>
@@ -313,6 +334,19 @@
                 <p class="muted small">Files shared here will appear in this list.</p>
             }
         </div>
+        @if (Model.RecentFiles.Count > FilesShownFirst)
+        {
+            <button type="button" class="file-more" onclick="var l=document.getElementById('recentFiles'),h=l.querySelectorAll('.file-row[hidden]');for(var i=0;i<h.length&&i<10;i++)h[i].hidden=false;var n=h.length-Math.min(h.length,10);this.querySelector('b').textContent=n;this.hidden=!n;">
+                <i class="fa fa-chevron-down" aria-hidden="true"></i> Show more <span class="muted">(<b>@(Model.RecentFiles.Count - FilesShownFirst)</b> more)</span>
+            </button>
+        }
+        @if (Model.RecentFiles.Count > 0)
+        {
+            <div class="file-list-foot">
+                <span class="muted tiny">@Model.RecentFiles.Count@(Model.RecentFiles.Count >= 200 ? "+" : "") @(Model.RecentFiles.Count == 1 ? "file" : "files")</span>
+                <a class="sn-link tiny" href="/files"><i class="fa fa-folder-open-o" aria-hidden="true"></i> All files</a>
+            </div>
+        }
     </modern-group-box>
 
     @{

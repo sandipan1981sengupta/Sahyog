@@ -99,7 +99,8 @@ public sealed partial class ChatController : Controller
                 .OrderByDescending(p => p.Online).ThenBy(p => p.Name)
                 .ToList();
 
-            files = await _chat.GetRecentFilesAsync(tenantId, current.Id, viewerId: Me);
+            // every file of this chat (newest first), up to 200: the panel scrolls. It used to stop at 5.
+            files = await _chat.GetRecentFilesAsync(tenantId, current.Id, take: 200, viewerId: Me);
 
             if (!current.IsDirect && await _chat.GetChannelAsync(tenantId, current.Id) is ChannelDto info)
             {

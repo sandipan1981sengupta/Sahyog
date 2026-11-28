@@ -765,3 +765,40 @@ body.sn-body:not(.auth-body) .sn-backdrop .orb { animation: none !important; wil
 html[data-theme="dark"] .chat-drop span { background: rgba(15, 23, 42, .92); color: #F1F5F9; }
 html[data-skin="kesari"] .chat-drop { border-color: rgba(234, 88, 12, .75); background: rgba(234, 88, 12, .1); }
 html[data-skin="kesari"] .chat-drop .fa { color: #EA580C; }
+
+/* ---------- the viewer's opening animation (js/file-view.js: openAnim / shut / reveal) ---------- */
+.sn-fv-bar { position: relative; overflow: hidden; }
+.sn-fv-glow { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; pointer-events: none; opacity: 0;
+    background: linear-gradient(90deg, transparent, #60A5FA 35%, #A78BFA 65%, transparent); }
+dialog.sn-fv.sn-fv-closing { pointer-events: none; }
+.sn-fv-stage.sn-fv-loading > * { opacity: 0; }
+.sn-fv-stage.sn-fv-loading { background:
+    linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .06) 50%, transparent 70%) 0 0 / 250% 100% no-repeat;
+    animation: sn-fv-shimmer 1.3s linear infinite; }
+@keyframes sn-fv-shimmer { from { background-position: 150% 0; } to { background-position: -150% 0; } }
+@media (prefers-reduced-motion: reduce) { .sn-fv-stage.sn-fv-loading { animation: none; } }
+
+/* ---------- chat details: "Files | shared" shows every file of the chat (was the last 5), scrolling ---------- */
+#recentFiles { max-height: 340px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; scrollbar-width: thin; }
+.file-list-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding: 0 6px; }
+.file-list-foot .sn-link { text-decoration: none; font-weight: 600; }
+
+/* "Files | shared": an icon per kind of file (Views/Chat/Index.cshtml FileKind), and "Show more" (10 at a time) */
+.file-row .fr-ico { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; font-size: 14px;
+    background: linear-gradient(135deg, #94A3B8, #475569); box-shadow: 0 4px 10px -6px rgba(15, 23, 42, .6); }
+.file-row .fr-ico.t-image { background: linear-gradient(135deg, #EC4899, #8B5CF6); }
+.file-row .fr-ico.t-pdf { background: linear-gradient(135deg, #EF4444, #B91C1C); }
+.file-row .fr-ico.t-doc { background: linear-gradient(135deg, #3B82F6, #1D4ED8); }
+.file-row .fr-ico.t-sheet { background: linear-gradient(135deg, #22C55E, #15803D); }
+.file-row .fr-ico.t-slide { background: linear-gradient(135deg, #F97316, #C2410C); }
+.file-row .fr-ico.t-html { background: linear-gradient(135deg, #F97316, #E11D48); }
+.file-row .fr-ico.t-text { background: linear-gradient(135deg, #64748B, #334155); }
+.file-row .fr-ico.t-video { background: linear-gradient(135deg, #8B5CF6, #4C1D95); }
+.file-row .fr-ico.t-audio { background: linear-gradient(135deg, #14B8A6, #0F766E); }
+.file-row .fr-ico.t-zip { background: linear-gradient(135deg, #A16207, #713F12); }
+.file-row .fr-ico.t-code { background: linear-gradient(135deg, #0EA5E9, #0F172A); }
+.file-row[hidden] { display: none !important; }
+.file-more { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 8px; padding: 8px 12px; border-radius: 999px;
+    border: 1px dashed rgba(37, 99, 235, .35); background: rgba(255, 255, 255, .6); color: #1D4ED8; font: 600 12.5px Roboto, system-ui, sans-serif; cursor: pointer; }
+.file-more:hover { background: rgba(37, 99, 235, .08); }
+.file-more[hidden] { display: none; }
