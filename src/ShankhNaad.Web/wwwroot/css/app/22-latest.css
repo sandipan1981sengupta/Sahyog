@@ -779,26 +779,51 @@ dialog.sn-fv.sn-fv-closing { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .sn-fv-stage.sn-fv-loading { animation: none; } }
 
 /* ---------- chat details: "Files | shared" shows every file of the chat (was the last 5), scrolling ---------- */
-#recentFiles { max-height: 340px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; scrollbar-width: thin; }
+#recentFiles { max-height: 340px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }   /* the app's glass scrollbar (08-small-features.css); "scrollbar-width" would switch it off in Chrome */
 .file-list-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding: 0 6px; }
 .file-list-foot .sn-link { text-decoration: none; font-weight: 600; }
 
-/* "Files | shared": an icon per kind of file (Views/Chat/Index.cshtml FileKind), and "Show more" (10 at a time) */
-.file-row .fr-ico { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; font-size: 14px;
-    background: linear-gradient(135deg, #94A3B8, #475569); box-shadow: 0 4px 10px -6px rgba(15, 23, 42, .6); }
-.file-row .fr-ico.t-image { background: linear-gradient(135deg, #EC4899, #8B5CF6); }
-.file-row .fr-ico.t-pdf { background: linear-gradient(135deg, #EF4444, #B91C1C); }
-.file-row .fr-ico.t-doc { background: linear-gradient(135deg, #3B82F6, #1D4ED8); }
-.file-row .fr-ico.t-sheet { background: linear-gradient(135deg, #22C55E, #15803D); }
-.file-row .fr-ico.t-slide { background: linear-gradient(135deg, #F97316, #C2410C); }
-.file-row .fr-ico.t-html { background: linear-gradient(135deg, #F97316, #E11D48); }
-.file-row .fr-ico.t-text { background: linear-gradient(135deg, #64748B, #334155); }
-.file-row .fr-ico.t-video { background: linear-gradient(135deg, #8B5CF6, #4C1D95); }
-.file-row .fr-ico.t-audio { background: linear-gradient(135deg, #14B8A6, #0F766E); }
-.file-row .fr-ico.t-zip { background: linear-gradient(135deg, #A16207, #713F12); }
-.file-row .fr-ico.t-code { background: linear-gradient(135deg, #0EA5E9, #0F172A); }
+/* "Files | shared": an icon per kind of file (Views/Chat/Index.cshtml FileKind), name over size, "Show more" (10 at a time), glass scrollbar */
+#recentFiles::-webkit-scrollbar { width: 10px; }
+.sn-body #recentFiles .file-row { gap: 10px; padding: 8px 8px 8px 8px; }
+.file-row .fr-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.file-row .fr-text .fv-name { display: block; font-weight: 600; }
+.file-row .fr-meta { font-size: 11px; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-theme="dark"] .file-row .fr-meta { color: #94A3B8; }
+
+/* the kind icon: a frosted tile tinted with the kind's colour, the icon in that colour, a soft glow */
+.file-row .fr-ico { --k: #64748B; flex: none; position: relative; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; font-size: 15px;
+    background: linear-gradient(145deg, color-mix(in srgb, var(--k) 20%, #fff), color-mix(in srgb, var(--k) 9%, #fff));
+    border: 1px solid color-mix(in srgb, var(--k) 28%, #fff);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 6px 14px -9px var(--k); }
+.sn-body .file-row .fr-ico i, .file-row .fr-ico i { color: var(--k) !important; }
+.file-row .fr-ico.t-image { --k: #DB2777; }
+.file-row .fr-ico.t-pdf { --k: #DC2626; }
+.file-row .fr-ico.t-doc { --k: #2563EB; }
+.file-row .fr-ico.t-sheet { --k: #16A34A; }
+.file-row .fr-ico.t-slide { --k: #EA580C; }
+.file-row .fr-ico.t-html { --k: #E11D48; }
+.file-row .fr-ico.t-text { --k: #475569; }
+.file-row .fr-ico.t-video { --k: #7C3AED; }
+.file-row .fr-ico.t-audio { --k: #0D9488; }
+.file-row .fr-ico.t-zip { --k: #A16207; }
+.file-row .fr-ico.t-code { --k: #0284C7; }
+html[data-theme="dark"] .file-row .fr-ico {
+    background: linear-gradient(145deg, color-mix(in srgb, var(--k) 30%, transparent), color-mix(in srgb, var(--k) 12%, transparent));
+    border-color: color-mix(in srgb, var(--k) 45%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 6px 16px -8px color-mix(in srgb, var(--k) 80%, transparent); }
+html[data-theme="dark"] .file-row .fr-ico i { color: color-mix(in srgb, var(--k) 45%, #fff) !important; }
 .file-row[hidden] { display: none !important; }
-.file-more { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 8px; padding: 8px 12px; border-radius: 999px;
-    border: 1px dashed rgba(37, 99, 235, .35); background: rgba(255, 255, 255, .6); color: #1D4ED8; font: 600 12.5px Roboto, system-ui, sans-serif; cursor: pointer; }
-.file-more:hover { background: rgba(37, 99, 235, .08); }
+
+/* "Show more": a glass pill in both themes */
+.file-more { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 10px; padding: 9px 12px; border-radius: 999px;
+    border: 1px solid rgba(37, 99, 235, .25); background: rgba(255, 255, 255, .5); backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7); color: #1D4ED8; font: 600 12.5px Roboto, system-ui, sans-serif; cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease; }
+.file-more .muted { color: #64748B; font-weight: 500; }
+.file-more:hover { background: rgba(37, 99, 235, .1); border-color: rgba(37, 99, 235, .45); transform: translateY(-1px); }
 .file-more[hidden] { display: none; }
+html[data-theme="dark"] .file-more { background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .14); color: #A5B4FC;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
+html[data-theme="dark"] .file-more .muted { color: #94A3B8; }
+html[data-theme="dark"] .file-more:hover { background: rgba(129, 140, 248, .14); border-color: rgba(165, 180, 252, .4); color: #C7D2FE; }

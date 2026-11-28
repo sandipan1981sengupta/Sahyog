@@ -310,18 +310,22 @@
                 var f = Model.RecentFiles[fi];
                 var canView = ShankhNaad.Web.Controllers.ChatController.CanShowInPlace(f.ContentType);
                 var fk = FileKind(f.FileName, f.ContentType);
+                var fext = System.IO.Path.GetExtension(f.FileName ?? "").TrimStart('.').ToUpperInvariant();
                 @* View (in the app, js/file-view.js) and Download, separately. The newest 10 show; "Show more" brings the rest, 10 at a time. *@
                 <div class="file-row" hidden="@(fi >= FilesShownFirst)" data-fv-url="@f.Url" data-fv-name="@f.FileName" data-fv-type="@f.ContentType" data-fv-size="@f.SizeBytes">
                     <span class="fr-ico t-@fk.Key" aria-hidden="true"><i class="fa @fk.Icon"></i></span>
-                    @if (canView)
-                    {
-                        <button type="button" class="grow ellipsis fv-name" data-fv-view title="View @f.FileName">@f.FileName</button>
-                    }
-                    else
-                    {
-                        <a class="grow ellipsis fv-name" href="@(f.Url)?dl=1" download="@f.FileName" title="Download @f.FileName">@f.FileName</a>
-                    }
-                    <span class="muted tiny">@UserExtensions.FormatBytes(f.SizeBytes)</span>
+                    @* name on top, size and kind under it, so the name gets the room *@
+                    <span class="fr-text">
+                        @if (canView)
+                        {
+                            <button type="button" class="ellipsis fv-name" data-fv-view title="View @f.FileName">@f.FileName</button>
+                        }
+                        else
+                        {
+                            <a class="ellipsis fv-name" href="@(f.Url)?dl=1" download="@f.FileName" title="Download @f.FileName">@f.FileName</a>
+                        }
+                        <small class="fr-meta">@UserExtensions.FormatBytes(f.SizeBytes)@(fext.Length is > 0 and <= 5 ? " · " + fext : "")</small>
+                    </span>
                     @if (canView)
                     {
                         <button type="button" class="fv-ico" data-fv-view title="View" aria-label="View @f.FileName"><i class="fa fa-eye" aria-hidden="true"></i></button>
