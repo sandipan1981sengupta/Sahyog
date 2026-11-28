@@ -2,7 +2,9 @@
 // • "Mark as decision" (⚖) on a chat message → the record window → a card under the message, live for everyone in the chat.
 // • A meeting's "Decisions" button (details window), and the organizer lands on it after leaving a meeting (?wrap=<id>).
 // • The Decisions page (/work/decisions, js/work-decisions.js) uses the same record window.
-// Server: Controllers/DecisionsController.cs · database: 46_Nirnay.sql
+// • Who owns it (55_DecisionOwners.sql): you can make yourself or anyone below you the owner; anyone else is ASKED
+//   and must Accept. The person asked can Accept or Decline; an owner can hand it back ("Not mine").
+// Server: Controllers/DecisionsController.cs · database: 46_Nirnay.sql, 55_DecisionOwners.sql
 (function () {
     "use strict";
     const me = document.body && document.body.dataset.me;
@@ -74,6 +76,8 @@
         const kindChanged = () => paintKind();
         dlg.addEventListener("change", (e) => { if (e.target.name === "nirKind") kindChanged(); });
         dlg.addEventListener("click", onClick);
+        // the owner dropdown (tag-helper control) reports its choice through jQuery on its hidden input
+        if (window.jQuery) window.jQuery(dlg).on("change", "#nirOwner_value", () => paintOwnerHint());
         return dlg;
     }
     function paintKind() {
@@ -89,6 +93,65 @@
             : d ? (isA ? "Change the action item" : "Change the decision") : (isA ? "Add an action item" : "Record a decision");
         dlg.querySelector("[data-save] span").textContent = d ? "Save" : isA ? "Add action item" : "Save decision";
     }
+    // ---------- who owns it ----------
+    const ownerLabel = (d) => !d || !d.ownerId ? "nobody" : d.ownerId === me ? "you" : (d.ownerName || "them");
+    // a pending ask (Accept / Decline for the person asked), a "no", and "Not mine" for an owner who didn't record it
+    function paintStatus(d) {
+        const box = dlg.querySelector("[data-nir-status]");
+        let html = "";
+        if (d && d.askedOwnerId) {
+            const by = d.ownerId === me ? "You" : esc(d.ownerName || "Someone");
+            html = d.askedOwnerId === me
+                ? `<div class="sn-nir-st ask"><i class="fa fa-hand-paper-o" aria-hidden="true"></i>
+                    <span><b>${by} asked you to own this</b><small>Accept and it's yours${d.isAction ? ": it moves to Yours to do" : ""}. Decline and it stays with ${esc(ownerLabel(d))}.</small></span>
+                    <span class="sn-nir-st-btns"><button type="button" class="cee-btn cee-btn-gradient" data-nir-accept><i class="fa fa-check" aria-hidden="true"></i> <span>Accept</span></button>
+                    <button type="button" class="cee-btn sn-btn-light" data-nir-decline><span>Decline</span></button></span></div>`
+                : `<div class="sn-nir-st wait"><i class="fa fa-hourglass-half" aria-hidden="true"></i>
+                    <span><b>Waiting for ${esc(d.askedOwnerName || "them")} to accept</b><small>Asked ${esc(day(d.askedUtc))}. Until they accept, it stays with ${esc(ownerLabel(d))}.</small></span></div>`;
+        } else if (d && d.declinedBy && d.declinedUtc) {
+            html = `<div class="sn-nir-st no"><i class="fa fa-undo" aria-hidden="true"></i>
+                <span><b>${d.declinedBy === me ? "You" : esc(d.declinedByName || "Someone")} didn't take it on</b><small>${esc(day(d.declinedUtc))} · it's with ${esc(ownerLabel(d))} now. Pick another owner if it needs one.</small></span></div>`;
+        }
+        if (d && d.canRelease && !d.askedOwnerId)
+            html += `<div class="sn-nir-st mine"><i class="fa fa-user-o" aria-hidden="true"></i>
+                <span><b>You own this</b><small>Not yours to do? Hand it back to ${esc(d.recordedByName || "whoever recorded it")}.</small></span>
+                <span class="sn-nir-st-btns"><button type="button" class="cee-btn sn-btn-light" data-nir-release><i class="fa fa-reply" aria-hidden="true"></i> <span>Not mine</span></button></span></div>`;
+        box.innerHTML = html;
+        box.hidden = !html;
+    }
+    // under the owner: "Rajesh isn't below you on the org chart, so they'll be asked to accept it"
+    function paintOwnerHint() {
+        const el = dlg && dlg.querySelector("[data-nir-ownhint]");
+        if (!el) return;
+        const d = cur && cur.decision, id = C().get("nirOwner");
+        const p = (people || []).find((x) => x.id === id);
+        if (!cur || cur.readOnly || !id || !p || p.assign !== false || (d && (id === d.ownerId || id === d.askedOwnerId))) { el.hidden = true; return; }
+        el.innerHTML = `<i class="fa fa-info-circle" aria-hidden="true"></i> <b>${esc(p.name)}</b> isn't below you on the org chart, so they'll be <b>asked</b> to accept it.
+            Until they do, it stays with ${d && d.ownerId && d.ownerId !== me ? esc(d.ownerName || "its owner") : "you"}.`;
+        el.hidden = false;
+    }
+    const changed = (detail) => document.dispatchEvent(new CustomEvent("sn:nirnay", { detail }));
+    // the person asked answers (also used by the "Waiting for your answer" list on the Decisions page)
+    async function answer(d, accept) {
+        const x = await post(`/work/decisions/${d.decisionId}/answer`, { accept });
+        if (!x.ok) { toast(x.d.error || "Couldn't answer it.", "error", "Decisions"); return null; }
+        if (dlg && dlg.open && cur && cur.decision && cur.decision.decisionId === d.decisionId) dlg.close();
+        toast(accept ? (d.isAction ? "It's yours now: it's under Yours to do." : "You're its owner now.")
+                     : `Declined. It stays with ${d.ownerName || "them"}.`, accept ? "success" : "info", "⚖ Nirnay");
+        if (x.d && x.d.gone) { removeCard(d.decisionId); changed({ id: d.decisionId, gone: true }); return x.d; }
+        paintCard(x.d); changed(x.d);
+        return x.d;
+    }
+    async function release(d) {
+        const x = await post(`/work/decisions/${d.decisionId}/release`);
+        if (!x.ok) { toast(x.d.error || "Couldn't hand it back.", "error", "Decisions"); return null; }
+        if (dlg && dlg.open) dlg.close();
+        toast(`Handed back to ${d.recordedByName || "whoever recorded it"}. They've been told.`, "info", "⚖ Nirnay");
+        if (x.d && x.d.gone) { removeCard(d.decisionId); changed({ id: d.decisionId, gone: true }); return x.d; }
+        paintCard(x.d); changed(x.d);
+        return x.d;
+    }
+
     async function openRecord(ctx, onSaved, onDeleted) {
         ctx = ctx || {};
         if (!(await ensureDialog())) return;
@@ -136,12 +199,16 @@
         if (!mt.hidden) mt.href = `/meetings/${d.meetingId}/view${d.meetingDate ? "?date=" + d.meetingDate : ""}`;
         dlg.querySelector("[data-save]").hidden = readOnly;
         dlg.querySelector(".sn-nir-foot-r [data-close] span").textContent = readOnly ? "Close" : "Cancel";
+        paintStatus(d);
+        paintOwnerHint();
         paintKind();
         C().open(dlg);
         if (!d && !readOnly) setTimeout(() => { const t = dlg.querySelector("#nirTitle"); t.focus(); t.select(); }, 60);
     }
     async function onClick(e) {
         const t = e.target;
+        if (cur && cur.decision && t.closest("[data-nir-accept], [data-nir-decline]")) { answer(cur.decision, !!t.closest("[data-nir-accept]")); return; }
+        if (cur && cur.decision && t.closest("[data-nir-release]")) { release(cur.decision); return; }
         if (!cur || cur.readOnly) return;
         const du = t.closest("[data-due]");
         if (du) { C().set("nirDue", du.dataset.due); return; }
@@ -182,7 +249,9 @@
         save.disabled = false;
         if (!x.ok) { toast(x.d.error || "Not saved. Try again.", "error", "Decisions"); return; }
         dlg.close();
-        toast(d ? "Saved." : kind === "A" ? "Action item added." : "Decision recorded. It's on the Decisions page too.", "success", d ? null : "⚖ Nirnay");
+        if (x.d && x.d.askedOwnerId && x.d.askedOwnerId !== (d && d.askedOwnerId))
+            toast(`Asked ${x.d.askedOwnerName || "them"} to own it. It stays with you until they accept.`, "info", "⚖ Asked");
+        else toast(d ? "Saved." : kind === "A" ? "Action item added." : "Decision recorded. It's on the Decisions page too.", "success", d ? null : "⚖ Nirnay");
         if (x.d && x.d.decisionId) { paintCard(x.d); cur.onSaved && cur.onSaved(x.d); }
     }
 
@@ -204,7 +273,8 @@
     }
     function cardHtml(x) {
         const isA = x.isAction, done = !!x.doneUtc;
-        const owner = x.ownerId ? (x.ownerId === me ? "You" : esc(x.ownerName || "")) : "";
+        const owner = (x.ownerId ? (x.ownerId === me ? "You" : esc(x.ownerName || "")) : "")
+            + (x.askedOwnerId ? ` → asked ${x.askedOwnerId === me ? "you" : esc(x.askedOwnerName || "someone")} (waiting)` : "");
         const bits = [owner ? (isA ? owner : "Owner: " + owner) : "", isA && x.dueDate ? `<span class="${overdue(x) ? "late" : ""}">due ${esc(dueText(x.dueDate))}</span>` : "",
             `recorded by ${x.recordedBy === me ? "you" : esc(x.recordedByName || "someone")} · ${day(x.recordedUtc)}`].filter(Boolean).join(" · ");
         return `${isA ? `<label class="sn-nir-tick" title="${done ? "Mark as not done" : "Mark as done"}"><input type="checkbox" data-nir-done="${x.decisionId}"${done ? " checked" : ""}><span></span></label>` : `<span class="sn-nir-cic" aria-hidden="true"><i class="fa fa-balance-scale"></i></span>`}
@@ -278,7 +348,7 @@
         const row = (it) => `<div class="sn-nir-mrow${it.isAction ? " act" : ""}${it.doneUtc ? " done" : ""}${overdue(it) ? " late" : ""}">
                 ${it.isAction ? `<label class="sn-nir-tick"><input type="checkbox" data-m-done="${it.decisionId}"${it.doneUtc ? " checked" : ""}><span></span></label>` : '<span class="sn-nir-cic" aria-hidden="true"><i class="fa fa-balance-scale"></i></span>'}
                 <button type="button" class="sn-nir-cmain" data-m-open="${it.decisionId}"><b>${esc(it.title)}</b>
-                    <small>${[it.ownerName ? (it.ownerId === me ? "You" : esc(it.ownerName)) : "No owner", it.isAction && it.dueDate ? `due ${esc(dueText(it.dueDate))}` : ""].filter(Boolean).join(" · ")}</small></button>
+                    <small>${[it.ownerName ? (it.ownerId === me ? "You" : esc(it.ownerName)) : "No owner", it.askedOwnerId ? `asked ${it.askedOwnerId === me ? "you" : esc(it.askedOwnerName || "someone")} (waiting)` : "", it.isAction && it.dueDate ? `due ${esc(dueText(it.dueDate))}` : ""].filter(Boolean).join(" · ")}</small></button>
             </div>`;
         function render() {
             const dec = m.items.filter((i) => !i.isAction), act = m.items.filter((i) => i.isAction);
@@ -338,6 +408,17 @@
         hook.done = true;
         hub.on("Decision", (x) => paintCard(x));
         hub.on("DecisionDeleted", (id) => removeCard(Number(id)));
+        // someone asked you to own something; someone answered your ask or handed something back
+        hub.on("DecisionAsked", (n) => {
+            toast(`${n.by} asked you to own ${n.isAction ? "an action item" : "a decision"}: “${n.title}”. Accept or decline it on Work → Decisions.`, "info", "⚖ Asked of you");
+            changed({ reload: true });
+        });
+        hub.on("DecisionAnswered", (n) => {
+            toast(n.handedBack ? `${n.by} handed back “${n.title}”. It's yours again.`
+                : n.accepted ? `${n.by} accepted “${n.title}”. It's theirs now.` : `${n.by} declined “${n.title}”. It stays with you.`,
+                n.accepted ? "success" : "info", "⚖ Nirnay");
+            changed({ reload: true });
+        });
     }
 
     // after leaving a meeting you organized: ?wrap=<meetingId>
@@ -350,7 +431,7 @@
         if (/^[0-9a-f-]{36}$/i.test(id)) setTimeout(() => openMeeting(id, null, true), 700);
     }
 
-    SN.nirnay = { record: openRecord, queue: queueMessage, paint: paintCard, remove: removeCard, meeting: openMeeting, setDone, people: loadPeople, dueText, overdue, day };
+    SN.nirnay = { record: openRecord, queue: queueMessage, paint: paintCard, remove: removeCard, meeting: openMeeting, setDone, people: loadPeople, dueText, overdue, day, answer, release };
     function init() {
         wrapUp();
         if (S().hub) hook(); else document.addEventListener("sahyog:connected", hook, { once: true });

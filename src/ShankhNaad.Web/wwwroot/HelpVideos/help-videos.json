@@ -456,7 +456,7 @@
    "description": "Decisions keeps a log of what your team decided, and the action items: who does what, by when.",
    "video": "/HelpVideos/work/10-work-decisions.mp4",
    "poster": "/HelpVideos/work/10-work-decisions.jpg",
-   "duration": 57.9,
+   "duration": 58.6,
    "chapters": [
     {
      "title": "Introduction",
@@ -488,12 +488,55 @@
   },
   {
    "no": 11,
+   "id": "work-owners",
+   "menu": "Work",
+   "title": "Who owns a decision",
+   "description": "Who can be the owner of a decision or action item: you can give it to your team, anyone else is asked and must accept, and an owner can say Not mine.",
+   "video": "/HelpVideos/work/11-work-owners.mp4",
+   "poster": "/HelpVideos/work/11-work-owners.jpg",
+   "duration": 87.3,
+   "chapters": [
+    {
+     "title": "Introduction",
+     "time": 0.3
+    },
+    {
+     "title": "Owners follow the org chart",
+     "time": 22.6
+    },
+    {
+     "title": "Give it, or ask",
+     "time": 32.0
+    },
+    {
+     "title": "When someone asks you",
+     "time": 54.8
+    },
+    {
+     "title": "Not mine",
+     "time": 68.2
+    },
+    {
+     "title": "Summary",
+     "time": 79.8
+    }
+   ],
+   "topics": [
+    "Owners follow the org chart",
+    "Give it, or ask",
+    "When someone asks you",
+    "Not mine"
+   ],
+   "captions": "/HelpVideos/work/11-work-owners.captions.json"
+  },
+  {
+   "no": 12,
    "id": "work-standup",
    "menu": "Work",
    "title": "Stand-up",
    "description": "A stand-up asks your team a few short questions on chosen days. Everyone answers when it suits them.",
-   "video": "/HelpVideos/work/11-work-standup.mp4",
-   "poster": "/HelpVideos/work/11-work-standup.jpg",
+   "video": "/HelpVideos/work/12-work-standup.mp4",
+   "poster": "/HelpVideos/work/12-work-standup.jpg",
    "duration": 62.2,
    "chapters": [
     {
@@ -527,16 +570,16 @@
     "Team roll-up",
     "Set one up"
    ],
-   "captions": "/HelpVideos/work/11-work-standup.captions.json"
+   "captions": "/HelpVideos/work/12-work-standup.captions.json"
   },
   {
-   "no": 12,
+   "no": 13,
    "id": "work-approvals",
    "menu": "Work",
    "title": "Approvals",
    "description": "Approvals sends leave, expense and purchase requests to the right person, as a card in chat.",
-   "video": "/HelpVideos/work/12-work-approvals.mp4",
-   "poster": "/HelpVideos/work/12-work-approvals.jpg",
+   "video": "/HelpVideos/work/13-work-approvals.mp4",
+   "poster": "/HelpVideos/work/13-work-approvals.jpg",
    "duration": 67.4,
    "chapters": [
     {
@@ -575,16 +618,16 @@
     "Approve or reject",
     "Rules"
    ],
-   "captions": "/HelpVideos/work/12-work-approvals.captions.json"
+   "captions": "/HelpVideos/work/13-work-approvals.captions.json"
   },
   {
-   "no": 13,
+   "no": 14,
    "id": "work-roles",
    "menu": "Work",
    "title": "Roles",
    "description": "Roles let you message a job, like the IT help desk or HR, instead of guessing who to ask.",
-   "video": "/HelpVideos/work/13-work-roles.mp4",
-   "poster": "/HelpVideos/work/13-work-roles.jpg",
+   "video": "/HelpVideos/work/14-work-roles.mp4",
+   "poster": "/HelpVideos/work/14-work-roles.jpg",
    "duration": 61.9,
    "chapters": [
     {
@@ -618,16 +661,16 @@
     "Your requests",
     "Set up a role"
    ],
-   "captions": "/HelpVideos/work/13-work-roles.captions.json"
+   "captions": "/HelpVideos/work/14-work-roles.captions.json"
   },
   {
-   "no": 14,
+   "no": 15,
    "id": "work-visitors",
    "menu": "Work",
    "title": "Visitors",
    "description": "Visitors tracks who is coming to the office, who is in the building, and tells their host.",
-   "video": "/HelpVideos/work/14-work-visitors.mp4",
-   "poster": "/HelpVideos/work/14-work-visitors.jpg",
+   "video": "/HelpVideos/work/15-work-visitors.mp4",
+   "poster": "/HelpVideos/work/15-work-visitors.jpg",
    "duration": 63.0,
    "chapters": [
     {
@@ -661,16 +704,16 @@
     "Expect a visitor",
     "The reception tablet"
    ],
-   "captions": "/HelpVideos/work/14-work-visitors.captions.json"
+   "captions": "/HelpVideos/work/15-work-visitors.captions.json"
   },
   {
-   "no": 15,
+   "no": 16,
    "id": "shankh",
    "menu": "Alerts & settings",
    "title": "Shankh alerts",
    "description": "Shankh is an urgent alert that rings on every screen until each person presses Seen. Admins send it.",
-   "video": "/HelpVideos/alerts/15-shankh.mp4",
-   "poster": "/HelpVideos/alerts/15-shankh.jpg",
+   "video": "/HelpVideos/alerts/16-shankh.mp4",
+   "poster": "/HelpVideos/alerts/16-shankh.jpg",
    "duration": 58.9,
    "chapters": [
     {
@@ -694,16 +737,16 @@
     "Sound the Shankh",
     "When it rings"
    ],
-   "captions": "/HelpVideos/alerts/15-shankh.captions.json"
+   "captions": "/HelpVideos/alerts/16-shankh.captions.json"
   },
   {
-   "no": 16,
+   "no": 17,
    "id": "away",
    "menu": "Alerts & settings",
    "title": "Out of office and stand-in",
    "description": "Out of office tells colleagues you are away, who covers for you, and helps you catch up when you are back.",
-   "video": "/HelpVideos/alerts/16-away.mp4",
-   "poster": "/HelpVideos/alerts/16-away.jpg",
+   "video": "/HelpVideos/alerts/17-away.mp4",
+   "poster": "/HelpVideos/alerts/17-away.jpg",
    "duration": 67.9,
    "chapters": [
     {
@@ -732,16 +775,16 @@
     "What others see",
     "When you are back"
    ],
-   "captions": "/HelpVideos/alerts/16-away.captions.json"
+   "captions": "/HelpVideos/alerts/17-away.captions.json"
   },
   {
-   "no": 17,
+   "no": 18,
    "id": "alerts",
    "menu": "Alerts & settings",
    "title": "Calls, reminders and notifications",
    "description": "ShankhNaad rings for calls, reminds you of meetings and work, and can show desktop notifications.",
-   "video": "/HelpVideos/alerts/17-alerts.mp4",
-   "poster": "/HelpVideos/alerts/17-alerts.jpg",
+   "video": "/HelpVideos/alerts/18-alerts.mp4",
+   "poster": "/HelpVideos/alerts/18-alerts.jpg",
    "duration": 68.7,
    "chapters": [
     {
@@ -770,16 +813,16 @@
     "Reminders",
     "Desktop alerts"
    ],
-   "captions": "/HelpVideos/alerts/17-alerts.captions.json"
+   "captions": "/HelpVideos/alerts/18-alerts.captions.json"
   },
   {
-   "no": 18,
+   "no": 19,
    "id": "admin-workspace",
    "menu": "Admin",
    "title": "Running your workspace",
    "description": "This guide is for workspace admins: the things only you can do, in one place.",
-   "video": "/HelpVideos/admin/18-admin-workspace.mp4",
-   "poster": "/HelpVideos/admin/18-admin-workspace.jpg",
+   "video": "/HelpVideos/admin/19-admin-workspace.mp4",
+   "poster": "/HelpVideos/admin/19-admin-workspace.jpg",
    "duration": 67.2,
    "chapters": [
     {
@@ -818,17 +861,17 @@
     "Work features",
     "Shankh"
    ],
-   "captions": "/HelpVideos/admin/18-admin-workspace.captions.json",
+   "captions": "/HelpVideos/admin/19-admin-workspace.captions.json",
    "adminOnly": true
   },
   {
-   "no": 19,
+   "no": 20,
    "id": "clients",
    "menu": "Admin",
    "title": "Client workspaces",
    "description": "CloudWheel super admins run every client's workspace from the Clients page.",
-   "video": "/HelpVideos/admin/19-clients.mp4",
-   "poster": "/HelpVideos/admin/19-clients.jpg",
+   "video": "/HelpVideos/admin/20-clients.mp4",
+   "poster": "/HelpVideos/admin/20-clients.jpg",
    "duration": 50.4,
    "chapters": [
     {
@@ -857,7 +900,7 @@
     "New client",
     "Manage a client"
    ],
-   "captions": "/HelpVideos/admin/19-clients.captions.json",
+   "captions": "/HelpVideos/admin/20-clients.captions.json",
    "adminOnly": true
   }
  ]

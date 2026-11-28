@@ -270,6 +270,49 @@ html[data-theme="dark"] .sn-nir-chip { background: rgba(255, 255, 255, .05); bor
 .sn-nir-foot-r { display: flex; gap: 10px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 @media (max-width: 560px) { .sn-nir-two { grid-template-columns: 1fr; } }
 
+/* who owns it (55_DecisionOwners.sql): the hint under Owner, the status strip, "Waiting for your answer" */
+.sn-nir-ownhint { margin: -2px 0 0; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.45;
+    color: #92400E; background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .32); }
+.sn-nir-ownhint .fa { margin-right: 3px; }
+html[data-theme="dark"] .sn-nir-ownhint { color: #FCD34D; background: rgba(245, 158, 11, .1); border-color: rgba(245, 158, 11, .26); }
+.sn-nir-status { display: flex; flex-direction: column; gap: 8px; }
+.sn-nir-st { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, .3); background: rgba(148, 163, 184, .08); }
+.sn-nir-st > .fa { width: 32px; height: 32px; border-radius: 10px; flex: none; display: grid; place-items: center; font-size: 14px; color: #fff; background: #64748B; }
+.sn-nir-st > span:nth-child(2) { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sn-nir-st b { font-size: 13.5px; }
+.sn-nir-st small { font-size: 12px; line-height: 1.4; color: var(--sn-text-2, #64748B); }
+.sn-nir-st-btns { display: flex; gap: 8px; flex-wrap: wrap; flex: none; }
+.sn-nir-st-btns .cee-btn { height: 34px; padding: 0 14px; font-size: 12.5px; }
+.sn-nir-st.ask { border-color: rgba(124, 58, 237, .35); background: rgba(124, 58, 237, .08); }
+.sn-nir-st.ask > .fa { background: linear-gradient(135deg, #7C3AED, #4C1D95); }
+.sn-nir-st.wait { border-color: rgba(245, 158, 11, .38); background: rgba(245, 158, 11, .08); }
+.sn-nir-st.wait > .fa { background: #D97706; }
+.sn-nir-st.no { border-color: rgba(220, 38, 38, .3); background: rgba(220, 38, 38, .06); }
+.sn-nir-st.no > .fa { background: #DC2626; }
+.sn-nir-st.mine > .fa { background: #16A34A; }
+html[data-theme="dark"] .sn-nir-st { border-color: rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .04); }
+html[data-theme="dark"] .sn-nir-st.ask { border-color: rgba(196, 181, 253, .3); background: rgba(139, 92, 246, .12); }
+html[data-theme="dark"] .sn-nir-st.wait { border-color: rgba(245, 158, 11, .3); background: rgba(245, 158, 11, .08); }
+.sn-nir-asks { margin: 0 0 14px; padding: 12px; border-radius: 18px; border: 1px solid rgba(124, 58, 237, .35);
+    background: linear-gradient(135deg, rgba(124, 58, 237, .1), rgba(124, 58, 237, .03)); }
+.sn-nir-asks-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 4px 10px; font: 800 14px Roboto, system-ui, sans-serif; }
+.sn-nir-asks-h .fa { color: #7C3AED; }
+.sn-nir-asks-h > span { min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center; font-size: 11px; color: #fff; background: #7C3AED; }
+.sn-nir-asks-h small { flex-basis: 100%; font: 500 12px Roboto, system-ui, sans-serif; color: var(--sn-text-2, #64748B); }
+.sn-nir-askrow { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 14px; background: rgba(255, 255, 255, .6); }
+.sn-nir-askrow + .sn-nir-askrow { margin-top: 6px; }
+.sn-nir-askrow .sn-nir-open-row { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sn-nir-askrow .sn-nir-open-row small { font-size: 12px; color: var(--sn-text-2, #64748B); }
+.sn-nir-tile.act { background: linear-gradient(135deg, #0EA5E9, #0369A1); }
+html[data-theme="dark"] .sn-nir-asks { border-color: rgba(196, 181, 253, .28); background: linear-gradient(135deg, rgba(139, 92, 246, .16), rgba(139, 92, 246, .04)); }
+html[data-theme="dark"] .sn-nir-asks-h .fa { color: #C4B5FD; }
+html[data-theme="dark"] .sn-nir-askrow { background: rgba(255, 255, 255, .05); }
+.sn-nir-owner small.ask { color: #B45309; font-weight: 700; }
+.sn-nir-owner small.no { color: #DC2626; font-weight: 700; }
+html[data-theme="dark"] .sn-nir-owner small.ask { color: #FCD34D; }
+html[data-theme="dark"] .sn-nir-owner small.no { color: #FCA5A5; }
+@media (max-width: 640px) { .sn-nir-askrow, .sn-nir-st { flex-wrap: wrap; } }
+
 /* the card under a chat message */
 .sn-nir-cards { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; max-width: min(520px, 100%); }
 .msg.mine .sn-nir-cards { align-self: flex-end; align-items: flex-end; }

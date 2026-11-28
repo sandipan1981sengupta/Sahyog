@@ -12,6 +12,8 @@
         </div>
         <div class="sn-dlg-body sn-nir-body">
             <blockquote class="sn-nir-quote" data-nir-quote hidden></blockquote>
+            @* who owns it: waiting for someone to accept, declined, Accept / Decline / Not mine (js/nirnay.js, 55_DecisionOwners.sql) *@
+            <div class="sn-nir-status" data-nir-status hidden></div>
 
             @* changing *@
             <div class="sn-wk-fields" data-nir-edit>
@@ -29,6 +31,8 @@
                         <div class="sn-nir-chips" data-nir-quick></div>
                     </div>
                 </div>
+                @* shown when the chosen owner isn't in your team: they will be asked to accept *@
+                <p class="sn-nir-ownhint" data-nir-ownhint hidden></p>
                 <modern-input id="nirDetails" name="nirDetails" label="Why, or notes (optional)" multiline="true" rows="2" max-length="1000" resizable="false"
                               label-font-size="13.5px" placeholder="The reason, or anything people should know later"></modern-input>
             </div>

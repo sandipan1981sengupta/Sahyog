@@ -580,6 +580,12 @@ html[data-skin="kesari"] .sn-nir-tick input:focus-visible + span { outline: 2px 
 html[data-skin="kesari"] .sn-nir-ic { background: linear-gradient(135deg, #C2410C, #7C2D12); }
 html[data-skin="kesari"] .sn-nir-ic.act { background: linear-gradient(135deg, #F59E0B, #B45309); }
 html[data-skin="kesari"] .sn-nir-quote { border-left: 3px solid #C2410C; background: rgba(194, 65, 12, .06); }
+html[data-skin="kesari"] .sn-nir-st.ask { border-color: rgba(194, 65, 12, .35); background: rgba(234, 88, 12, .08); }
+html[data-skin="kesari"] .sn-nir-st.ask > .fa { background: linear-gradient(135deg, #C2410C, #7C2D12); }
+html[data-skin="kesari"] .sn-nir-asks { border-color: rgba(194, 65, 12, .35); background: linear-gradient(135deg, rgba(234, 88, 12, .1), rgba(234, 88, 12, .03)); }
+html[data-skin="kesari"] .sn-nir-asks-h .fa { color: #C2410C; }
+html[data-skin="kesari"] .sn-nir-asks-h > span { background: #C2410C; }
+html[data-skin="kesari"] .sn-nir-tile.act { background: linear-gradient(135deg, #F59E0B, #B45309); }
 html[data-skin="kesari"] .sn-nir-seg button.on { background: #C2410C; box-shadow: 0 6px 14px -8px rgba(194, 65, 12, .9); }
 html[data-skin="kesari"] .sn-nir-seg button.on.act { background: #D97706; box-shadow: 0 6px 14px -8px rgba(217, 119, 6, .9); }
 html[data-skin="kesari"] .sn-nir-hit:hover, html[data-skin="kesari"] .sn-nir-hit:focus-visible { background: rgba(194, 65, 12, .1); }

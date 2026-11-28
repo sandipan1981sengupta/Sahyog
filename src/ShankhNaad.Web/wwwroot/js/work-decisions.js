@@ -1,4 +1,5 @@
-// ShankhNaad · Work → Decisions (Nirnay): the register. Tabs, source chips, team, period, search, export.
+// ShankhNaad · Work → Decisions (Nirnay): the register. Tabs, source chips, team, period, search, export,
+// and "Waiting for your answer": items someone asked you to own (Accept / Decline; 55_DecisionOwners.sql).
 // The record window, cards and meeting window live in js/nirnay.js (app bundle). Server: Controllers/DecisionsController.cs
 (function () {
     "use strict";
@@ -51,12 +52,34 @@
         }
         return true;
     };
-    const inTab = (x, tab) => tab === "all" || (tab === "mine" ? (x.ownerId === me || x.recordedBy === me) : x.kind === tab);
+    const inTab = (x, tab) => tab === "all" || (tab === "mine" ? (x.ownerId === me || x.recordedBy === me || x.askedOwnerId === me) : x.kind === tab);
 
     function where(x) {
         if (x.messageId) return `<a class="sn-nir-where" href="/chat/${esc(x.channelId)}?m=${x.messageId}" title="Open the message in the chat"><i class="fa ${x.channelIsDirect ? "fa-comment-o" : "fa-comments-o"}" aria-hidden="true"></i><span class="ellipsis">${x.channelIsDirect ? "One-to-one chat" : esc(x.channelName || "Chat")}</span></a>`;
         if (x.meetingId) return `<a class="sn-nir-where" href="/meetings/${esc(x.meetingId)}/view${x.meetingDate ? "?date=" + esc(x.meetingDate) : ""}" title="Open the meeting"><i class="fa fa-calendar" aria-hidden="true"></i><span class="ellipsis">${esc(x.meetingTitle || "Meeting")}</span></a>`;
         return `<span class="sn-nir-where muted"><i class="fa fa-pencil" aria-hidden="true"></i><span>Added here</span></span>`;
+    }
+    // under the owner's name: a pending ask, a "no", or the team
+    function ownerNote(x) {
+        if (x.askedOwnerId) return `<small class="ellipsis ask" title="Asked ${esc(N.day(x.askedUtc))}. It becomes theirs when they accept.">asked ${x.askedOwnerId === me ? "you" : esc(x.askedOwnerName || "someone")} · waiting</small>`;
+        if (x.declinedBy) return `<small class="ellipsis no" title="${esc(N.day(x.declinedUtc))}">${x.declinedBy === me ? "you" : esc(x.declinedByName || "someone")} said no</small>`;
+        return `<small class="ellipsis">${esc(x.departmentName || "")}</small>`;
+    }
+    // "Waiting for your answer": items people asked you to own; they aren't yours until you accept
+    function asksHtml() {
+        const asks = rows.filter((x) => x.askedOwnerId === me);
+        if (!asks.length) return "";
+        return `<div class="sn-nir-asks" aria-label="Waiting for your answer">
+            <div class="sn-nir-asks-h"><i class="fa fa-hand-paper-o" aria-hidden="true"></i> Waiting for your answer <span>${asks.length}</span>
+                <small>People asked you to own these. They become yours only when you accept; decline and they stay with whoever asked.</small></div>
+            ${asks.map((x) => `<div class="sn-nir-askrow" data-id="${x.decisionId}">
+                <span class="sn-nir-tile${x.isAction ? " act" : ""}" aria-hidden="true"><i class="fa ${x.isAction ? "fa-check-square-o" : "fa-balance-scale"}"></i></span>
+                <button type="button" class="sn-nir-open-row" data-row-open="${x.decisionId}"><b>${esc(x.title)}</b>
+                    <small>${[x.isAction ? "Action item" : "Decision", `asked by ${esc(x.ownerName || x.recordedByName || "someone")} · ${esc(N.day(x.askedUtc))}`, x.isAction && x.dueDate ? `due ${esc(N.dueText(x.dueDate))}` : ""].filter(Boolean).join(" · ")}</small></button>
+                <span class="sn-nir-st-btns"><button type="button" class="cee-btn cee-btn-gradient" data-ask-accept="${x.decisionId}"><i class="fa fa-check" aria-hidden="true"></i> <span>Accept</span></button>
+                    <button type="button" class="cee-btn sn-btn-light" data-ask-decline="${x.decisionId}"><span>Decline</span></button></span>
+            </div>`).join("")}
+        </div>`;
     }
     function rowHtml(x) {
         const late = N.overdue(x), done = !!x.doneUtc;
@@ -69,7 +92,7 @@
                 ? `<label class="sn-nir-tick big" title="${done ? "Mark as not done" : "Mark as done"}"><input type="checkbox" data-row-done="${x.decisionId}"${done ? " checked" : ""} aria-label="Done"><span></span></label>`
                 : `<span class="sn-nir-tile" aria-hidden="true"><i class="fa fa-balance-scale"></i></span>`}
             <button type="button" class="sn-hmain sn-nir-open-row" data-row-open="${x.decisionId}"><b>${esc(x.title)}</b><small class="sn-hstat">${sub}</small></button>
-            <span class="sn-nir-owner">${x.ownerId ? `<span class="avatar av-28 tone-${(x.ownerTone || 0) % 6}" data-user="${esc(x.ownerId)}">${esc(initials(x.ownerName))}</span><span><b class="ellipsis">${x.ownerId === me ? "You" : esc(x.ownerName)}</b><small class="ellipsis">${esc(x.departmentName || "")}</small></span>` : '<span class="muted small">No owner</span>'}</span>
+            <span class="sn-nir-owner">${x.ownerId ? `<span class="avatar av-28 tone-${(x.ownerTone || 0) % 6}" data-user="${esc(x.ownerId)}">${esc(initials(x.ownerName))}</span><span><b class="ellipsis">${x.ownerId === me ? "You" : esc(x.ownerName)}</b>${ownerNote(x)}</span>` : '<span class="muted small">No owner</span>'}</span>
             ${where(x)}
             <time class="sn-htime" datetime="${esc(x.recordedUtc)}" title="Recorded by ${esc(x.recordedByName || "")}">${esc(N.day(x.recordedUtc))}</time>
         </div>`;
@@ -97,9 +120,10 @@
             </div>`;
             return;
         }
-        if (!shown.length) { listEl.innerHTML = `<div class="sn-hist-none">Nothing matches. Try another tab, filter or word.</div>`; return; }
+        const asks = asksHtml();
+        if (!shown.length) { listEl.innerHTML = asks + `<div class="sn-hist-none">Nothing matches. Try another tab, filter or word.</div>`; return; }
         // grouped by month, newest first
-        let html = "", last = "";
+        let html = asks, last = "";
         shown.forEach((x) => {
             const m = new Date(x.recordedUtc).toLocaleDateString(undefined, { month: "long", year: "numeric" });
             if (m !== last) { html += `<div class="sn-hist-day">${esc(m)}</div>`; last = m; }
@@ -122,6 +146,12 @@
         const src = t.closest("[data-src]");
         if (src) { st.src = src.dataset.src; box.querySelectorAll("[data-src]").forEach((b) => b.classList.toggle("on", b === src)); paint(); return; }
         if (t.closest("[data-nir-new]")) { N.record({ kind: st.tab === "A" ? "A" : "D" }, upsert, drop); return; }
+        const ans = t.closest("[data-ask-accept], [data-ask-decline]");
+        if (ans) {
+            const id = Number(ans.dataset.askAccept || ans.dataset.askDecline), x = rows.find((r) => r.decisionId === id);
+            if (x) { ans.disabled = true; N.answer(x, !!ans.dataset.askAccept).then((d) => { ans.disabled = false; if (d && d.gone) drop(id); else if (d) upsert(d); }); }
+            return;
+        }
         const op = t.closest("[data-row-open]");
         if (op) { const x = rows.find((r) => r.decisionId === Number(op.dataset.rowOpen)); if (x) N.record({ decision: x }, upsert, drop); return; }
         if (t.closest("[data-nir-export]")) {
@@ -150,6 +180,12 @@
     // the clear (×) button of the search box
     box.querySelector("#nirQ")?.closest(".modern-input-wrapper")?.addEventListener("click", (e) => {
         if (e.target.closest(".mi-clear-btn")) setTimeout(() => { st.q = ""; paint(); }, 0);
+    });
+    // answers, hand-backs and new asks (js/nirnay.js): keep the list current
+    document.addEventListener("sn:nirnay", (e) => {
+        const d = e.detail || {};
+        if (!document.body.contains(box)) return;
+        if (d.reload) load(); else if (d.gone) drop(d.id); else upsert(d);
     });
     // the glass tabs (tab-control): All / Decisions / Action items / Mine
     window.SN.wk.onTab("nirTabs", (id) => { st.tab = id || "all"; paint(); });

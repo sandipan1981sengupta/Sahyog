@@ -3,13 +3,16 @@
    - Uses the 10 demo people from demo_OrgChartTeam.sql (run that one first) and you (Sandy, the workspace admin).
      Change @MeName / @AnchorEmail / @WorkspaceName below if needed.
    - Dates are worked out from today (India time, UTC+05:30), so the pages always look "live":
-       Decisions  : 4 decisions, 6 action items (one overdue, two done, two yours)
+       Decisions  : 4 decisions, 6 action items (one overdue, two done, two yours) and, with 55_DecisionOwners.sql,
+                    WHO OWNS WHAT: 2 waiting for you to accept (Lakshmi and Meera asked you), 1 waiting for Asha
+                    (Priya asked across teams), 1 Rohan declined, 1 Neha handed back ("Not mine"), 1 Asha gave
+                    straight to Tom (he is below her), 1 decision owned by Rohan
        Stand-up   : "Engineering daily" (Engineering) and "Daily check-in" (everyone), answers for today and yesterday,
                     one blocker; yours for today is left for you to answer
        Approvals  : 4 waiting for you (one is the 2nd step after Asha approved), 2 of your own, 2 you already decided
        Roles      : IT help desk (you are first in line), HR questions, Facilities; 5 requests (open, answered, escalated, closed)
        Visitors   : today (expected, in the building, waiting for host, left), tomorrow (expected) and yesterday (left)
-   Needs scripts 46, 47, 49, 51 and 52 (or 99_ApplyAllUpdates.sql). Safe to run more than once: a part already added is skipped.
+   Needs scripts 46, 47, 49, 51 and 52 (or 99_ApplyAllUpdates.sql); the "who owns what" examples also need 55. Safe to run more than once: a part already added is skipped.
    To remove the demo records again: run the "CLEAN UP" block at the end (it is commented out).
    ===================================================================== */
 SET NOCOUNT ON;
@@ -76,6 +79,46 @@ BEGIN
      (@T, 'A', N'Share the Q4 hiring plan with the department heads', NULL, @Me, @Tmrw, NULL, NULL, @Me, DATEADD(HOUR, -20, @Now)),
      (@T, 'A', N'Refresh the staging database every night', N'Copy of production with customer names masked.', @Neha, DATEADD(DAY, -3, @Today), DATEADD(HOUR, -30, @Now), @Neha, @Vikram, DATEADD(HOUR, -170, @Now)),
      (@T, 'A', N'Collect the laptops from the two leavers', NULL, @Lakshmi, DATEADD(DAY, -5, @Today), DATEADD(HOUR, -140, @Now), @Lakshmi, @Me, DATEADD(HOUR, -240, @Now));
+END
+
+/* =====================================================================
+   1b. WHO OWNS WHAT (needs 55_DecisionOwners.sql; skipped with a note if it isn't run yet)
+       You can give an item to yourself or anyone below you; anyone else is ASKED and must Accept.
+       Run as dynamic SQL so this script still compiles on a database without the new columns.
+   ===================================================================== */
+IF COL_LENGTH(N'dbo.sahyog_Decisions', N'AskedOwnerId') IS NULL
+    PRINT N'Skipped the "who owns what" examples: run database/55_DecisionOwners.sql first, then this script again.';
+ELSE IF NOT EXISTS (SELECT 1 FROM dbo.sahyog_Decisions WHERE TenantId = @T AND Title = N'Decide the stipend for summer interns' AND IsDeleted = 0)
+BEGIN
+    EXEC sp_executesql N'
+    -- Lakshmi (HR head) reports to you, so she can''t make you the owner: she asked, and it waits for you
+    UPDATE dbo.sahyog_Decisions SET OwnerId = @Lakshmi, AskedOwnerId = @Me, AskedUtc = DATEADD(MINUTE, 1, RecordedUtc), DeclinedBy = NULL, DeclinedUtc = NULL
+    WHERE TenantId = @T AND Title = N''Book the venue for the year-end town hall'' AND IsDeleted = 0;
+
+    INSERT dbo.sahyog_Decisions (TenantId, Kind, Title, Details, OwnerId, DueDate, RecordedBy, RecordedUtc, AskedOwnerId, AskedUtc, DeclinedBy, DeclinedUtc) VALUES
+     -- asked UP: Meera (HR executive) asks you, the CEO. Waiting for you.
+     (@T, ''A'', N''Decide the stipend for summer interns'', N''HR needs the amount before the offer letters go out on Monday.'',
+          @Meera, DATEADD(DAY, 3, @Today), @Meera, DATEADD(HOUR, -6, @Now), @Me, DATEADD(HOUR, -6, @Now), NULL, NULL),
+     -- asked ACROSS: Priya (Sales) asks Asha (Engineering head, not her manager). Waiting for Asha.
+     (@T, ''A'', N''Give the Mehta Traders team a demo build'', N''They want to try the new invoice screens before signing.'',
+          @Priya, DATEADD(DAY, 4, @Today), @Priya, DATEADD(HOUR, -9, @Now), @Asha, DATEADD(HOUR, -9, @Now), NULL, NULL),
+     -- DECLINED: Kiran asked Rohan (Sales head); Rohan said no, so it stays with Kiran
+     (@T, ''A'', N''Share last quarter''''s sales numbers for the dashboard'', N''Monthly totals per region are enough.'',
+          @Kiran, DATEADD(DAY, 2, @Today), @Kiran, DATEADD(HOUR, -30, @Now), NULL, NULL, @Rohan, DATEADD(HOUR, -27, @Now)),
+     -- NOT MINE: Vikram gave it to Neha (she reports to him); Neha handed it back, so it is Vikram''s again
+     (@T, ''A'', N''Write the release notes for 2.4'', N''Customer-facing, one page.'',
+          @Vikram, DATEADD(DAY, 1, @Today), @Vikram, DATEADD(HOUR, -28, @Now), NULL, NULL, @Neha, DATEADD(HOUR, -24, @Now)),
+     -- assigned DOWN: Asha gives it straight to Tom (Tom is below her: Asha > Vikram > Neha > Kiran > Tom)
+     (@T, ''A'', N''Add the login tests to the nightly run'', NULL,
+          @Tom, DATEADD(DAY, 2, @Today), @Asha, DATEADD(HOUR, -3, @Now), NULL, NULL, NULL, NULL),
+     -- a DECISION owned by its department head (Rohan), recorded by him
+     (@T, ''D'', N''Sales demos use the staging site from now on'', N''Never the live site, so customer data is never shown.'',
+          @Rohan, NULL, @Rohan, DATEADD(HOUR, -12, @Now), NULL, NULL, NULL, NULL);',
+    N'@T UNIQUEIDENTIFIER, @Me UNIQUEIDENTIFIER, @Lakshmi UNIQUEIDENTIFIER, @Meera UNIQUEIDENTIFIER, @Priya UNIQUEIDENTIFIER,
+      @Asha UNIQUEIDENTIFIER, @Kiran UNIQUEIDENTIFIER, @Rohan UNIQUEIDENTIFIER, @Vikram UNIQUEIDENTIFIER, @Neha UNIQUEIDENTIFIER,
+      @Tom UNIQUEIDENTIFIER, @Today DATE, @Now DATETIME2(3)',
+    @T = @T, @Me = @Me, @Lakshmi = @Lakshmi, @Meera = @Meera, @Priya = @Priya, @Asha = @Asha, @Kiran = @Kiran, @Rohan = @Rohan,
+    @Vikram = @Vikram, @Neha = @Neha, @Tom = @Tom, @Today = @Today, @Now = @Now;
 END
 
 /* =====================================================================
@@ -257,7 +300,9 @@ DELETE dbo.sahyog_Decisions WHERE TenantId = @T AND Title IN (
     N'Release 2.4 moves to 5 December', N'Office closed on 25 December; Engineering keeps an on-call rota', N'Sales CRM moves to the Pro plan from January',
     N'Every intern gets a buddy from their team for the first month', N'Send the revised quote to Mehta Traders', N'Fix the rounding in the invoice PDF',
     N'Book the venue for the year-end town hall', N'Share the Q4 hiring plan with the department heads', N'Refresh the staging database every night',
-    N'Collect the laptops from the two leavers');
+    N'Collect the laptops from the two leavers',
+    N'Decide the stipend for summer interns', N'Give the Mehta Traders team a demo build', N'Share last quarter''s sales numbers for the dashboard',
+    N'Write the release notes for 2.4', N'Add the login tests to the nightly run', N'Sales demos use the staging site from now on');
 DELETE dbo.sahyog_Standups WHERE TenantId = @T AND Name IN (N'Engineering daily', N'Daily check-in');                -- answers go with them
 DELETE dbo.sahyog_Roles WHERE TenantId = @T AND Name IN (N'IT help desk', N'HR questions', N'Facilities');           -- members and requests go with them
 DELETE dbo.sahyog_Approvals WHERE TenantId = @T AND Title IN (
