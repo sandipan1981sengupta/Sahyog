@@ -1607,8 +1607,11 @@ html[data-skin="kesari"] .snh-card:hover { box-shadow: 0 22px 44px -20px rgba(23
 
 /* App dialogs over the Help page (light themes). ShankhNaad dialogs are 40% white glass, made for light pages; on Help
    they sit over the dark hero, which made their grey text and the close button unreadable. While Help is open they
-   use a nearly solid background (the --pop-bg every dialog and menu is drawn with). Other pages are not affected. */
-html[data-theme="light"]:has(.snh-page) body,
-html[data-theme="light"]:has(.snh-page) body .sn-dialog { --pop-bg: linear-gradient(160deg, rgba(255,255,255,.94), rgba(255,255,255,.88)) !important; }
-html[data-skin="kesari"]:has(.snh-page) body,
-html[data-skin="kesari"]:has(.snh-page) body .sn-dialog { --pop-bg: linear-gradient(160deg, rgba(255,255,255,.94), rgba(255,247,237,.9)) !important; }
+   use a nearly solid background (the --pop-bg every dialog and menu is drawn with). The Help page script puts the
+   class "snh-on" on <html> while Help is open and removes it when you leave, so no other page is affected.
+   (Deliberately not a :has() test on <html>: that makes the browser re-check the whole page's styles on every
+   change, which slows down pages with many elements, such as long chats.) */
+html.snh-on[data-theme="light"] body,
+html.snh-on[data-theme="light"] body .sn-dialog { --pop-bg: linear-gradient(160deg, rgba(255,255,255,.94), rgba(255,255,255,.88)) !important; }
+html.snh-on[data-skin="kesari"] body,
+html.snh-on[data-skin="kesari"] body .sn-dialog { --pop-bg: linear-gradient(160deg, rgba(255,255,255,.94), rgba(255,247,237,.9)) !important; }

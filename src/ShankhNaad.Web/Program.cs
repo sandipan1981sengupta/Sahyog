@@ -46,7 +46,6 @@ builder.Services.AddSingleton<ShankhNaad.Web.Infrastructure.ReverseGeocoder>(); 
 builder.Services.AddHostedService<ShankhNaad.Web.Infrastructure.LocationRetention>();   // team location: erase locations older than each company's "keep for" setting
 builder.Services.AddHostedService<ShankhNaad.Web.Infrastructure.ShankhReminders>();     // Shankh: remind managers of people who haven't pressed Seen
 builder.Services.AddScoped<ShankhNaad.Web.Infrastructure.ChatPoster>();              // posts into chats from the server (roles, approvals)
-builder.Services.AddSingleton<ShankhNaad.Web.Infrastructure.LanguageService>();        // translation + voice-note transcripts (off until "Languages" keys are set)
 builder.Services.AddHostedService<ShankhNaad.Web.Infrastructure.WorkJobs>();           // stand-up reminders, role-request escalation
 
 // Compress CSS / JS / SVG (about 1.6 MB → about 300 KB per first visit). HTML pages are deliberately NOT

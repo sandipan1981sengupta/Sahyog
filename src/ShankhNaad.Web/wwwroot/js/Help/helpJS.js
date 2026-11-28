@@ -668,7 +668,10 @@
     // Leaving the page (SN.nav swaps in another page without a reload): the player sits on <body>, outside the swapped
     // part, so stop its video and remove it. sn-nav removes this page's own handlers by itself, so this one listener is
     // added outside the page (SN.nav.unscoped) and added only once per browser tab; it always cleans up the latest player.
+    // While Help is open, <html> carries "snh-on" (help-page.css uses it to make app dialogs readable over the hero).
+    document.documentElement.classList.add("snh-on");
     window.__snhLeave = function () {
+        if (!document.getElementById("snhRoot")) document.documentElement.classList.remove("snh-on");
         if ($player && !document.getElementById("snhRoot")) {
             if (video) video.pause();
             $player.remove(); $player = null; $(document).off(NS); $(window).off(NS); $("body").css("overflow", "");

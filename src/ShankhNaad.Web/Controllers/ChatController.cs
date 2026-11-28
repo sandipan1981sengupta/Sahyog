@@ -38,7 +38,7 @@ public sealed partial class ChatController : Controller
 
     private Guid Me => User.UserGuid();
 
-    private const int OpenDays = 10, MinOnOpen = 30, MaxOnOpen = 300;
+    private const int OpenDays = 3, MinOnOpen = 30, MaxOnOpen = 100;
 
     [HttpGet("")]
     [HttpGet("{id:guid}")]
@@ -85,7 +85,7 @@ public sealed partial class ChatController : Controller
 
         if (current is not null)
         {
-            // the last 10 days of the conversation (at least the latest 30 messages, at most 300);
+            // the last 3 days of the conversation (at least the latest 30 messages, at most 100);
             // "Load older messages" brings earlier ones
             var page = await PageAsync(tenantId, current, null, MaxOnOpen + 1);   // newest first
             var since = DateTime.UtcNow.AddDays(-OpenDays);

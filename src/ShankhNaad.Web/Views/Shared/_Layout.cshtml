@@ -1,5 +1,4 @@
 @inject ShankhNaad.Web.Infrastructure.AssetBundles Bundles
-@inject ShankhNaad.Web.Infrastructure.LanguageService Lang
 @{
     var section = ViewData["Section"] as string ?? "";
     var isTenantAdmin = User.IsInRole(AppRoles.TenantAdmin);
@@ -120,7 +119,7 @@
     @Bundles.Tags("layout.css")
     @await RenderSectionAsync("Head", required: false)
 </head>
-<body class="sn-body" data-me="@(isSuperAdmin ? "" : User.UserId())" data-admin="@(User.IsInRole(ShankhNaad.DtoLibrary.AppRoles.TenantAdmin) ? "1" : "")" data-lang="@(Lang.TranslateOn ? "t" : "")@(Lang.TranscribeOn ? "s" : "")">
+<body class="sn-body" data-me="@(isSuperAdmin ? "" : User.UserId())" data-admin="@(User.IsInRole(ShankhNaad.DtoLibrary.AppRoles.TenantAdmin) ? "1" : "")">
     <div class="sn-backdrop" aria-hidden="true">
         <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span>
         <span class="orb o1"></span><span class="orb o2"></span><span class="orb o3"></span><span class="orb o4"></span><span class="orb o5"></span>
